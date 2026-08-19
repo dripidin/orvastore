@@ -1,6 +1,64 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const dzship = require('dzship');
+
+// Initialize dzship client for Redex Ecotrack
+const dzshipClient = dzship({
+    courier: 'ecotrack',
+    credentials: { 
+        token: process.env.ECOTRACK_API_TOKEN || 'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo'
+    },
+    options: { 
+        baseUrl: 'https://redex.ecotrack.dz'
+    }
+});
+
+// Convert dashboard order format to dzship format
+function convertToDzshipOrder(order) {
+    // Extract wilaya code and commune name from wilaya field (e.g., "16 - الجزائر" → 16, "الجزائر")
+    const wilayaMatch = order.wilaya?.match(/^(\d+)\s*-\s*(.+)$/) || [null, '16', 'الجزائر'];
+    const wilayaCode = parseInt(wilayaMatch[1]);
+    const communeName = wilayaMatch[2].trim();
+    
+    // Convert delivery type
+    const deliveryType = order.deliveryType?.includes('Stop Desk') || order.deliveryType?.includes('المكتب') 
+        ? 'stopdesk' 
+        : 'home';
+
+    return {
+        reference: order.orderId || order.tracking_code,
+        recipient: {
+            fullName: order.fullName,
+            phone: order.phone,
+            wilayaCode: wilayaCode,
+            communeName: communeName
+        },
+        deliveryType: deliveryType,
+        productList: order.productList || 'منتجات إلكترونية ORVA Store',
+        codAmount: order.priceNum || parseInt(order.grandTotal?.replace(/\D/g, '')) || 4200
+    };
+}
+
+// Convert dzship response to dashboard format
+function convertFromDzshipResponse(dzshipData, originalOrder = null) {
+    const baseOrder = originalOrder || {};
+    
+    return {
+        orderId: dzshipData.trackingNumber || baseOrder.orderId,
+        tracking_code: dzshipData.trackingNumber || baseOrder.tracking_code,
+        fullName: baseOrder.fullName || dzshipData.recipient?.fullName,
+        phone: baseOrder.phone || dzshipData.recipient?.phone,
+        wilaya: baseOrder.wilaya || `${dzshipData.recipient?.wilayaCode} - ${dzshipData.recipient?.communeName}`,
+        deliveryType: dzshipData.deliveryType === 'stopdesk' ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل',
+        grandTotal: `${dzshipData.codAmount || baseOrder.priceNum || 4200} د.ج`,
+        priceNum: dzshipData.codAmount || baseOrder.priceNum || 4200,
+        status: dzshipData.status || 'قيد الانتظار',
+        in_redex: true,
+        redex_tracking_code: dzshipData.trackingNumber,
+        date: baseOrder.date || new Date().toISOString().split('T')[0]
+    };
+}
 
 function getStoredOrders() {
     try {
@@ -12,64 +70,34 @@ function getStoredOrders() {
     return [];
 }
 
-async function sendToRedexEcotrack(payload, token) {
-    return new Promise((resolve) => {
-        const bodyStr = JSON.stringify(payload);
-        const req = https.request({
-            hostname: 'redex.ecotrack.dz',
-            path: '/api/v1/create/order',
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'token': token,
-                'api-token': token,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Content-Length': Buffer.byteLength(bodyStr)
-            }
-        }, (res) => {
-            let resData = '';
-            res.on('data', chunk => resData += chunk);
-            res.on('end', () => {
-                try {
-                    resolve({ status: res.statusCode, data: JSON.parse(resData) });
-                } catch (e) {
-                    resolve({ status: res.statusCode, text: resData });
-                }
-            });
-        });
-        req.on('error', (err) => resolve({ status: 500, error: err.message }));
-        req.write(bodyStr);
-        req.end();
-    });
+async function sendToRedexEcotrack(order) {
+    try {
+        const dzshipOrder = convertToDzshipOrder(order);
+        const result = await dzshipClient.createOrder(dzshipOrder);
+        return { status: 200, data: result };
+    } catch (error) {
+        return { status: 500, error: error.message, code: error.code };
+    }
 }
 
-async function fetchRedexOrders(token) {
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'redex.ecotrack.dz',
-            path: '/api/v1/get/orders',
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'token': token,
-                'api-token': token,
-                'Accept': 'application/json'
-            }
-        }, (res) => {
-            let resData = '';
-            res.on('data', chunk => resData += chunk);
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(resData));
-                } catch (e) {
-                    resolve({ data: [] });
-                }
-            });
-        });
-        req.on('error', () => resolve({ data: [] }));
-        req.end();
-    });
+async function fetchRedexOrders() {
+    try {
+        // dzship doesn't have a direct "get all orders" endpoint
+        // We'll track individual orders instead
+        // For now, return empty array - individual tracking will be used
+        return { data: [] };
+    } catch (error) {
+        return { data: [] };
+    }
+}
+
+async function trackRedexOrder(trackingNumber) {
+    try {
+        const result = await dzshipClient.track(trackingNumber);
+        return { status: 200, data: result };
+    } catch (error) {
+        return { status: 500, error: error.message, code: error.code };
+    }
 }
 
 function getBlacklistedOrders() {
@@ -260,27 +288,25 @@ module.exports = async (req, res) => {
             const isStopDesk = (body.deliveryType === 'stopdesk' || (body.deliveryType && body.deliveryType.toLowerCase().includes('stop'))) ? 1 : 0;
             const priceNum = parseInt(body.price || body.grandTotal) || 4200;
 
-            const ecotrackPayload = {
-                tracking: body.orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000)),
-                nom_client: body.fullName || body.client_name || 'Client Anonyme',
-                telephone: body.phone || '0700000000',
-                adresse: body.address || body.wilaya || 'Centre Ville',
-                code_wilaya: wilayaNum,
-                commune: communeName,
-                montant: priceNum,
-                type: 1,
-                stop_desk: isStopDesk,
-                produit: 'كرطابل يماها',
-                remarque: body.remark || 'طلب مؤكد من لوحة التحكم — ORVA Store'
+            const orderPayload = {
+                orderId: body.orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000)),
+                fullName: body.fullName || body.client_name || 'Client Anonyme',
+                phone: body.phone || '0700000000',
+                wilaya: `${wilayaNum} - ${communeName}`,
+                deliveryType: isStopDesk ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل',
+                grandTotal: `${priceNum} د.ج`,
+                priceNum: priceNum,
+                productList: 'كرطابل يماها',
+                remark: body.remark || 'طلب مؤكد من لوحة التحكم — ORVA Store'
             };
 
-            const ecotrackRes = await sendToRedexEcotrack(ecotrackPayload, ECOTRACK_API_TOKEN);
+            const ecotrackRes = await sendToRedexEcotrack(orderPayload);
 
-            const tracking_code = (ecotrackRes.data && ecotrackRes.data.tracking) ? ecotrackRes.data.tracking : ecotrackPayload.tracking;
+            const tracking_code = (ecotrackRes.data && ecotrackRes.data.trackingNumber) ? ecotrackRes.data.trackingNumber : orderPayload.orderId;
 
             // Update Database record: in_redex = true, redex_tracking_code = tracking_code
             const { updateOrderInDb } = require('../lib/db');
-            await updateOrderInDb(ecotrackPayload.tracking, {
+            await updateOrderInDb(orderPayload.orderId, {
                 in_redex: true,
                 redex_tracking_code: tracking_code,
                 status: 'مؤكد في Redex'
