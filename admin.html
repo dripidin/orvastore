@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم إدارية متطورة — ORVA Store (Yamaha Sac)</title>
+    
+    <!-- Google Fonts (Cairo & Inter) & FontAwesome -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body class="dark-theme">
+
+    <div class="tailadmin-wrapper">
+        <!-- Sidebar Navigation -->
+        <aside class="tailadmin-sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-badge">
+                    <i class="fa-solid fa-bag-shopping brand-logo-icon"></i>
+                    <div class="brand-text">
+                        <h2>ORVA STORE</h2>
+                        <span>Yamaha Sac Admin v2.5</span>
+                    </div>
+                </div>
+                <button class="sidebar-toggle-btn" id="sidebarCloseBtn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <nav class="sidebar-menu">
+                <div class="menu-group-label">القائمة الرئيسية</div>
+                <a href="#dashboard" class="menu-item active">
+                    <i class="fa-solid fa-chart-pie menu-icon"></i>
+                    <span>لوحة التحكم (Dashboard)</span>
+                </a>
+                <a href="#orders" class="menu-item">
+                    <i class="fa-solid fa-boxes-stacked menu-icon"></i>
+                    <span>إدارة الطلبيات (Orders)</span>
+                </a>
+                <a href="#redex" class="menu-item">
+                    <i class="fa-solid fa-truck-fast menu-icon"></i>
+                    <span>شحن Redex Ecotrack 🟢</span>
+                </a>
+
+                <div class="menu-group-label">الأدوات والإعدادات</div>
+                <a href="javascript:void(0)" onclick="adminAPI.openCreateModal()" class="menu-item">
+                    <i class="fa-solid fa-circle-plus menu-icon"></i>
+                    <span>إنشاء طرد جديد</span>
+                </a>
+                <a href="javascript:void(0)" onclick="adminAPI.openTariffsModal()" class="menu-item">
+                    <i class="fa-solid fa-tags menu-icon"></i>
+                    <span>تعرفات التوصيل (58 ولاية)</span>
+                </a>
+                <a href="javascript:void(0)" onclick="adminAPI.openWilayasModal()" class="menu-item">
+                    <i class="fa-solid fa-map-location-dot menu-icon"></i>
+                    <span>الولايات النشطة</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="api-status-badge">
+                    <span class="status-pulse green"></span>
+                    <span>Redex Ecotrack API Live ⚡</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="tailadmin-main">
+            <!-- Header Navbar -->
+            <header class="tailadmin-header">
+                <div class="header-left">
+                    <button class="menu-toggle-btn" id="sidebarToggleBtn"><i class="fa-solid fa-bars"></i></button>
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="searchInput" placeholder="بحث برقم الطلب، اسم الزبون، الهاتف، أو الولاية..." onkeyup="adminAPI.triggerSearch()">
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="store-badge-pill">
+                        <i class="fa-solid fa-store text-cyan"></i>
+                        <span>متجر: ORVA Store (07. TNT Clock)</span>
+                    </div>
+
+                    <button class="header-action-btn" id="themeToggleBtn" title="تغيير المظهر (Dark/Light)">
+                        <i class="fa-solid fa-moon"></i>
+                    </button>
+
+                    <button class="header-action-btn refresh-btn" id="refreshDataBtn" title="مزامنة فورية">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>تحديث</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Content Container -->
+            <div class="tailadmin-content">
+                <!-- KPI Metrics Cards Grid -->
+                <section class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-icon-box bg-cyan-glow">
+                            <i class="fa-solid fa-shopping-bag"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <span class="kpi-label">إجمالي الطلبات</span>
+                            <h3 class="kpi-value" id="metricTotalOrders">0</h3>
+                            <span class="kpi-subtext text-emerald"><i class="fa-solid fa-arrow-trend-up"></i> محدث حياً</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-box bg-emerald-glow">
+                            <i class="fa-solid fa-money-bill-wave"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <span class="kpi-label">الإيرادات الإجمالية (COD)</span>
+                            <h3 class="kpi-value" id="metricRevenue">0 د.ج</h3>
+                            <span class="kpi-subtext text-emerald"><i class="fa-solid fa-shield-halved"></i> 58 ولاية</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-box bg-amber-glow">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <span class="kpi-label">قيد الانتظار (Pending)</span>
+                            <h3 class="kpi-value" id="metricPending">0</h3>
+                            <span class="kpi-subtext text-amber"><i class="fa-solid fa-hourglass-half"></i> تحضير قبل الشحن</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-box bg-blue-glow">
+                            <i class="fa-solid fa-truck-fast"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <span class="kpi-label">في الطريق / الشحن</span>
+                            <h3 class="kpi-value" id="metricShipped">0</h3>
+                            <span class="kpi-subtext text-cyan"><i class="fa-solid fa-route"></i> شبكة التوزيع</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-box bg-rose-glow">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <span class="kpi-label">مرتجعات (Retour)</span>
+                            <h3 class="kpi-value" id="metricReturned">0</h3>
+                            <span class="kpi-subtext text-rose"><i class="fa-solid fa-chart-line-down"></i> نسبة الإرجاع</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Analytics Charts Row -->
+                <section class="charts-grid">
+                    <div class="tailadmin-card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-chart-line text-cyan"></i> مخطط حركة الطلبيات اليومية</h3>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="chartTrendCanvas"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="tailadmin-card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-chart-pie text-emerald"></i> توزيع أعلى 5 ولايات طلباً</h3>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="chartWilayaCanvas"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Orders Table Section -->
+                <section class="tailadmin-card table-section">
+                    <div class="table-toolbar">
+                        <div class="filter-pills">
+                            <button class="pill-btn active" data-status="all">الكل</button>
+                            <button class="pill-btn" data-status="pending">⏳ قيد الانتظار</button>
+                            <button class="pill-btn" data-status="shipped">🚚 في شركة التوصيل Redex</button>
+                            <button class="pill-btn" data-status="delivered">✅ تم التسليم (Livré)</button>
+                            <button class="pill-btn" data-status="returned">⚠️ مرتجع (Retour)</button>
+                        </div>
+
+                        <div class="table-actions">
+                            <button class="btn-primary-glow" onclick="adminAPI.openCreateModal()">
+                                <i class="fa-solid fa-plus"></i> إضافة طرد جديد
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive-wrapper">
+                        <table class="tailadmin-table">
+                            <thead>
+                                <tr>
+                                    <th>رقم الطلب / التتبع</th>
+                                    <th>الزبون</th>
+                                    <th>الهاتف</th>
+                                    <th>الولاية</th>
+                                    <th>المبلغ (COD)</th>
+                                    <th>حالة شركة التوصيل</th>
+                                    <th>حالة الطرد</th>
+                                    <th>العمليات اللوجستية</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ordersTbody">
+                                <!-- Dynamically rendered -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create / Edit Package Modal -->
+    <div class="modal-overlay" id="packageModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title" id="packageModalTitle">إنشاء طرد توصيل جديد (Création Colis)</span>
+                <button class="modal-close" onclick="adminAPI.closeModal('packageModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="modalOrderForm">
+                    <input type="hidden" id="editingOrderId">
+
+                    <div class="form-grid">
+                        <div>
+                            <label class="form-label">اسم الزبون الكامل *</label>
+                            <input type="text" id="formClientName" class="form-control" required placeholder="مثال: أمين طاهري">
+                        </div>
+
+                        <div>
+                            <label class="form-label">رقم الهاتف *</label>
+                            <input type="tel" id="formClientPhone" class="form-control" required placeholder="0770000000">
+                        </div>
+
+                        <div class="form-group-full">
+                            <label class="form-label">الولاية والبلدية *</label>
+                            <input type="text" id="formWilaya" class="form-control" required placeholder="16 - الجزائر — باب الزوار">
+                        </div>
+
+                        <div>
+                            <label class="form-label">المبلغ الإجمالي (د.ج COD) *</label>
+                            <input type="number" id="formPrice" class="form-control" value="4200" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label">نوع التوصيل *</label>
+                            <select id="formDeliveryType" class="form-control">
+                                <option value="domicile">توصيل للمنزل (Domicile)</option>
+                                <option value="stopdesk">توصيل للمكتب (Stop Desk)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px; text-align: left;">
+                        <button type="submit" class="btn-primary-glow"><i class="fa-solid fa-check"></i> حفظ وسجل عبر API التوصيل</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tracking Timeline Modal -->
+    <div class="modal-overlay" id="trackingModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title" id="trackingModalTitle">تتبع وتسلسل عمليات الطرد</span>
+                <button class="modal-close" onclick="adminAPI.closeModal('trackingModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="trackingModalContent">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Remark Modal -->
+    <div class="modal-overlay" id="remarkModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">إضافة ملاحظة لوجستية على الطرد (Ajout Remarque)</span>
+                <button class="modal-close" onclick="adminAPI.closeModal('remarkModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="remarkOrderId">
+                <label class="form-label">نص الملاحظة الموجه لسائق/مركز التوصيل:</label>
+                <textarea id="remarkText" class="form-control" rows="4" placeholder="مثال: الاتصال قبل وصول الشاحنة بـ 30 دقيقة..."></textarea>
+                <div style="margin-top: 15px; text-align: left;">
+                    <button class="btn-primary-glow" onclick="adminAPI.saveRemark()"><i class="fa-solid fa-save"></i> حفظ الملاحظة</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Printable Shipping Label (Bordereau) Modal -->
+    <div class="modal-overlay" id="bordereauModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">معاينة وطباعة ملصق الشحن (Impression Bordereau)</span>
+                <button class="modal-close" onclick="adminAPI.closeModal('bordereauModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="bordereauPrintArea">
+                <!-- Print area rendered dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary-glow" onclick="adminAPI.triggerNativePrint()"><i class="fa-solid fa-print"></i> طباعة الآن (Print Label)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- General Info Modal (Tariffs / Wilayas) -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-card" style="max-width: 750px;">
+            <div class="modal-header">
+                <span class="modal-title" id="infoModalTitle">معلومات النظام</span>
+                <button class="modal-close" onclick="adminAPI.closeModal('infoModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="infoModalContent">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard Logic -->
+    <script src="admin.js"></script>
+</body>
+</html>
