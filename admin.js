@@ -153,37 +153,78 @@
     // Handle Telegram notification link auto-fill and auto-submit
     function handleTelegramAutoFill() {
         const urlParams = new URLSearchParams(window.location.search);
-        const autoFill = urlParams.get('autofill');
+        const orderId = urlParams.get('orderId');
         
-        if (autoFill === 'true') {
-            const name = urlParams.get('name');
-            const phone = urlParams.get('phone');
-            const wilaya = urlParams.get('wilaya');
-            const price = urlParams.get('price');
-            const orderId = urlParams.get('orderId');
-            const autoSubmit = urlParams.get('autosubmit') === 'true';
-
-            if (name || phone || wilaya) {
-                document.getElementById('formClientName').value = name || '';
-                document.getElementById('formClientPhone').value = phone || '';
-                document.getElementById('formWilaya').value = wilaya || '';
-                document.getElementById('formPrice').value = price || '4200';
-                
-                const formIdInp = document.getElementById('editingOrderId');
-                formIdInp.setAttribute('data-is-telegram', 'true');
-                formIdInp.setAttribute('data-target-order-id', orderId || '');
-                
-                document.getElementById('packageModalTitle').textContent = 'إضافة طلب من إشعار Telegram';
-                document.getElementById('packageModal').classList.add('active');
-
-                // Auto-submit if requested
-                if (autoSubmit && name && phone && wilaya) {
-                    setTimeout(() => {
-                        document.getElementById('modalOrderForm').dispatchEvent(new Event('submit'));
-                    }, 500);
+        if (orderId) {
+            // Try to get order from server using orderId
+            fetchServerOrderById(orderId).then(order => {
+                if (order) {
+                    // Fill form with order data
+                    document.getElementById('formClientName').value = order.fullName || '';
+                    document.getElementById('formClientPhone').value = order.phone || '';
+                    
+                    // Extract wilaya code from wilaya field (e.g., "28 - المسيلة" → 28)
+                    const wilayaMatch = order.wilaya?.match(/^(\d+)/);
+                    document.getElementById('formWilayaCode').value = wilayaMatch ? wilayaMatch[1] : '16';
+                    
+                    // Extract commune name from wilaya field (e.g., "28 - المسيلة — مقرة" → "مقرة")
+                    const communeMatch = order.wilaya?.match(/—\s*(.+)$/) || order.wilaya?.match(/-\s*(.+)$/);
+                    document.getElementById('formCommune').value = communeMatch ? communeMatch[1].trim() : 'الجزائر';
+                    
+                    document.getElementById('formAddress').value = order.address || order.wilaya || '';
+                    document.getElementById('formPrice').value = order.priceNum || order.grandTotal?.replace(/\D/g, '') || '4200';
+                    
+                    const formIdInp = document.getElementById('editingOrderId');
+                    formIdInp.value = orderId;
+                    formIdInp.setAttribute('data-is-telegram', 'true');
+                    
+                    document.getElementById('packageModalTitle').textContent = 'إضافة طلب من إشعار Telegram';
+                    document.getElementById('packageModal').classList.add('active');
+                } else {
+                    // If order not found, check for URL parameters
+                    const name = urlParams.get('name');
+                    const phone = urlParams.get('phone');
+                    const wilaya = urlParams.get('wilaya');
+                    const price = urlParams.get('price');
+                    
+                    if (name || phone || wilaya) {
+                        document.getElementById('formClientName').value = name || '';
+                        document.getElementById('formClientPhone').value = phone || '';
+                        
+                        // Extract wilaya code from wilaya parameter
+                        const wilayaMatch = wilaya?.match(/^(\d+)/);
+                        document.getElementById('formWilayaCode').value = wilayaMatch ? wilayaMatch[1] : '16';
+                        
+                        // Extract commune name
+                        const communeMatch = wilaya?.match(/—\s*(.+)$/) || wilaya?.match(/-\s*(.+)$/);
+                        document.getElementById('formCommune').value = communeMatch ? communeMatch[1].trim() : 'الجزائر';
+                        
+                        document.getElementById('formAddress').value = wilaya || '';
+                        document.getElementById('formPrice').value = price || '4200';
+                        
+                        const formIdInp = document.getElementById('editingOrderId');
+                        formIdInp.value = orderId || '';
+                        formIdInp.setAttribute('data-is-telegram', 'true');
+                        
+                        document.getElementById('packageModalTitle').textContent = 'إضافة طلب من إشعار Telegram';
+                        document.getElementById('packageModal').classList.add('active');
+                    }
                 }
-            }
+            });
         }
+    }
+
+    async function fetchServerOrderById(orderId) {
+        try {
+            const res = await fetch(`/api/delivery?action=get_order&id=${orderId}`);
+            const json = await res.json();
+            if (json.success && json.data) {
+                return json.data;
+            }
+        } catch (e) {
+            console.error('Error fetching order:', e);
+        }
+        return null;
     }
 
     let syncIntervalId = null;
@@ -506,7 +547,12 @@
             document.getElementById('editingOrderId').value = o.orderId;
             document.getElementById('formClientName').value = o.fullName;
             document.getElementById('formClientPhone').value = o.phone;
-            document.getElementById('formWilaya').value = o.wilaya;
+            // Extract wilaya code and commune from wilaya field
+            const wilayaMatch = o.wilaya?.match(/^(\d+)/);
+            const communeMatch = o.wilaya?.match(/—\s*(.+)$/) || o.wilaya?.match(/-\s*(.+)$/);
+            document.getElementById('formWilayaCode').value = wilayaMatch ? wilayaMatch[1] : '16';
+            document.getElementById('formCommune').value = communeMatch ? communeMatch[1].trim() : 'الجزائر';
+            document.getElementById('formAddress').value = o.address || o.wilaya || '';
             document.getElementById('formPrice').value = o.priceNum || parseInt(o.grandTotal) || 4700;
             document.getElementById('formDeliveryType').value = o.deliveryType.includes('Stop') ? 'stopdesk' : 'domicile';
 
@@ -523,14 +569,18 @@
 
             const name = document.getElementById('formClientName').value.trim();
             const phone = document.getElementById('formClientPhone').value.trim();
-            const wilaya = document.getElementById('formWilaya').value.trim();
+            const wilayaCode = document.getElementById('formWilayaCode').value.trim();
+            const commune = document.getElementById('formCommune').value.trim();
+            const address = document.getElementById('formAddress').value.trim();
             const price = parseInt(document.getElementById('formPrice').value, 10) || 4700;
             const deliveryType = document.getElementById('formDeliveryType').value === 'stopdesk' ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل';
 
-            if (!name || !phone || !wilaya) {
+            if (!name || !phone || !wilayaCode || !commune) {
                 alert('الرجاء إدخال كافة المعلومات المطلوبة');
                 return;
             }
+
+            const wilaya = `${wilayaCode} - ${commune} — ${address}`;
 
             if (editId && !isTelegramAutoFill) {
                 // Update existing order locally
@@ -539,6 +589,7 @@
                     ordersList[index].fullName = name;
                     ordersList[index].phone = phone;
                     ordersList[index].wilaya = wilaya;
+                    ordersList[index].address = address;
                     ordersList[index].grandTotal = price + ' د.ج';
                     ordersList[index].priceNum = price;
                     ordersList[index].deliveryType = deliveryType;
@@ -546,7 +597,7 @@
                 await fetch('/api/delivery?action=update', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tracking_code: editId, fullName: name, phone: phone, wilaya: wilaya, price: price })
+                    body: JSON.stringify({ tracking_code: editId, fullName: name, phone: phone, wilaya: wilaya, address: address, price: price })
                 });
                 alert('تم تحديث بيانات الطرد بنجاح!');
             } else {
@@ -557,6 +608,9 @@
                     fullName: name,
                     phone: phone,
                     wilaya: wilaya,
+                    address: address,
+                    wilayaCode: wilayaCode,
+                    commune: commune,
                     deliveryType: deliveryType,
                     grandTotal: price + ' د.ج',
                     priceNum: price,

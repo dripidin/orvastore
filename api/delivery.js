@@ -16,10 +16,26 @@ const dzshipClient = dzship({
 
 // Convert dashboard order format to dzship format
 function convertToDzshipOrder(order) {
-    // Extract wilaya code and commune name from wilaya field (e.g., "16 - الجزائر" → 16, "الجزائر")
-    const wilayaMatch = order.wilaya?.match(/^(\d+)\s*-\s*(.+)$/) || [null, '16', 'الجزائر'];
-    const wilayaCode = parseInt(wilayaMatch[1]);
-    const communeName = wilayaMatch[2].trim();
+    // Use new separate fields if available, otherwise fallback to old wilaya field
+    let wilayaCode = 16;
+    let communeName = 'الجزائر';
+    let address = order.address || 'Centre Ville';
+
+    if (order.wilayaCode) {
+        wilayaCode = parseInt(order.wilayaCode);
+    } else if (order.wilaya) {
+        // Extract wilaya code from wilaya field (e.g., "16 - الجزائر" → 16)
+        const wilayaMatch = order.wilaya?.match(/^(\d+)/);
+        wilayaCode = wilayaMatch ? parseInt(wilayaMatch[1]) : 16;
+    }
+
+    if (order.commune) {
+        communeName = order.commune;
+    } else if (order.wilaya) {
+        // Extract commune name from wilaya field (e.g., "16 - الجزائر" → "الجزائر")
+        const communeMatch = order.wilaya?.match(/—\s*(.+)$/) || order.wilaya?.match(/-\s*(.+)$/);
+        communeName = communeMatch ? communeMatch[1].trim() : 'الجزائر';
+    }
     
     // Convert delivery type
     const deliveryType = order.deliveryType?.includes('Stop Desk') || order.deliveryType?.includes('المكتب') 
@@ -32,7 +48,8 @@ function convertToDzshipOrder(order) {
             fullName: order.fullName,
             phone: order.phone,
             wilayaCode: wilayaCode,
-            communeName: communeName
+            communeName: communeName,
+            address: address
         },
         deliveryType: deliveryType,
         productList: order.productList || 'منتجات إلكترونية ORVA Store',
@@ -239,6 +256,30 @@ module.exports = async (req, res) => {
             );
 
             return res.status(200).json({ success: true, count: finalOrders.length, data: finalOrders });
+        }
+
+        // Get single order by ID (for Telegram link auto-fill)
+        if (action === 'get_order') {
+            const { orderId } = req.query;
+            if (!orderId) {
+                return res.status(400).json({ success: false, error: 'orderId required' });
+            }
+
+            const { getAllOrdersFromDb } = require('../lib/db');
+            const dbOrders = await getAllOrdersFromDb();
+            const stored = getStoredOrders();
+
+            // Search in DB and local storage
+            let order = dbOrders.find(o => o.orderId === orderId);
+            if (!order) {
+                order = stored.find(o => o.orderId === orderId);
+            }
+
+            if (order) {
+                return res.status(200).json({ success: true, data: order });
+            } else {
+                return res.status(404).json({ success: false, error: 'Order not found' });
+            }
         }
 
         // 1. Récupérer la liste des wilayas actives

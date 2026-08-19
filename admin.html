@@ -30,31 +30,15 @@
 
             <nav class="sidebar-menu">
                 <div class="menu-group-label">القائمة الرئيسية</div>
-                <a href="#dashboard" class="menu-item active">
-                    <i class="fa-solid fa-chart-pie menu-icon"></i>
-                    <span>لوحة التحكم (Dashboard)</span>
-                </a>
-                <a href="#orders" class="menu-item">
+                <a href="#orders" class="menu-item active">
                     <i class="fa-solid fa-boxes-stacked menu-icon"></i>
                     <span>إدارة الطلبيات (Orders)</span>
-                </a>
-                <a href="#redex" class="menu-item">
-                    <i class="fa-solid fa-truck-fast menu-icon"></i>
-                    <span>شحن Redex Ecotrack 🟢</span>
                 </a>
 
                 <div class="menu-group-label">الأدوات والإعدادات</div>
                 <a href="javascript:void(0)" onclick="adminAPI.openCreateModal()" class="menu-item">
                     <i class="fa-solid fa-circle-plus menu-icon"></i>
                     <span>إنشاء طرد جديد</span>
-                </a>
-                <a href="javascript:void(0)" onclick="adminAPI.openTariffsModal()" class="menu-item">
-                    <i class="fa-solid fa-tags menu-icon"></i>
-                    <span>تعرفات التوصيل (58 ولاية)</span>
-                </a>
-                <a href="javascript:void(0)" onclick="adminAPI.openWilayasModal()" class="menu-item">
-                    <i class="fa-solid fa-map-location-dot menu-icon"></i>
-                    <span>الولايات النشطة</span>
                 </a>
             </nav>
 
@@ -240,9 +224,19 @@
                             <input type="tel" id="formClientPhone" class="form-control" required placeholder="0770000000">
                         </div>
 
+                        <div>
+                            <label class="form-label">رقم الولاية (1-58) *</label>
+                            <input type="number" id="formWilayaCode" class="form-control" required placeholder="16" min="1" max="58">
+                        </div>
+
+                        <div>
+                            <label class="form-label">البلدية *</label>
+                            <input type="text" id="formCommune" class="form-control" required placeholder="الجزائر">
+                        </div>
+
                         <div class="form-group-full">
-                            <label class="form-label">الولاية والبلدية *</label>
-                            <input type="text" id="formWilaya" class="form-control" required placeholder="16 - الجزائر — باب الزوار">
+                            <label class="form-label">العنوان *</label>
+                            <input type="text" id="formAddress" class="form-control" required placeholder="مثال: حي باب الزوار، شارع الاستقلال">
                         </div>
 
                         <div>
