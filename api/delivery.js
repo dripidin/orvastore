@@ -181,17 +181,16 @@ module.exports = async (req, res) => {
     ];
 
     try {
-        // 0. Fetch all submitted orders for Admin Dashboard sync (DB + Redex Live + Local)
+        // 0. Fetch all submitted orders for Admin Dashboard sync (DB + Local only - NO Redex live data)
         if (action === 'get_all_orders' || action === 'orders') {
             const { getAllOrdersFromDb } = require('../lib/db');
             const dbOrders = await getAllOrdersFromDb();
             const stored = getStoredOrders();
-            const redexRes = await fetchRedexOrders(ECOTRACK_API_TOKEN);
             const blacklist = getBlacklistedOrders();
 
             const combinedMap = new Map();
 
-            // 1. Add all Database orders
+            // 1. Add all Database orders (primary source)
             dbOrders.forEach(o => {
                 combinedMap.set(o.orderId, {
                     ...o,
@@ -199,49 +198,12 @@ module.exports = async (req, res) => {
                 });
             });
 
-            // 2. Add local stored orders
+            // 2. Add local stored orders (secondary source)
             stored.forEach(o => {
                 if (!combinedMap.has(o.orderId)) {
                     combinedMap.set(o.orderId, { ...o, in_redex: o.in_redex || false });
                 }
             });
-
-            // 3. Match Redex live orders and set in_redex = true
-            if (redexRes && Array.isArray(redexRes.data)) {
-                redexRes.data.forEach(r => {
-                    const rTracking = r.tracking || r.reference;
-                    let matched = false;
-                    for (let [id, ord] of combinedMap.entries()) {
-                        if (id === rTracking || ord.redex_tracking_code === rTracking || ord.orderId === rTracking) {
-                            ord.in_redex = true;
-                            ord.redex_tracking_code = rTracking;
-                            ord.status = r.status || 'مؤكد في Redex';
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if (!matched) {
-                        // Skip Redex orders without complete customer information
-                        if (!r.nom_client || !r.telephone || !r.code_wilaya) {
-                            continue;
-                        }
-                        combinedMap.set(rTracking, {
-                            orderId: rTracking,
-                            tracking_code: rTracking,
-                            fullName: r.nom_client,
-                            phone: r.telephone,
-                            wilaya: r.code_wilaya + ' - ' + (r.commune || ''),
-                            deliveryType: r.stop_desk ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل',
-                            grandTotal: (r.montant || 4500) + ' د.ج',
-                            priceNum: parseInt(r.montant) || 4500,
-                            status: r.status || 'مؤكد في Redex',
-                            in_redex: true,
-                            redex_tracking_code: rTracking,
-                            date: r.created_at ? r.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
-                        });
-                    }
-                });
-            }
 
             // Filter out blacklisted / deleted false test orders
             const finalOrders = Array.from(combinedMap.values()).filter(o =>
