@@ -424,6 +424,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!isValid) return;
 
+            // Check client-side attempt limit (Max 2 attempts per phone in 24h)
+            const cleanPhone = phoneVal.replace(/\D/g, '');
+            const attemptsKey = 'orva_sub_attempts_' + cleanPhone;
+            let currentAttempts = 0;
+            try {
+                const stored = localStorage.getItem(attemptsKey);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+                        currentAttempts = parsed.count || 0;
+                    }
+                }
+            } catch (e) {}
+
+            if (currentAttempts >= 2) {
+                alert('عذراً، لقد تم تسجيل طلبك مسبقاً (الحد الأقصى محاولتان). سيتصل بك فريقنا هاتفياً لتأكيد طلبك وتجهيز الشحن.');
+                return;
+            }
+
             isSubmitting = true;
 
             // Prepare Order Payload
@@ -503,6 +522,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 orderCreatedSuccessfully = true;
                 finalOrderId = result.orderId || orderId;
+
+                // Record successful attempt in local storage
+                try {
+                    localStorage.setItem(attemptsKey, JSON.stringify({
+                        count: currentAttempts + 1,
+                        timestamp: Date.now()
+                    }));
+                } catch (e) {}
 
                 // ── Fire Deduplicated Meta Pixel Purchase Event ONLY after order is confirmed ──
                 if (typeof window.fbq === 'function') {

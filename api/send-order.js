@@ -76,13 +76,13 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ── Rate limit ────────────────────────────────────────────────────────
-        const rateCheck = await checkAndRecordRateLimit(clientIp, deviceId);
+        // ── Rate limit (Allow Maximum 2 Attempts per Phone / Device / IP) ────
+        const rateCheck = await checkAndRecordRateLimit(clientIp, deviceId, phone);
         if (!rateCheck.allowed) {
             return res.status(429).json({
                 success: false,
                 error: 'RATE_LIMIT_EXCEEDED',
-                message: 'عذراً، لقد تجاوزت الحد المسموح به لإرسال الطلبات (طلبين كل 6 ساعات).'
+                message: rateCheck.message || 'عذراً، لقد تم تسجيل طلبك مسبقاً (الحد الأقصى محاولتين). سيتصل بك فريقنا لتأكيد طلبك.'
             });
         }
 
