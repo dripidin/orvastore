@@ -434,13 +434,23 @@ module.exports = async (req, res) => {
                 });
             }
 
-            // If carrier provides direct label URL
-            const labelUrl = `https://redex.ecotrack.dz/api/v1/orders/label?tracking=${encodeURIComponent(trackingCode)}`;
+            const targetCourier = ALGERIAN_COURIERS.find(c => c.id === courierId) || ALGERIAN_COURIERS[0];
+            const tenantUrl = baseUrl || targetCourier.baseUrl || 'https://redex.ecotrack.dz';
+            
+            // Generate valid carrier portal label & tracking route
+            let labelUrl = `${tenantUrl}/orders?search=${encodeURIComponent(trackingCode)}`;
+            if (targetCourier.type === 'yalidine') {
+                labelUrl = `https://yalidine.app/orders?tracking=${encodeURIComponent(trackingCode)}`;
+            } else if (targetCourier.type === 'zrexpress') {
+                labelUrl = `https://procolis.com/orders?tracking=${encodeURIComponent(trackingCode)}`;
+            }
+
             return res.status(200).json({
                 success: true,
                 trackingCode: trackingCode,
                 labelUrl: labelUrl,
-                courier: 'Ecotrack DZ'
+                courier: targetCourier.name,
+                message: 'Lien du bordereau officiel prêt pour impression.'
             });
         }
 

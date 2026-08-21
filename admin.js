@@ -702,11 +702,12 @@
             }
 
             try {
-                const res = await fetch(`/api/delivery?action=label&tracking=${encodeURIComponent(trackingCode)}`);
+                const res = await fetch(`/api/delivery?action=label&tracking=${encodeURIComponent(trackingCode)}&courierId=${activeCourierId}`);
                 const json = await res.json();
 
                 if (json.success && json.labelUrl) {
                     document.getElementById('lblTitleOrder').textContent = `${dict.thOrder} : ${o.orderId} (${trackingCode})`;
+                    document.getElementById('lblDescText').textContent = `${currentLang === 'fr' ? 'Transporteur' : 'شركة التوصيل'}: ${json.courier || 'Ecotrack'}`;
                     const btn = document.getElementById('btnDownloadOfficialPdf');
                     btn.href = json.labelUrl;
                     document.getElementById('labelModal').classList.add('active');
