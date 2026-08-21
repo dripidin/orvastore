@@ -24,6 +24,9 @@
         <!-- ===================================================================== -->
         <header class="app-navbar">
             <div class="navbar-brand-wrapper">
+                <button class="navbar-toggler-btn" id="sidebarToggleBtn" type="button" title="Menu Navigation" onclick="storeAdmin.toggleMobileNav()">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <a class="navbar-brand" href="#dashboard">
                     <div class="brand-icon-box">
                         <i class="fa-solid fa-store"></i>
@@ -33,9 +36,6 @@
                         <span class="brand-sub" data-i18n="brandSub">Tableau de bord</span>
                     </div>
                 </a>
-                <button class="navbar-toggler-btn" id="sidebarToggleBtn" type="button" title="Menu Navigation">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
             </div>
 
             <div class="navbar-menu-wrapper">
@@ -48,7 +48,7 @@
                 <!-- Right Toolbar Elements -->
                 <ul class="navbar-actions-list">
                     <!-- Courier Live Status Pill -->
-                    <li class="action-item">
+                    <li class="action-item hide-on-sm">
                         <div class="status-pill courier-pill" onclick="storeAdmin.openSettingsModal()" title="Passerelle Logistique Algérie">
                             <span class="live-dot pulse-green"></span>
                             <span class="pill-text"><i class="fa-solid fa-truck-fast"></i> <span id="navCourierName">Ecotrack DZ</span>: <strong data-i18n="statusConnected">Connecté</strong></span>
@@ -56,7 +56,7 @@
                     </li>
 
                     <!-- Excel DB Status Pill -->
-                    <li class="action-item">
+                    <li class="action-item hide-on-sm">
                         <div class="status-pill excel-pill" onclick="storeAdmin.exportExcel()" title="Base de données Excel & Google Sheets">
                             <i class="fa-solid fa-file-excel text-emerald"></i>
                             <span class="pill-text">Excel & Sheets: <strong data-i18n="statusSync">Synchronisé</strong></span>
@@ -70,16 +70,29 @@
                         </button>
                     </li>
 
-                    <!-- Language Switcher: Strictly French & Arabic -->
+                    <!-- Language Submenu Dropdown -->
                     <li class="action-item">
-                        <div class="lang-switch-dropdown">
-                            <button class="lang-btn active" data-lang="fr" onclick="storeAdmin.setLanguage('fr')">Français</button>
-                            <button class="lang-btn" data-lang="ar" onclick="storeAdmin.setLanguage('ar')">العربية</button>
+                        <div class="navbar-lang-wrapper" id="navbarLangWrapper">
+                            <button class="lang-submenu-trigger" id="langSubmenuBtn" onclick="storeAdmin.toggleLangDropdown()" type="button" title="Changer la langue">
+                                <i class="fa-solid fa-globe"></i>
+                                <span id="currentLangLabel">FR</span>
+                                <i class="fa-solid fa-chevron-down caret-icon"></i>
+                            </button>
+                            <div class="lang-submenu-dropdown" id="langSubmenuDropdown">
+                                <button class="lang-dropdown-opt active" data-lang="fr" onclick="storeAdmin.setLanguage('fr'); storeAdmin.toggleLangDropdown(false);">
+                                    <span>🇫🇷 Français</span>
+                                    <i class="fa-solid fa-check check-mark"></i>
+                                </button>
+                                <button class="lang-dropdown-opt" data-lang="ar" onclick="storeAdmin.setLanguage('ar'); storeAdmin.toggleLangDropdown(false);">
+                                    <span>🇩🇿 العربية (RTL)</span>
+                                    <i class="fa-solid fa-check check-mark"></i>
+                                </button>
+                            </div>
                         </div>
                     </li>
 
                     <!-- Admin Profile Badge -->
-                    <li class="action-item">
+                    <li class="action-item hide-on-sm">
                         <div class="user-profile-badge">
                             <div class="avatar-ring">
                                 <span class="avatar-initials">OA</span>
@@ -87,13 +100,79 @@
                             </div>
                             <div class="user-meta">
                                 <span class="user-name">Admin ORVA</span>
-                                <span class="user-role">Super Administrateur</span>
+                                <span class="user-role">Super Admin</span>
                             </div>
                         </div>
                     </li>
                 </ul>
             </div>
         </header>
+
+        <!-- ===================================================================== -->
+        <!-- FULL-PAGE BLURRY MOBILE NAVIGATION OVERLAY                            -->
+        <!-- ===================================================================== -->
+        <div class="mobile-nav-fullscreen" id="mobileNavFullscreen">
+            <div class="mobile-nav-top">
+                <div class="brand-titles">
+                    <span class="brand-main">ORVA<span class="brand-highlight">STORE</span></span>
+                    <span class="brand-sub" data-i18n="brandSub">Tableau de bord</span>
+                </div>
+                <button class="mobile-nav-close-btn" onclick="storeAdmin.closeMobileNav()" title="Fermer le menu">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="mobile-nav-scroll-container">
+                <nav class="mobile-nav-links-centered">
+                    <a href="#dashboard" class="mobile-nav-item active" onclick="storeAdmin.switchTab('dashboard'); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon"><i class="fa-solid fa-chart-pie"></i></div>
+                        <span data-i18n="navDashboard">Aperçu & Statistiques</span>
+                    </a>
+
+                    <a href="#orders" class="mobile-nav-item" onclick="storeAdmin.switchTab('orders'); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon"><i class="fa-solid fa-boxes-packing"></i></div>
+                        <span data-i18n="navOrders">Gestion des Commandes</span>
+                    </a>
+
+                    <a href="#analytics" class="mobile-nav-item" onclick="storeAdmin.switchTab('analytics'); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon text-cyan"><i class="fa-solid fa-users-viewfinder"></i></div>
+                        <span data-i18n="navAnalytics">Visiteurs & Meta Pixel</span>
+                    </a>
+
+                    <a href="javascript:void(0)" class="mobile-nav-item" onclick="storeAdmin.openRiskDashboard(); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon text-rose"><i class="fa-solid fa-shield-halved"></i></div>
+                        <span data-i18n="navRisk">Bouclier Anti-Fraude & Trust</span>
+                    </a>
+
+                    <a href="javascript:void(0)" class="mobile-nav-item" onclick="storeAdmin.openCreateModal(); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon text-emerald"><i class="fa-solid fa-circle-plus"></i></div>
+                        <span data-i18n="navCreate">Créer un Colis</span>
+                    </a>
+
+                    <a href="javascript:void(0)" class="mobile-nav-item" onclick="storeAdmin.openTariffsModal(); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon text-amber"><i class="fa-solid fa-map-location-dot"></i></div>
+                        <span data-i18n="navTariffs">Tarifs 58 Wilayas</span>
+                    </a>
+
+                    <a href="javascript:void(0)" class="mobile-nav-item" onclick="storeAdmin.openSettingsModal(); storeAdmin.closeMobileNav();">
+                        <div class="m-nav-icon text-purple"><i class="fa-solid fa-sliders"></i></div>
+                        <span data-i18n="navSettings">Configuration Transporteurs</span>
+                    </a>
+                </nav>
+
+                <div class="mobile-nav-bottom-actions">
+                    <div class="mobile-lang-pills">
+                        <button class="mobile-lang-btn active" data-lang="fr" onclick="storeAdmin.setLanguage('fr'); storeAdmin.closeMobileNav();">Français</button>
+                        <button class="mobile-lang-btn" data-lang="ar" onclick="storeAdmin.setLanguage('ar'); storeAdmin.closeMobileNav();">العربية</button>
+                    </div>
+
+                    <div class="mobile-nav-status-strip">
+                        <span><i class="fa-solid fa-truck-fast text-cyan"></i> <strong id="mobileNavCourierName">Ecotrack DZ</strong></span>
+                        <span><i class="fa-solid fa-file-excel text-emerald"></i> <strong>Excel & Sheets</strong></span>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="app-page-body">
             <!-- Sidebar Overlay Backdrop (Mobile) -->
@@ -537,7 +616,7 @@
     </div>
 
     <!-- ===================================================================== -->
-    <!-- MODAL 3: OFFICIAL CARRIER LABEL (BORDEREAU)                           -->
+    <!-- MODAL 3: OFFICIAL CARRIER LABEL (BORDEREAU OFFICIEL)                  -->
     <!-- ===================================================================== -->
     <div class="app-modal-backdrop" id="labelModal">
         <div class="app-modal-dialog modal-md">
@@ -548,13 +627,61 @@
                 </div>
                 <button class="modal-close-btn" onclick="storeAdmin.closeModal('labelModal')"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="app-modal-body text-center py-4">
-                <div id="labelModalContent">
-                    <i class="fa-solid fa-file-pdf fa-3x text-rose mb-3" style="display:block;"></i>
-                    <h4 id="lblTitleOrder" class="mb-2">Commande ORVA-1045</h4>
-                    <p id="lblDescText" class="text-muted mb-4">L'étiquette officielle est générée et signée par le serveur du transporteur.</p>
-                    <a id="btnDownloadOfficialPdf" href="#" target="_blank" class="app-btn app-btn-primary">
-                        <i class="fa-solid fa-download"></i> <span data-i18n="btnOpenOfficialPdf">Ouvrir / Télécharger le Bordereau PDF</span>
+            <div class="app-modal-body p-3">
+                <!-- Printable Official Shipping Label (Thermal A6 & Standard A4) -->
+                <div class="official-shipping-label" id="printableOfficialLabel">
+                    <div class="label-header">
+                        <div class="label-carrier">
+                            <span class="carrier-tag" id="lblCarrierTag">REDEX ECOTRACK DZ</span>
+                            <small id="lblDateStamp">2026-08-21</small>
+                        </div>
+                        <div class="label-store">
+                            <strong>ORVA STORE DZ</strong>
+                            <small>Expéditeur Express</small>
+                        </div>
+                    </div>
+
+                    <div class="label-barcode-zone">
+                        <div class="barcode-lines">||||| | |||| ||| ||||| || |||||| |||| |||</div>
+                        <strong class="barcode-num" id="lblBarcodeCode">ECEOSK26082145362</strong>
+                        <span class="label-ref-tag" id="lblOrderRefTag">Réf: ORVA-59067</span>
+                    </div>
+
+                    <div class="label-body-grid">
+                        <div class="label-section">
+                            <span class="sec-label">DESTINATAIRE / الزبون</span>
+                            <h4 id="lblClientNameText">Samir Deriadi</h4>
+                            <p id="lblClientPhoneText" class="phone-highlight">0772552823</p>
+                        </div>
+
+                        <div class="label-section">
+                            <span class="sec-label">DESTINATION / العنوان</span>
+                            <h4 id="lblDestinationText">16 - Alger (Cheraga)</h4>
+                            <p id="lblAddressText">Cheraga Centre</p>
+                        </div>
+                    </div>
+
+                    <div class="label-footer-grid">
+                        <div class="label-type-box" id="lblDeliveryTypeBadge">
+                            🏠 À DOMICILE (DOMICILE)
+                        </div>
+                        <div class="label-amount-box">
+                            <span>TOTAL COD À ENCAISSER :</span>
+                            <h3 id="lblAmountText">4,900 DZD</h3>
+                        </div>
+                    </div>
+
+                    <div class="label-product-note" id="lblProductNote">
+                        📦 Contenu: Sac Banane Moto Yamaha (كرطابل يماها)
+                    </div>
+                </div>
+
+                <div class="label-actions-row mt-3">
+                    <button type="button" class="app-btn app-btn-primary flex-1" onclick="storeAdmin.triggerPrintLabel()">
+                        <i class="fa-solid fa-print"></i> <span data-i18n="btnPrintLabelDirect">Imprimer l'Étiquette (Bordereau)</span>
+                    </button>
+                    <a id="btnCarrierPortalLink" href="https://redex.ecotrack.dz" target="_blank" class="app-btn app-btn-outline">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> <span data-i18n="btnCarrierPortal">Portail Transporteur</span>
                     </a>
                 </div>
             </div>

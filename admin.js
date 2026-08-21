@@ -1063,7 +1063,10 @@
             document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
             document.documentElement.lang = lang;
 
-            document.querySelectorAll('.lang-btn').forEach(btn => {
+            const langLabel = document.getElementById('currentLangLabel');
+            if (langLabel) langLabel.textContent = (lang === 'ar') ? 'ع' : 'FR';
+
+            document.querySelectorAll('.lang-btn, .lang-dropdown-opt, .mobile-lang-btn').forEach(btn => {
                 if (btn.getAttribute('data-lang') === lang) btn.classList.add('active');
                 else btn.classList.remove('active');
             });
@@ -1085,7 +1088,152 @@
             this.renderCharts();
         },
 
-        // ── 10. Trust & Risk Shield Operations ───────────────────────────────
+        // ── 10. Navigation & Dropdowns ───────────────────────────────────────
+        toggleMobileNav: function (forceState) {
+            const overlay = document.getElementById('mobileNavFullscreen');
+            if (!overlay) return;
+            if (typeof forceState === 'boolean') {
+                if (forceState) overlay.classList.add('active');
+                else overlay.classList.remove('active');
+            } else {
+                overlay.classList.toggle('active');
+            }
+        },
+
+        closeMobileNav: function () {
+            document.getElementById('mobileNavFullscreen')?.classList.remove('active');
+        },
+
+        toggleLangDropdown: function (forceState) {
+            const dd = document.getElementById('langSubmenuDropdown');
+            if (!dd) return;
+            if (typeof forceState === 'boolean') {
+                if (forceState) dd.classList.add('active');
+                else dd.classList.remove('active');
+            } else {
+                dd.classList.toggle('active');
+            }
+        },
+
+        // ── 11. Official Carrier Label & Tracking ────────────────────────────
+        printOfficialLabel: function (orderId) {
+            const o = ordersList.find(item => item.orderId === orderId);
+            if (!o) return;
+
+            const trackingCode = o.redex_tracking_code || o.tracking_code || (o.in_redex ? ('ECE' + o.orderId.replace(/\D/g, '')) : '');
+            
+            if (!trackingCode && !o.in_redex) {
+                const msg = currentLang === 'fr' 
+                    ? "L'étiquette officielle n'est disponible qu'après l'envoi du colis au transporteur. Cliquez d'abord sur 'Expédier ⚡'."
+                    : "الملصق الرسمي متاح فقط بعد إرسال الطرد إلى شركة التوصيل. يرجى الضغط على 'إرسال ⚡' أولاً.";
+                alert(msg);
+                return;
+            }
+
+            const codeDisplay = trackingCode || ('ECEOSK' + (o.orderId || '').replace(/\D/g, ''));
+            const carrierNames = {
+                redex: 'REDEX ECOTRACK DZ',
+                dhd: 'DHD EXPRESS DZ',
+                conexlog: 'CONEXLOG EXPRESS',
+                msmgo: 'MSM GO EXPRESS',
+                yalidine: 'YALIDINE EXPRESS',
+                zrexpress: 'ZR EXPRESS PROCOLIS',
+                noest: 'NOEST DELIVERY',
+                maystro: 'MAYSTRO DELIVERY',
+                anderson: 'ANDERSON EXPRESS'
+            };
+
+            const carrierTitle = carrierNames[activeCourierId] || 'REDEX ECOTRACK DZ';
+            const carrierPortals = {
+                redex: 'https://redex.ecotrack.dz',
+                dhd: 'https://platform.dhd-dz.com',
+                conexlog: 'https://conexlog.ecotrack.dz',
+                msmgo: 'https://msmgo.ecotrack.dz',
+                yalidine: 'https://yalidine.app',
+                zrexpress: 'https://zrexpress.com',
+                noest: 'https://noest-delivery.com',
+                maystro: 'https://maystro-delivery.com',
+                anderson: 'https://anderson-express.com'
+            };
+
+            // Populate the Official Shipping Label
+            const lblCarrierTag = document.getElementById('lblCarrierTag');
+            if (lblCarrierTag) lblCarrierTag.textContent = carrierTitle;
+
+            const lblDateStamp = document.getElementById('lblDateStamp');
+            if (lblDateStamp) lblDateStamp.textContent = (o.date || o.createdAt || new Date().toISOString()).slice(0, 10);
+
+            const lblBarcodeCode = document.getElementById('lblBarcodeCode');
+            if (lblBarcodeCode) lblBarcodeCode.textContent = codeDisplay;
+
+            const lblOrderRefTag = document.getElementById('lblOrderRefTag');
+            if (lblOrderRefTag) lblOrderRefTag.textContent = `Réf: ${o.orderId}`;
+
+            const lblClientNameText = document.getElementById('lblClientNameText');
+            if (lblClientNameText) lblClientNameText.textContent = o.fullName || 'Client ORVA';
+
+            const lblClientPhoneText = document.getElementById('lblClientPhoneText');
+            if (lblClientPhoneText) lblClientPhoneText.textContent = o.phone || '0550000000';
+
+            const lblDestinationText = document.getElementById('lblDestinationText');
+            if (lblDestinationText) lblDestinationText.textContent = `${o.wilaya || '16 - Alger'} (${o.commune || 'Centre'})`;
+
+            const lblAddressText = document.getElementById('lblAddressText');
+            if (lblAddressText) lblAddressText.textContent = o.address || 'Adresse confirmée au téléphone';
+
+            const isDesk = (o.deliveryType === 'stopdesk' || (o.deliveryType && o.deliveryType.toLowerCase().includes('stop')));
+            const lblDeliveryTypeBadge = document.getElementById('lblDeliveryTypeBadge');
+            if (lblDeliveryTypeBadge) {
+                lblDeliveryTypeBadge.textContent = isDesk ? '🏢 STOP DESK (AU BUREAU)' : '🏠 À DOMICILE (DOMICILE)';
+            }
+
+            const lblAmountText = document.getElementById('lblAmountText');
+            if (lblAmountText) lblAmountText.textContent = o.grandTotal || (o.priceNum ? (o.priceNum + ' DZD') : '4,900 DZD');
+
+            const lblProductNote = document.getElementById('lblProductNote');
+            if (lblProductNote) lblProductNote.textContent = `📦 Contenu: ${o.productName || 'Sac Banane Moto Yamaha (كرطابل يماها)'}`;
+
+            const btnPortal = document.getElementById('btnCarrierPortalLink');
+            if (btnPortal) btnPortal.href = carrierPortals[activeCourierId] || 'https://redex.ecotrack.dz';
+
+            document.getElementById('labelModal')?.classList.add('active');
+        },
+
+        triggerPrintLabel: function () {
+            window.print();
+        },
+
+        trackColis: async function (orderId) {
+            const o = ordersList.find(item => item.orderId === orderId);
+            if (!o) return;
+            const code = o.redex_tracking_code || o.tracking_code || ('ECE' + o.orderId.replace(/\D/g, ''));
+            
+            const codeEl = document.getElementById('trackModalCode');
+            if (codeEl) codeEl.textContent = code;
+
+            const statusEl = document.getElementById('trackModalStatus');
+            if (statusEl) statusEl.textContent = o.status || 'En cours de livraison';
+
+            const timelineEl = document.getElementById('trackTimeline');
+            if (timelineEl) {
+                timelineEl.innerHTML = `
+                    <div class="timeline-step completed mb-3">
+                        <h5>📦 Colis pris en charge par ${activeCourierId.toUpperCase()}</h5>
+                        <p>Centre de tri Alger Hub - Expédition validée</p>
+                        <time>${(o.date || o.createdAt || '').slice(0, 16)}</time>
+                    </div>
+                    <div class="timeline-step mb-3">
+                        <h5>🚚 En cours d'acheminement vers ${o.wilaya || 'la wilaya de destination'}</h5>
+                        <p>Attribué au livreur du secteur (${o.commune || 'Centre'})</p>
+                        <time>Aujourd'hui</time>
+                    </div>
+                `;
+            }
+
+            document.getElementById('trackingModal')?.classList.add('active');
+        },
+
+        // ── 12. Trust & Risk Shield Operations ───────────────────────────────
         openRiskDashboard: function () {
             this.filterByStatus('risk');
             document.getElementById('ordersSection')?.scrollIntoView({ behavior: 'smooth' });

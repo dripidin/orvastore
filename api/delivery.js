@@ -437,12 +437,12 @@ module.exports = async (req, res) => {
             const targetCourier = ALGERIAN_COURIERS.find(c => c.id === courierId) || ALGERIAN_COURIERS[0];
             const tenantUrl = baseUrl || targetCourier.baseUrl || 'https://redex.ecotrack.dz';
             
-            // Generate valid carrier portal label & tracking route
-            let labelUrl = `${tenantUrl}/orders?search=${encodeURIComponent(trackingCode)}`;
+            // Generate valid carrier portal route without 404 endpoint mismatch
+            let labelUrl = tenantUrl;
             if (targetCourier.type === 'yalidine') {
-                labelUrl = `https://yalidine.app/orders?tracking=${encodeURIComponent(trackingCode)}`;
+                labelUrl = 'https://yalidine.app';
             } else if (targetCourier.type === 'zrexpress') {
-                labelUrl = `https://procolis.com/orders?tracking=${encodeURIComponent(trackingCode)}`;
+                labelUrl = 'https://procolis.com';
             }
 
             return res.status(200).json({
