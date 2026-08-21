@@ -133,6 +133,13 @@
                         <span class="nav-title" data-i18n="navAnalytics">Visiteurs & Meta Pixel</span>
                     </a>
 
+                    <div class="nav-category-header" data-i18n="catDataSecurity">SÉCURITÉ & ANTI-FRAUDE</div>
+
+                    <a href="javascript:void(0)" class="nav-link" onclick="storeAdmin.openRiskDashboard()">
+                        <div class="nav-icon text-rose"><i class="fa-solid fa-shield-halved"></i></div>
+                        <span class="nav-title" data-i18n="navRisk">Bouclier Anti-Fraude & Trust</span>
+                    </a>
+
                     <div class="nav-category-header" data-i18n="catLogistics">LOGISTIQUE & TRANSPORTEURS</div>
 
                     <a href="javascript:void(0)" class="nav-link" onclick="storeAdmin.openCreateModal()">
@@ -353,6 +360,7 @@
                             <button class="tab-btn" data-status="shipped" onclick="storeAdmin.filterByStatus('shipped')" data-i18n="tabShipped">🚚 Expédiées</button>
                             <button class="tab-btn" data-status="delivered" onclick="storeAdmin.filterByStatus('delivered')" data-i18n="tabDelivered">✅ Livrées</button>
                             <button class="tab-btn" data-status="returned" onclick="storeAdmin.filterByStatus('returned')" data-i18n="tabReturned">⚠️ Retours</button>
+                            <button class="tab-btn" data-status="risk" onclick="storeAdmin.filterByStatus('risk')" data-i18n="tabRisk">🛡️ Risque & Fraude</button>
                         </div>
                     </div>
 
@@ -640,6 +648,29 @@
             </div>
             <div class="app-modal-footer">
                 <button type="button" class="app-btn app-btn-secondary" onclick="storeAdmin.closeModal('tariffsModal')" data-i18n="btnClose">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL 6: TRUST & RISK SHIELD AUDIT (AI Fraud Detection)               -->
+    <!-- ===================================================================== -->
+    <div class="app-modal-backdrop" id="riskModal">
+        <div class="app-modal-dialog modal-md">
+            <div class="app-modal-header">
+                <div class="modal-title-wrap">
+                    <i class="fa-solid fa-shield-halved text-rose"></i>
+                    <h3 data-i18n="modalRiskTitle">Bouclier Anti-Fraude & Évaluation de Confiance</h3>
+                </div>
+                <button class="modal-close-btn" onclick="storeAdmin.closeModal('riskModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="app-modal-body" id="riskModalBody">
+                <div class="loading-state text-center py-4">
+                    <i class="fa-solid fa-spinner fa-spin fa-2x text-primary"></i>
+                </div>
+            </div>
+            <div class="app-modal-footer">
+                <button type="button" class="app-btn app-btn-secondary" onclick="storeAdmin.closeModal('riskModal')" data-i18n="btnClose">Fermer</button>
             </div>
         </div>
     </div>
