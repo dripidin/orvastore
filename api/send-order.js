@@ -1,86 +1,82 @@
+'use strict';
+// =============================================================================
+// Order Submission API — /api/send-order (yamahasac / ORVA Store)
+// =============================================================================
+
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
+const { saveOrderToDb, checkAndRecordRateLimit, findOrCreateCustomer, updateCustomerStats } = require('../lib/db');
+const { evaluateRequest, recordRiskEvent, hashIp } = require('../lib/riskEngine');
+const { sendMetaPurchaseEvent } = require('../lib/metaCAPI');
 
-function saveOrderToStore(orderObj) {
-    try {
-        const tmpFile = path.join('/tmp', 'orva_orders.json');
-        let list = [];
-        if (fs.existsSync(tmpFile)) {
-            list = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
-        }
-        const exists = list.some(o => o.orderId === orderObj.orderId);
-        if (!exists) {
-            list.unshift(orderObj);
-            fs.writeFileSync(tmpFile, JSON.stringify(list), 'utf8');
-        }
-    } catch (e) {
-        console.warn('File store warning:', e);
-    }
-}
-
-function checkAndRecordRateLimit(ip, deviceId) {
-    try {
-        const tmpFile = path.join('/tmp', 'orva_rate_limit.json');
-        let records = [];
-        if (fs.existsSync(tmpFile)) {
-            records = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
-        }
-        const now = Date.now();
-        const WINDOW_MS = 6 * 60 * 60 * 1000; // 6 Hours
-
-        // Filter out entries older than 6 hours
-        records = records.filter(r => (now - r.timestamp) < WINDOW_MS);
-
-        // Count attempts from same IP OR same Device ID
-        const attempts = records.filter(r =>
-            (ip && r.ip === ip) || (deviceId && r.deviceId === deviceId)
-        );
-
-        if (attempts.length >= 2) {
-            return { allowed: false, count: attempts.length };
-        }
-
-        // Record new attempt
-        records.push({ ip: ip || '', deviceId: deviceId || '', timestamp: now });
-        fs.writeFileSync(tmpFile, JSON.stringify(records), 'utf8');
-
-        return { allowed: true, count: attempts.length + 1 };
-    } catch (e) {
-        console.warn('Rate limit file store error:', e);
-        return { allowed: true, count: 1 };
-    }
+function getCookieValue(cookieHeader, name) {
+    if (!cookieHeader) return null;
+    const match = cookieHeader.match(new RegExp('(?:^|;\\s*)' + name.replace(/([.*+?^=!:${}()|[\]/\\])/g, '\\$1') + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
 }
 
 module.exports = async (req, res) => {
-    // Enable CORS headers
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-    res.setHeader(
-        'Access-Control-Allow-Headers',
-        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-    );
+    res.setHeader('Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
-    }
-
+    if (req.method === 'OPTIONS') { res.status(200).end(); return; }
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed. Please send a POST request.' });
     }
 
     try {
-        const clientIp = (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || '127.0.0.1').split(',')[0].trim();
-        const { fullName, phone, wilaya, deliveryType, quantity, productTotal, shippingFee, grandTotal, orderId, deliveryTime, deviceId } = req.body || {};
+        const clientIp = (
+            req.headers['x-forwarded-for'] ||
+            req.headers['x-real-ip'] ||
+            (req.socket && req.socket.remoteAddress) ||
+            '127.0.0.1'
+        ).split(',')[0].trim();
+
+        const {
+            fullName, phone, wilaya, commune,
+            deliveryType, deliveryTime,
+            quantity, productTotal, shippingFee, grandTotal,
+            orderId, deviceId,
+            honeypot, formDurationMs,
+            fbp, fbc
+        } = req.body || {};
 
         if (!fullName || !phone || !wilaya) {
             return res.status(400).json({ error: 'Missing required order fields (fullName, phone, wilaya)' });
         }
 
-        // Enforce IP + Device ID Rate Limit (Max 2 orders per 6 hours) with Supabase + Cache
-        const { saveOrderToDb, checkAndRecordRateLimit } = require('../lib/db');
+        const clientIpHash  = hashIp(clientIp);
+        const cleanOrderId  = orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000));
+        const numPrice      = parseInt(grandTotal) || 3900;
+        const dateFormatted = new Date().toLocaleString('ar-DZ', { timeZone: 'Africa/Algiers' });
+
+        // ── Risk Evaluation ───────────────────────────────────────────────────
+        const riskCtx = {
+            storeId:        'yamahasac',
+            orderId:        cleanOrderId,
+            requestType:    'order',
+            actorPhone:     phone,
+            actorIpHash:    clientIpHash,
+            deviceId:       deviceId || null,
+            honeypotValue:  honeypot || '',
+            formDurationMs: formDurationMs ? Number(formDurationMs) : null
+        };
+
+        const riskResult = await evaluateRequest(riskCtx);
+
+        if (riskResult.decision === 'BLOCK') {
+            console.warn('[send-order/yamahasac] BLOCKED:', cleanOrderId, riskResult.reasons);
+            await recordRiskEvent(riskCtx, riskResult);
+            return res.status(429).json({
+                success: false,
+                error: 'REQUEST_BLOCKED',
+                message: 'عذراً، لا يمكن معالجة طلبك في الوقت الحالي. يرجى التحقق من معلوماتك والمحاولة مرة أخرى.'
+            });
+        }
+
+        // ── Rate limit ────────────────────────────────────────────────────────
         const rateCheck = await checkAndRecordRateLimit(clientIp, deviceId);
         if (!rateCheck.allowed) {
             return res.status(429).json({
@@ -90,56 +86,80 @@ module.exports = async (req, res) => {
             });
         }
 
-        const dateFormatted = new Date().toLocaleString('ar-DZ', { timeZone: 'Africa/Algiers' });
-        const cleanOrderId = orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000));
-        const numPrice = parseInt(grandTotal) || 3900;
-
-        // Save order to Supabase PostgreSQL Database Layer (in_redex: false)
+        // ── Save to Google Sheets ─────────────────────────────────────────────
         await saveOrderToDb({
-            orderId: cleanOrderId,
-            storeId: 'yamahasac',
-            fullName: fullName,
-            phone: phone,
-            wilaya: wilaya,
-            deliveryType: deliveryType || 'توصيل للمنزل',
-            deliveryTime: deliveryTime || '24 - 48 H',
-            quantity: quantity || 1,
-            productName: 'Sac Banane Moto Yamaha',
-            productTotal: productTotal || (numPrice + ' د.ج'),
-            shippingFee: shippingFee || '500 د.ج',
-            priceNum: numPrice,
-            grandTotal: grandTotal || (numPrice + ' د.ج'),
-            status: 'pending',
-            in_redex: false,
+            orderId:             cleanOrderId,
+            storeId:             'yamahasac',
+            fullName,
+            phone,
+            wilaya,
+            commune:             commune || 'الجزائر',
+            deliveryType:        deliveryType || 'توصيل للمنزل',
+            deliveryTime:        deliveryTime || '24 - 48 H',
+            quantity:            quantity || 1,
+            productName:         'Sac Banane Moto Yamaha (كرطابل يماها)',
+            productTotal:        productTotal || (numPrice + ' د.ج'),
+            shippingFee:         shippingFee || '500 د.ج',
+            priceNum:            numPrice,
+            grandTotal:          grandTotal || (numPrice + ' د.ج'),
+            status:              riskResult.decision === 'REVIEW' ? 'review' : 'pending',
+            in_redex:            false,
             redex_tracking_code: null,
-            clientIp: clientIp,
-            deviceId: deviceId
+            clientIpHash,
+            deviceId
+        }, {
+            riskScore:    riskResult.score,
+            riskLevel:    riskResult.level,
+            riskDecision: riskResult.decision,
+            riskReasons:  riskResult.reasons
         });
 
-        // Also save to serverless store for Admin Dashboard compatibility
-        saveOrderToStore({
-            orderId: cleanOrderId,
-            fullName: fullName,
-            phone: phone,
-            wilaya: wilaya,
-            deliveryType: deliveryType || 'توصيل للمنزل',
-            grandTotal: grandTotal || (numPrice + ' د.ج'),
-            priceNum: numPrice,
-            status: 'pending',
-            date: new Date().toISOString().split('T')[0],
-            remarks: []
-        });
+        await recordRiskEvent({ ...riskCtx, orderId: cleanOrderId }, riskResult);
+        await findOrCreateCustomer(phone, fullName);
+        await updateCustomerStats(phone, 'ordered');
 
-        // Telegram Bot Notification
-        const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '8749469493:AAG__aGu7sSVJoRFLpFQ8eR2V_XIJMZSD0o';
-        const telegramChatId = process.env.TELEGRAM_CHAT_ID || '-1003965560132';
+        // ── Meta Conversions API (CAPI) Server-side Purchase Event ─────────────
+        const cookieHeader = req.headers['cookie'] || '';
+        const userFbp = fbp || getCookieValue(cookieHeader, '_fbp') || undefined;
+        const userFbc = fbc || getCookieValue(cookieHeader, '_fbc') || undefined;
+
+        try {
+            sendMetaPurchaseEvent({
+                eventId:        cleanOrderId,
+                value:          numPrice,
+                currency:       'DZD',
+                orderId:        cleanOrderId,
+                fullName:       fullName,
+                phone:          phone,
+                wilaya:         wilaya,
+                commune:        commune,
+                clientIp:       clientIp,
+                userAgent:      req.headers['user-agent'],
+                eventSourceUrl: req.headers['referer'] || req.headers['origin'] || 'https://yamahasac.vercel.app',
+                fbp:            userFbp,
+                fbc:            userFbc,
+                quantity:       quantity || 1,
+                productName:    'Yamaha Sac à Dos + Sacoche'
+            }).catch(capiErr => {
+                console.warn('[Meta CAPI Async Error]:', capiErr ? capiErr.message : capiErr);
+            });
+        } catch (capiDispatchErr) {
+            console.warn('[Meta CAPI Dispatch Catch]:', capiDispatchErr ? capiDispatchErr.message : capiDispatchErr);
+        }
+
+        // ── Telegram Notification ─────────────────────────────────────────────
+        const telegramToken  = process.env.TELEGRAM_BOT_TOKEN || '8749469493:AAG__aGu7sSVJoRFLpFQ8eR2V_XIJMZSD0o';
+        const telegramChatId = process.env.TELEGRAM_CHAT_ID   || '-1003965560132';
 
         if (telegramToken && telegramChatId) {
             try {
                 const adminLink = `https://yamahasac.vercel.app/admin.html?orderId=${encodeURIComponent(cleanOrderId)}`;
+                const riskBadge = riskResult.decision === 'REVIEW'
+                    ? `\n⚠️ <b>REVIEW</b> — نقاط الخطر: ${riskResult.score}/100`
+                    : riskResult.score > 0 ? `\n🟡 خطر: ${riskResult.score}/100 (${riskResult.level})` : '';
 
                 const tgMsg = `
-<b>🎒 طلب جديد على الموقع — ORVA STORE</b>
+<b>🎒 طلب جديد — ORVA Store (كرطابل يماها)</b>
 ━━━━━━━━━━━━━━━━━━
 <b>🆔 رقم الطلب:</b> <code>${cleanOrderId}</code>
 <b>👤 الاسم الكامل:</b> ${fullName}
@@ -147,161 +167,52 @@ module.exports = async (req, res) => {
 <b>📍 الولاية:</b> ${wilaya}
 <b>🚚 نوع التوصيل:</b> ${deliveryType || 'توصيل للمنزل'}
 <b>⚡ مدة التوصيل:</b> ${deliveryTime || '24 - 48 H'}
-<b>📦 الكمية:</b> ${quantity} حقيبة (مع AirPods وساعة يد)
+<b>📦 الكمية:</b> ${quantity} قطعة (كرطابل يماها)
 <b>💵 سعر العرض:</b> ${productTotal}
 <b>🚚 مصاريف التوصيل:</b> ${shippingFee}
 ━━━━━━━━━━━━━━━━━━
 <b>💰 المجموع الكلي (COD):</b> <b>${grandTotal}</b>
-<b>📅 التاريخ:</b> ${dateFormatted}
+<b>📅 التاريخ:</b> ${dateFormatted}${riskBadge}
 ━━━━━━━━━━━━━━━━━━
 📌 <b>PS: الطلبية لم تُرسل لشركة التوصيل بعد (Redex).</b>
-🔗 انقر على الرابط التالي لإضافتها إلى حساب شركة التوصيل:
 👉 ${adminLink}`.trim();
 
-                const tgPayload = JSON.stringify({
-                    chat_id: telegramChatId,
-                    text: tgMsg,
-                    parse_mode: 'HTML'
-                });
-
-                // Post to Telegram using native HTTPS request for 100% serverless compatibility
+                const tgPayload = JSON.stringify({ chat_id: telegramChatId, text: tgMsg, parse_mode: 'HTML' });
                 const options = {
-                    hostname: 'api.telegram.org',
-                    port: 443,
-                    path: `/bot${telegramToken}/sendMessage`,
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Content-Length': Buffer.byteLength(tgPayload)
-                    }
+                    hostname: 'api.telegram.org', port: 443,
+                    path: `/bot${telegramToken}/sendMessage`, method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(tgPayload) }
                 };
-
                 await new Promise((resolve) => {
                     const tgReq = https.request(options, (tgRes) => {
-                        let resData = '';
-                        tgRes.on('data', (chunk) => { resData += chunk; });
-                        tgRes.on('end', () => {
-                            console.log('Telegram API Response:', resData);
-                            resolve();
-                        });
+                        let d = ''; tgRes.on('data', c => { d += c; }); tgRes.on('end', () => { console.log('Telegram:', d); resolve(); });
                     });
-                    tgReq.on('error', (e) => {
-                        console.error('Telegram request error:', e);
-                        resolve();
-                    });
-                    tgReq.write(tgPayload);
-                    tgReq.end();
+                    tgReq.on('error', e => { console.error('Telegram error:', e); resolve(); });
+                    tgReq.write(tgPayload); tgReq.end();
                 });
-            } catch (tgErr) {
-                console.warn('Telegram dispatch catch:', tgErr);
-            }
+            } catch (tgErr) { console.warn('Telegram dispatch catch:', tgErr); }
         }
 
-        // Email Dispatch via Resend (Only if API Key is configured)
         if (process.env.RESEND_API_KEY) {
             try {
                 const { Resend } = require('resend');
                 const resend = new Resend(process.env.RESEND_API_KEY);
-                const toEmail = process.env.TO_EMAIL || 'yourgmail@gmail.com';
-                const fromEmail = process.env.FROM_EMAIL || 'Orva Store <onboarding@resend.dev>';
-
-                const htmlContent = `
-                <!DOCTYPE html>
-                <html lang="ar" dir="rtl">
-                <head>
-                    <meta charset="UTF-8">
-                    <style>
-                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7fa; color: #111; margin: 0; padding: 20px; text-align: right; }
-                        .email-container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 0px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 6px solid #0052FF; }
-                        .header { background: #060A17; color: #ffffff; padding: 24px; text-align: center; }
-                        .header h1 { margin: 0; font-size: 24px; color: #00D2FF; letter-spacing: 1px; }
-                        .order-badge { background: #0052FF; color: #ffffff; padding: 4px 12px; border-radius: 0px; font-size: 14px; font-weight: bold; display: inline-block; margin-top: 8px; }
-                        .body-content { padding: 24px; }
-                        .info-table { width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px; }
-                        .info-table td { padding: 12px; border-bottom: 1px solid #eeeeee; font-size: 15px; }
-                        .info-table tr td:first-child { font-weight: bold; color: #555555; width: 35%; }
-                        .gift-box { background: #EBF3FF; border: 1px solid #0052FF; padding: 12px; font-weight: bold; color: #0052FF; text-align: center; margin-bottom: 15px; }
-                        .total-box { background: #060A17; border: 2px solid #00D2FF; border-radius: 0px; padding: 16px; text-align: center; margin-top: 20px; color: #fff; }
-                        .total-price { font-size: 26px; font-weight: bold; color: #00D2FF; }
-                        .footer { background: #f9f9fb; padding: 16px; text-align: center; font-size: 13px; color: #777777; border-top: 1px solid #eeeeee; }
-                    </style>
-                </head>
-                <body>
-                    <div class="email-container">
-                        <div class="header">
-                            <h1>🎒 طلب جديد — ORVA (Yamaha Sac à Dos)</h1>
-                            <div class="order-badge">رقم الطلب: ${orderId}</div>
-                        </div>
-                        
-                        <div class="body-content">
-                            <div class="gift-box">🎁 العرض يشمل: حقيبة ياماها + سماعات AirPods لاسلكية + ساعة يد مجاناً!</div>
-                            <p style="font-size: 16px; color: #222;">وصلك طلب جديد من متجر ORVA:</p>
-                            
-                            <table class="info-table">
-                                <tr>
-                                    <td>👤 الاسم الكامل:</td>
-                                    <td><strong>${fullName}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>📱 رقم الهاتف:</td>
-                                    <td><a href="tel:${phone}" style="color: #0052FF; text-decoration: none; font-weight: bold; font-size: 17px;">${phone}</a></td>
-                                </tr>
-                                <tr>
-                                    <td>📍 الولاية:</td>
-                                    <td><strong>${wilaya}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>🚚 نوع التوصيل:</td>
-                                    <td><strong style="color: #0052FF;">${deliveryType || 'توصيل للمنزل'}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>📦 الكمية المطلوبة:</td>
-                                    <td><strong>${quantity} حقيبة (مع الهدايا)</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>⚡ مدة التوصيل:</td>
-                                    <td><strong>${deliveryTime || '24 - 48 H'}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>💵 سعر المنتجات:</td>
-                                    <td>${productTotal}</td>
-                                </tr>
-                                <tr>
-                                    <td>🚚 مصاريف التوصيل:</td>
-                                    <td>${shippingFee || '0 د.ج'}</td>
-                                </tr>
-                                <tr>
-                                    <td>📅 تاريخ الطلب:</td>
-                                    <td>${dateFormatted}</td>
-                                </tr>
-                            </table>
-
-                            <div class="total-box">
-                                <div style="font-size: 14px; color: #ccc;">المبلغ الكلي المطلوب عند الاستلام (COD):</div>
-                                <div class="total-price">${grandTotal}</div>
-                            </div>
-                        </div>
-
-                        <div class="footer">
-                            هذا الإشعار التلقائي مُرسل من موقع <strong>ORVA Algeria</strong> 🇩🇿
-                        </div>
-                    </div>
-                </body>
-                </html>
-                `;
-
                 await resend.emails.send({
-                    from: fromEmail,
-                    to: [toEmail],
-                    subject: `🎒 [طلب جديد ${orderId}] حقيبة Yamaha Sac - ${fullName} (${wilaya})`,
-                    html: htmlContent
+                    from: process.env.FROM_EMAIL || 'ORVA Store <onboarding@resend.dev>',
+                    to: [process.env.TO_EMAIL || 'admin@example.com'],
+                    subject: `🎒 [طلب جديد ${cleanOrderId}] كرطابل يماها - ${fullName} (${wilaya})`,
+                    html: `<p>طلب جديد: ${cleanOrderId} — ${fullName} — ${phone} — ${wilaya} — ${grandTotal}</p>`
                 });
-            } catch (emailErr) {
-                console.warn('Email dispatch warning:', emailErr);
-            }
+            } catch (emailErr) { console.warn('Email dispatch warning:', emailErr); }
         }
 
-        return res.status(200).json({ success: true, message: 'Order processed successfully', orderId });
+        return res.status(200).json({
+            success: true,
+            message: riskResult.decision === 'REVIEW' ? 'تم استلام طلبك وسيتم مراجعته قريباً.' : 'تم استلام طلبك بنجاح!',
+            orderId: cleanOrderId,
+            review:  riskResult.decision === 'REVIEW'
+        });
+
     } catch (error) {
         console.error('Order dispatch error:', error);
         return res.status(500).json({ error: error.message || 'Internal Server Error' });

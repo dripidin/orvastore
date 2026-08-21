@@ -357,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /* --------------------------------------------------------------------------
+    /* --------------------------------------------------------------------------
        4. Form Validation & Resend Order Dispatch
        -------------------------------------------------------------------------- */
     const orderForm = document.getElementById('orvaOrderForm');
@@ -364,14 +365,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const phoneInput = document.getElementById('phoneNumber');
     const submitBtn = document.getElementById('submitBtn');
 
+    let isSubmitting = false;
+
     function validatePhone(phone) {
         const cleaned = phone.replace(/[\s-]/g, '');
         return /^(05|06|07)[0-9]{8}$/.test(cleaned);
     }
 
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return null;
+    }
+
     if (orderForm) {
         orderForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isSubmitting) return;
+
             let isValid = true;
 
             const nameVal = fullNameInput.value.trim();
@@ -412,6 +424,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!isValid) return;
 
+            isSubmitting = true;
+
             // Prepare Order Payload
             const selectedWilayaText = selectedWilayaObj ? selectedWilayaObj.name : (wilayaSelect.selectedIndex > 0 ? wilayaSelect.options[wilayaSelect.selectedIndex].text : '');
             const fullLocationText = selectedWilayaText + (communeVal ? ' — ' + communeVal : '');
@@ -435,6 +449,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            const fbpCookie = getCookie('_fbp') || undefined;
+            const fbcCookie = getCookie('_fbc') || undefined;
+
             const payload = {
                 orderId,
                 fullName: nameVal,
@@ -446,7 +463,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 shippingFee: `${shippingFee} د.ج`,
                 grandTotal: `${grandTotalNum} د.ج`,
                 deliveryTime: deliveryTimeVal,
-                deviceId: getOrCreateDeviceId()
+                deviceId: getOrCreateDeviceId(),
+                fbp: fbpCookie,
+                fbc: fbcCookie
             };
 
             // Loading State on Submit Button
@@ -458,6 +477,8 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             let isBlocked = false;
+            let orderCreatedSuccessfully = false;
+            let finalOrderId = orderId;
 
             try {
                 const response = await fetch('/api/send-order', {
@@ -468,25 +489,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
                 console.log('Order result:', result);
 
-                if (response.status === 429 || (result && result.error === 'RATE_LIMIT_EXCEEDED')) {
+                if (response.status === 429 || (result && result.error === 'RATE_LIMIT_EXCEEDED') || (result && result.error === 'REQUEST_BLOCKED')) {
                     isBlocked = true;
-                    alert(result.message || 'عذراً، لقد تجاوزت الحد المسموح به لإرسال الطلبات (طلبين كل 6 ساعات). يرجى الانتظار أو التواصل معنا عبر الواتساب.');
+                    alert(result.message || 'عذراً، لا يمكن معالجة طلبك في الوقت الحالي. يرجى الانتظار أو التواصل معنا عبر الواتساب.');
                     return;
                 }
 
-                // Fire Facebook Pixel Purchase Event ONLY if request is allowed
-                if (typeof fbq === 'function') {
+                if (!response.ok || !result || result.success !== true) {
+                    isBlocked = true;
+                    alert((result && result.error) || 'حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.');
+                    return;
+                }
+
+                orderCreatedSuccessfully = true;
+                finalOrderId = result.orderId || orderId;
+
+                // ── Fire Deduplicated Meta Pixel Purchase Event ONLY after order is confirmed ──
+                if (typeof window.fbq === 'function') {
                     try {
-                        fbq('track', 'Purchase', {
+                        window.fbq('track', 'Purchase', {
                             content_name: 'Yamaha Sac à Dos + Sacoche',
                             content_type: 'product',
                             value: grandTotalNum,
                             currency: 'DZD',
                             num_items: currentQty
+                        }, {
+                            eventID: finalOrderId
                         });
-                        console.log('Facebook Pixel Purchase event tracked:', grandTotalNum, 'DZD');
+                        console.log('[Meta Pixel] Browser Purchase event tracked with eventID:', finalOrderId, grandTotalNum, 'DZD');
                     } catch (pxErr) {
-                        console.warn('Meta Pixel event tracking error:', pxErr);
+                        console.warn('[Meta Pixel] Event tracking error:', pxErr);
                     }
                 }
 
@@ -495,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const existingStr = localStorage.getItem('orva_admin_orders');
                     let list = existingStr ? JSON.parse(existingStr) : [];
                     list.unshift({
-                        orderId: orderId,
+                        orderId: finalOrderId,
                         fullName: nameVal,
                         phone: phoneVal,
                         wilaya: fullLocationText,
@@ -510,11 +542,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (lsErr) {}
             } catch (err) {
                 console.warn('Backend serverless dispatch local fallback.', err);
+                // In local preview fallback without API server running, show receipt
+                orderCreatedSuccessfully = true;
             } finally {
+                isSubmitting = false;
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnContent;
-                if (!isBlocked) {
-                    showSuccessModal(nameVal, phoneVal, orderId, fullLocationText);
+                if (!isBlocked && orderCreatedSuccessfully) {
+                    showSuccessModal(nameVal, phoneVal, finalOrderId, fullLocationText);
                 }
             }
         });

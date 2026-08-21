@@ -1,6 +1,6 @@
+.vercel
 node_modules
-.vercel
-.env
-.DS_Store
-
-.vercel
+.env.local
+.env*.local
+scratch/
+*.log
