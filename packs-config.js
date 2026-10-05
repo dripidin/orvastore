@@ -25,9 +25,9 @@
             currency: 'د.ج',
             deliveryNote: 'التوصيل متوفر لجميع 58 ولاية والدفع عند الاستلام (COD)',
             description: 'باك عملي ومتكامل للسيارة والمنزل: منفاخ عجلات TOYOTA، علبة مفاتيح ورؤوس 46 قطعة STARLCE PRO، مفك مرن 11 قطعة، وطقم 6 مفكات.',
-            heroImage: 'pack 1 4950/For webpage/Pack 1 - All products in one image.jpg',
+            heroImage: 'pack 1 4950/pack1 4950.webp',
             heroGallery: [
-                'pack 1 4950/For webpage/Pack 1 - All products in one image.jpg',
+                'pack 1 4950/pack1 4950.webp',
                 'pack 1 4950/IMG_4461.webp',
                 'pack 1 4950/IMG_4462.webp',
                 'pack 1 4950/IMG_4465.webp',
@@ -60,7 +60,7 @@
                     name: 'منفاخ عجلات TOYOTA Accessories',
                     category: 'منفاخ عجلات',
                     price: 2400,
-                    image: 'pack 1 4950/For webpage/Pack 1 - All products in one image.jpg',
+                    image: 'pack 1 4950/pack1 4950.webp',
                     badge: 'عداد ضغط مدمج',
                     isGift: false,
                     description: 'منفاخ عملي ومثالي للسيارة مع عداد ضغط لمراقبة العجلات.'
@@ -112,9 +112,9 @@
             currency: 'د.ج',
             deliveryNote: 'التوصيل متوفر لجميع 58 ولاية والدفع عند الاستلام (COD)',
             description: 'باك عملي ومتكامل للورشة والصيانة والمنزل: ماكينة CROWN 20V ببطاريتين و29 قطعة، مضخة ماء لاسلكية، علبة مفاتيح 46 قطعة، مفك مرن 11 قطعة، وقفازات GILAN.',
-            heroImage: 'pack2 12950/For webpage/pack 2 - all products in one image.jpg',
+            heroImage: 'pack2 12950/pack2 12950.webp',
             heroGallery: [
-                'pack2 12950/For webpage/pack 2 - all products in one image.jpg',
+                'pack2 12950/pack2 12950.webp',
                 'pack2 12950/IMG_4459.webp',
                 'pack2 12950/IMG_4461.webp',
                 'pack2 12950/IMG_4525.webp',

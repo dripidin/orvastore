@@ -293,33 +293,79 @@
             }
         },
 
-        handleAuthSubmit: function (e) {
+        handleAuthSubmit: async function (e) {
             if (e) e.preventDefault();
             const input = document.getElementById('adminAuthPassword');
             const err = document.getElementById('adminAuthError');
+            const submitBtn = document.querySelector('.auth-btn-submit');
             const pass = input ? input.value.trim() : '';
 
-            if (pass === 'orva2026' || pass === 'orva-admin-2026-secure') {
-                sessionStorage.setItem('orva_admin_logged', 'true');
-                const overlay = document.getElementById('adminAuthOverlay');
-                if (overlay) overlay.style.display = 'none';
-                if (err) err.style.display = 'none';
-            } else {
+            if (!pass) return;
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.7';
+            }
+
+            try {
+                // Verify against Vercel backend environment key (ADMIN_PASSWORD)
+                let res = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pass })
+                });
+
+                // Fallback to /api/delivery?action=login if /api/auth returns 404
+                if (res.status === 404) {
+                    res = await fetch('/api/delivery?action=login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: pass })
+                    });
+                }
+
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok && data.success) {
+                    sessionStorage.setItem('orva_admin_logged', 'true');
+                    if (data.token) {
+                        sessionStorage.setItem('orva_admin_token', data.token);
+                    }
+                    const overlay = document.getElementById('adminAuthOverlay');
+                    if (overlay) overlay.style.display = 'none';
+                    if (err) err.style.display = 'none';
+                    this.fetchOrders(true);
+                } else {
+                    if (err) {
+                        err.textContent = currentLang === 'fr' 
+                            ? 'Mot de passe incorrect. Veuillez vérifier la variable ADMIN_PASSWORD sur Vercel.' 
+                            : 'كلمة المرور غير صحيحة. يرجى التأكد من مفتاح ADMIN_PASSWORD في Vercel.';
+                        err.style.display = 'block';
+                    }
+                    if (input) {
+                        input.value = '';
+                        input.focus();
+                    }
+                }
+            } catch (networkErr) {
+                console.warn('[Admin Auth Network Error]:', networkErr);
                 if (err) {
                     err.textContent = currentLang === 'fr' 
-                        ? 'Mot de passe incorrect. Veuillez réessayer.' 
-                        : 'كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
+                        ? 'Erreur réseau lors de la vérification du mot de passe.' 
+                        : 'حدث خطأ في الاتصال أثناء التحقق من كلمة السر.';
                     err.style.display = 'block';
                 }
-                if (input) {
-                    input.value = '';
-                    input.focus();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
                 }
             }
         },
 
         logout: function () {
             sessionStorage.removeItem('orva_admin_logged');
+            sessionStorage.removeItem('orva_admin_token');
             const overlay = document.getElementById('adminAuthOverlay');
             if (overlay) overlay.style.display = 'flex';
             const input = document.getElementById('adminAuthPassword');

@@ -332,6 +332,30 @@ module.exports = async (req, res) => {
             return res.status(200).json({ success: true, count: finalOrders.length, data: finalOrders });
         }
 
+        // ── 1.5. Admin Login Verification (against Vercel ADMIN_PASSWORD) ─────
+        if (action === 'login' || action === 'auth') {
+            const body = req.body || {};
+            const inputPass = (body.password || req.query.password || '').toString().trim();
+            const expectedPass = (process.env.ADMIN_PASSWORD || process.env.ADMIN_API_TOKEN || 'orva2026').toString().trim();
+
+            if (!inputPass) {
+                return res.status(400).json({ success: false, error: 'MISSING_PASSWORD' });
+            }
+
+            if (inputPass === expectedPass) {
+                return res.status(200).json({
+                    success: true,
+                    message: 'AUTHENTICATED',
+                    token: process.env.ADMIN_API_TOKEN || 'orva-admin-2026-secure'
+                });
+            } else {
+                return res.status(401).json({
+                    success: false,
+                    error: 'INVALID_PASSWORD'
+                });
+            }
+        }
+
         // ── 2. Couriers Directory & Configuration ─────────────────────────────
         if (action === 'couriers') {
             return res.status(200).json({

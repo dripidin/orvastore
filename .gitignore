@@ -9,3 +9,9 @@ scripts/test-*
 scripts/find-pooler.js
 scripts/init-supabase-db.js
 scripts/apply-schema.js
+.agents/
+.claude/
+.devin/
+.qwen/
+.windsurf/
+skills-lock.json
