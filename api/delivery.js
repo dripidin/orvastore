@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const dzship = require('dzship');
+const { resolveRedexCommune } = require('../lib/communesMapper');
 
 // ── 1. Algerian Couriers Catalog ─────────────────────────────────────────────
 const ALGERIAN_COURIERS = [
@@ -131,6 +132,72 @@ function getCourierClient(courierId = 'redex', customToken = '', customBaseUrl =
         credentials: { token: token },
         options: { baseUrl: baseUrl }
     });
+}
+
+// Direct Redex Ecotrack Order Creation Function
+async function createRedexOrderDirect({ token, baseUrl, orderPayload }) {
+    const carrierUrl = (baseUrl || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
+    const carrierToken = token || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+
+    const wilayaCode = parseInt(orderPayload.wilayaCode) || 16;
+    const rawCommune = orderPayload.commune || 'Alger Centre';
+    const resolvedCommune = resolveRedexCommune(wilayaCode, rawCommune);
+
+    const isStopDesk = (
+        orderPayload.deliveryType === 'stopdesk' ||
+        orderPayload.deliveryType === 'desk' ||
+        String(orderPayload.deliveryType || '').toLowerCase().includes('stop') ||
+        String(orderPayload.deliveryType || '').includes('المكتب')
+    );
+
+    const redexBody = {
+        nom_client: orderPayload.fullName || 'Client',
+        telephone: orderPayload.phone || '0555000000',
+        telephone_2: orderPayload.phone2 || null,
+        adresse: orderPayload.address || (isStopDesk ? 'Bureau Stop Desk' : 'Centre Ville'),
+        code_wilaya: String(wilayaCode),
+        commune: resolvedCommune,
+        montant: orderPayload.priceNum || 4950,
+        remarque: (isStopDesk ? 'Stop Desk (مكتب)' : 'Domicile (منزل)') + (orderPayload.productList ? ' - ' + orderPayload.productList : ''),
+        produit: orderPayload.productList || 'Pack Commande ORVA Store',
+        type: 1,
+        stop_desk: isStopDesk ? 1 : 0,
+        reference: orderPayload.orderId || ('ORVA-' + Date.now().toString().slice(-5))
+    };
+
+    console.log('[Redex API] Dispatching order to:', `${carrierUrl}/api/v1/create/order`, 'Commune:', resolvedCommune);
+
+    const res = await fetch(`${carrierUrl}/api/v1/create/order`, {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + carrierToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(redexBody)
+    });
+
+    const resData = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        let errDetail = resData.message || (`Erreur HTTP ${res.status}`);
+        if (resData.errors) {
+            const errList = Object.values(resData.errors).flat();
+            errDetail += ' : ' + errList.join(' | ');
+        }
+        throw new Error(errDetail);
+    }
+
+    if (resData.success && resData.tracking) {
+        return {
+            trackingNumber: resData.tracking,
+            reference: resData.reference,
+            communeUsed: resolvedCommune,
+            raw: resData
+        };
+    }
+
+    throw new Error(resData.message || 'Réponse inattendue de Redex Delivery');
 }
 
 // Convert dashboard order format to dzship format
@@ -368,69 +435,144 @@ module.exports = async (req, res) => {
         // ── 3. Test Courier Connection ─────────────────────────────────────────
         if (action === 'test_courier' || action === 'test_ecotrack') {
             const targetCourier = ALGERIAN_COURIERS.find(c => c.id === courierId) || ALGERIAN_COURIERS[0];
+            const activeToken = token || req.query.token || req.body?.token || targetCourier.defaultToken || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+            const carrierUrl = (baseUrl || req.query.baseUrl || req.body?.baseUrl || targetCourier.baseUrl || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
+
+            if (targetCourier.type === 'ecotrack' || targetCourier.id === 'redex') {
+                try {
+                    const testRes = await fetch(`${carrierUrl}/api/v1/get/wilayas`, {
+                        headers: {
+                            'Authorization': 'Bearer ' + activeToken,
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (testRes.ok) {
+                        return res.status(200).json({
+                            success: true,
+                            courier: targetCourier.name,
+                            type: targetCourier.type,
+                            baseUrl: carrierUrl,
+                            status: 'CONNECTED_READY',
+                            message: `✅ Connexion réussie avec ${targetCourier.name} (Jeton API vérifié et valide)`
+                        });
+                    } else if (testRes.status === 401) {
+                        return res.status(401).json({
+                            success: false,
+                            courier: targetCourier.name,
+                            error: 'Jeton API non autorisé (401 Unauthorized). Veuillez vérifier la clé saisie.'
+                        });
+                    } else {
+                        return res.status(testRes.status).json({
+                            success: false,
+                            courier: targetCourier.name,
+                            error: `Erreur HTTP ${testRes.status} reçue du serveur ${targetCourier.name}`
+                        });
+                    }
+                } catch (e) {
+                    return res.status(500).json({
+                        success: false,
+                        error: `Impossible de joindre le serveur ${carrierUrl} : ${e.message}`
+                    });
+                }
+            }
+
             return res.status(200).json({
                 success: true,
                 courier: targetCourier.name,
                 type: targetCourier.type,
-                baseUrl: baseUrl || targetCourier.baseUrl,
+                baseUrl: carrierUrl,
                 status: 'CONNECTED_READY',
-                message: `Connexion réussie avec la passerelle ${targetCourier.name}`
+                message: `Passerelle ${targetCourier.name} prête.`
             });
         }
 
         // ── 4. Create & Dispatch Parcel to Carrier API ─────────────────────────
         if (action === 'create' && method === 'POST') {
             const body = req.body || {};
+            const activeToken = body.token || req.query.token || token || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+            const activeBaseUrl = (body.baseUrl || req.query.baseUrl || baseUrl || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
+            const activeCourier = body.courierId || courierId || 'redex';
+
             const orderPayload = {
                 orderId: body.orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000)),
                 fullName: body.fullName || 'Client',
                 phone: body.phone || '0555000000',
+                phone2: body.phone2 || null,
                 wilaya: body.wilaya || '16 - Alger',
                 wilayaCode: body.wilayaCode || 16,
-                commune: body.commune || 'Alger',
+                commune: body.commune || 'Alger Centre',
                 address: body.address || '',
                 deliveryType: body.deliveryType || 'home',
                 grandTotal: `${body.price || 4400} DZD`,
                 priceNum: parseInt(body.price) || 4400,
-                productList: 'Sac Banane Moto Yamaha (كرطابل يماها)'
+                productList: body.productList || 'Pack Commande ORVA Store'
             };
 
-            const dzshipOrder = convertToDzshipOrder(orderPayload);
-            const client = getCourierClient(body.courierId || courierId || 'redex', token, baseUrl);
+            let trackingNumber = null;
+            let courierRes = null;
+            let resolvedCommuneName = orderPayload.commune;
 
-            let trackingNumber = `ECEOSK${Date.now().toString().slice(-8)}${Math.floor(10 + Math.random() * 90)}`;
-            let courierRes = { status: 200, data: { trackingNumber, status: 'created' } };
-
-            try {
-                const apiRes = await client.createOrder(dzshipOrder);
-                if (apiRes && apiRes.trackingNumber) {
-                    trackingNumber = apiRes.trackingNumber;
-                    courierRes = { status: 200, data: apiRes };
+            if (activeCourier === 'redex' || activeCourier.includes('ecotrack')) {
+                try {
+                    const redexRes = await createRedexOrderDirect({
+                        token: activeToken,
+                        baseUrl: activeBaseUrl,
+                        orderPayload: orderPayload
+                    });
+                    trackingNumber = redexRes.trackingNumber;
+                    resolvedCommuneName = redexRes.communeUsed;
+                    courierRes = { status: 200, data: redexRes };
+                } catch (err) {
+                    console.error('[Redex Direct Dispatch Error]:', err.message);
+                    return res.status(422).json({
+                        success: false,
+                        error: `Échec d'expédition vers Redex : ${err.message}`,
+                        orderId: orderPayload.orderId
+                    });
                 }
-            } catch (err) {
-                console.warn('[Courier API] Fallback simulated parcel creation:', err.message);
+            } else {
+                // Fallback for other carriers via dzship
+                const dzshipOrder = convertToDzshipOrder(orderPayload);
+                const client = getCourierClient(activeCourier, activeToken, activeBaseUrl);
+                try {
+                    const apiRes = await client.createOrder(dzshipOrder);
+                    if (apiRes && apiRes.trackingNumber) {
+                        trackingNumber = apiRes.trackingNumber;
+                        courierRes = { status: 200, data: apiRes };
+                    } else {
+                        throw new Error('Aucun code de suivi retourné');
+                    }
+                } catch (err) {
+                    return res.status(502).json({
+                        success: false,
+                        error: `Échec d'expédition vers ${activeCourier} : ${err.message}`
+                    });
+                }
             }
 
-            // Sync with local Excel / DB
+            // Sync with DB
             const { updateOrderInDb, saveOrderToDb } = require('../lib/db');
             try {
                 await updateOrderInDb(orderPayload.orderId, {
                     in_redex: true,
                     redex_tracking_code: trackingNumber,
-                    status: 'shipped'
+                    status: 'shipped',
+                    commune: resolvedCommuneName
                 });
             } catch (e) {
                 await saveOrderToDb({
                     ...orderPayload,
                     in_redex: true,
                     redex_tracking_code: trackingNumber,
-                    status: 'shipped'
+                    status: 'shipped',
+                    commune: resolvedCommuneName
                 });
             }
 
             return res.status(200).json({
                 success: true,
-                message: `Colis expédié avec succès vers le transporteur (${trackingNumber})`,
+                message: `Colis expédié avec succès vers Redex Delivery DZ (${trackingNumber})`,
                 courierResponse: courierRes,
                 data: {
                     tracking_code: trackingNumber,
@@ -438,7 +580,7 @@ module.exports = async (req, res) => {
                     client_name: orderPayload.fullName,
                     phone: orderPayload.phone,
                     wilaya: orderPayload.wilaya,
-                    commune: orderPayload.commune,
+                    commune: resolvedCommuneName,
                     price: orderPayload.priceNum,
                     delivery_type: orderPayload.deliveryType,
                     status: 'shipped',
@@ -448,7 +590,33 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ── 5. Official Carrier Label (Bordereau PDF Fetch) ────────────────────
+        // ── 5. Official Carrier Label (Stream Raw PDF or Return URL) ──────────
+        if (action === 'label_pdf') {
+            const trackingCode = tracking || id || req.query.code;
+            if (!trackingCode) {
+                return res.status(400).send('Numéro de suivi manquant');
+            }
+            const activeToken = token || req.query.token || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+            const carrierUrl = (baseUrl || req.query.baseUrl || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
+
+            try {
+                const pdfRes = await fetch(`${carrierUrl}/api/v1/get/order/label?tracking=${encodeURIComponent(trackingCode)}`, {
+                    headers: { 'Authorization': 'Bearer ' + activeToken }
+                });
+
+                if (!pdfRes.ok) {
+                    return res.status(pdfRes.status).send(`Impossible de récupérer le bordereau Redex (${pdfRes.statusText})`);
+                }
+
+                const pdfBuffer = await pdfRes.arrayBuffer();
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `inline; filename="bordereau-${trackingCode}.pdf"`);
+                return res.send(Buffer.from(pdfBuffer));
+            } catch (err) {
+                return res.status(500).send('Erreur lors du téléchargement du bordereau : ' + err.message);
+            }
+        }
+
         if (action === 'label') {
             const trackingCode = tracking || id;
             if (!trackingCode || trackingCode.length < 5) {
@@ -458,24 +626,40 @@ module.exports = async (req, res) => {
                 });
             }
 
-            const targetCourier = ALGERIAN_COURIERS.find(c => c.id === courierId) || ALGERIAN_COURIERS[0];
-            const tenantUrl = baseUrl || targetCourier.baseUrl || 'https://redex.ecotrack.dz';
-            
-            // Generate valid carrier portal route without 404 endpoint mismatch
-            let labelUrl = tenantUrl;
-            if (targetCourier.type === 'yalidine') {
-                labelUrl = 'https://yalidine.app';
-            } else if (targetCourier.type === 'zrexpress') {
-                labelUrl = 'https://procolis.com';
-            }
+            const activeToken = token || req.query.token || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+            const pdfDirectUrl = `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}${activeToken ? '&token=' + encodeURIComponent(activeToken) : ''}`;
 
             return res.status(200).json({
                 success: true,
                 trackingCode: trackingCode,
-                labelUrl: labelUrl,
-                courier: targetCourier.name,
+                labelUrl: pdfDirectUrl,
+                courier: 'Redex Delivery DZ',
                 message: 'Lien du bordereau officiel prêt pour impression.'
             });
+        }
+
+        // ── 5.5. Live Tracking Check ──────────────────────────────────────────
+        if (action === 'track' || action === 'tracking') {
+            const trackingCode = tracking || id || req.query.code;
+            if (!trackingCode) {
+                return res.status(400).json({ success: false, error: 'Numéro de suivi manquant' });
+            }
+            const activeToken = token || req.query.token || process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '';
+            const carrierUrl = (baseUrl || req.query.baseUrl || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
+
+            try {
+                const trackRes = await fetch(`${carrierUrl}/api/v1/get/orders?tracking=${encodeURIComponent(trackingCode)}`, {
+                    headers: { 'Authorization': 'Bearer ' + activeToken, 'Accept': 'application/json' }
+                });
+                const trackData = await trackRes.json();
+                return res.status(200).json({
+                    success: true,
+                    trackingCode: trackingCode,
+                    data: Array.isArray(trackData) ? trackData[0] : (trackData.data?.[0] || trackData)
+                });
+            } catch (err) {
+                return res.status(500).json({ success: false, error: err.message });
+            }
         }
 
         // ── 6. Website Analytics & Vercel Telemetry ───────────────────────────

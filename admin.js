@@ -268,6 +268,7 @@
     const storeAdmin = {
         init: function () {
             this.initAuthCheck();
+            this.initCarrierSettings();
             this.setupSidebarEvents();
             this.populateWilayaDropdowns();
             this.fetchOrders();
@@ -276,6 +277,40 @@
             // Auto-refresh every 20 seconds
             if (!autoSyncInterval) {
                 autoSyncInterval = setInterval(() => this.fetchOrders(false), 20000);
+            }
+        },
+
+        getStoredCarrierToken: function () {
+            return localStorage.getItem('orva_carrier_token') || '';
+        },
+
+        getStoredCarrierBaseUrl: function () {
+            return localStorage.getItem('orva_carrier_base_url') || 'https://redex.ecotrack.dz';
+        },
+
+        saveCarrierSettings: function () {
+            const tokenInput = document.getElementById('settingsApiToken');
+            const urlInput = document.getElementById('settingsBaseUrl');
+            if (tokenInput) {
+                localStorage.setItem('orva_carrier_token', tokenInput.value.trim());
+            }
+            if (urlInput) {
+                localStorage.setItem('orva_carrier_base_url', urlInput.value.trim() || 'https://redex.ecotrack.dz');
+            }
+        },
+
+        initCarrierSettings: function () {
+            const tokenInput = document.getElementById('settingsApiToken');
+            const urlInput = document.getElementById('settingsBaseUrl');
+            if (tokenInput) {
+                tokenInput.value = this.getStoredCarrierToken();
+                tokenInput.addEventListener('input', () => this.saveCarrierSettings());
+                tokenInput.addEventListener('change', () => this.saveCarrierSettings());
+            }
+            if (urlInput) {
+                urlInput.value = this.getStoredCarrierBaseUrl();
+                urlInput.addEventListener('input', () => this.saveCarrierSettings());
+                urlInput.addEventListener('change', () => this.saveCarrierSettings());
             }
         },
 
@@ -765,16 +800,8 @@
                     </div>
                 `;
 
-                // Risk & Trust Badge
-                const riskScore = o.riskScore || 0;
-                let riskPill = '';
-                if (riskScore >= 40 || o.riskLevel === 'HIGH' || o.riskDecision === 'BLOCK') {
-                    riskPill = `<div style="margin-top:4px;"><span class="status-badge badge-returned" onclick="storeAdmin.viewRisk('${o.orderId}')" style="cursor:pointer; font-size:10px;" title="Cliquer pour voir l'analyse de risque">🔴 ${currentLang === 'fr' ? 'Risque' : 'خطر'} ${riskScore}/100</span></div>`;
-                } else if (riskScore > 15 || o.riskLevel === 'MEDIUM') {
-                    riskPill = `<div style="margin-top:4px;"><span class="status-badge badge-pending" onclick="storeAdmin.viewRisk('${o.orderId}')" style="cursor:pointer; font-size:10px;" title="Cliquer pour voir l'analyse de risque">⚠️ ${currentLang === 'fr' ? 'À vérifier' : 'مراجعة'} ${riskScore}/100</span></div>`;
-                } else {
-                    riskPill = `<div style="margin-top:4px;"><span class="status-badge badge-delivered" onclick="storeAdmin.viewRisk('${o.orderId}')" style="cursor:pointer; font-size:10px;" title="Client vérifié et fiable">🟢 ${currentLang === 'fr' ? 'Fiable' : 'موثوق'} 98%</span></div>`;
-                }
+                // Risk & Trust Badge (Risk Shield Paused by Admin)
+                const riskPill = `<div style="margin-top:4px;"><span class="status-badge badge-delivered" onclick="storeAdmin.viewRisk('${o.orderId}')" style="cursor:pointer; font-size:10px;" title="درع الأمان معطل مؤقتاً">🟢 ${currentLang === 'fr' ? 'Approuvé (Bouclier en pause)' : 'معتمد (الدرع معطل)'}</span></div>`;
 
                 tr.innerHTML = `
                     <td>
@@ -1007,22 +1034,17 @@
                 return;
             }
 
-            try {
-                const res = await fetch(`/api/delivery?action=label&tracking=${encodeURIComponent(trackingCode)}&courierId=${activeCourierId}`);
-                const json = await res.json();
+            const token = this.getStoredCarrierToken();
+            const directPdfUrl = `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}&token=${encodeURIComponent(token)}`;
 
-                if (json.success && json.labelUrl) {
-                    document.getElementById('lblTitleOrder').textContent = `${dict.thOrder} : ${o.orderId} (${trackingCode})`;
-                    document.getElementById('lblDescText').textContent = `${currentLang === 'fr' ? 'Transporteur' : 'شركة التوصيل'}: ${json.courier || 'Ecotrack'}`;
-                    const btn = document.getElementById('btnDownloadOfficialPdf');
-                    btn.href = json.labelUrl;
-                    document.getElementById('labelModal').classList.add('active');
-                } else {
-                    alert(json.error || dict.alertLabelNotShipped);
-                }
-            } catch (err) {
-                alert('Erreur: ' + err.message);
+            document.getElementById('lblTitleOrder').textContent = `${dict.thOrder} : ${o.orderId} (${trackingCode})`;
+            document.getElementById('lblDescText').textContent = `${currentLang === 'fr' ? 'Transporteur' : 'شركة التوصيل'}: Redex Delivery DZ`;
+            const btn = document.getElementById('btnDownloadOfficialPdf');
+            if (btn) {
+                btn.href = directPdfUrl;
+                btn.target = '_blank';
             }
+            document.getElementById('labelModal').classList.add('active');
         },
 
         // ── 6. Live Tracking Timeline Modal ───────────────────────────────────
@@ -1111,6 +1133,29 @@
             document.getElementById('formWilayaCode').value = wCode;
             this.onWilayaChange(wCode);
 
+            // Auto-select or pre-fill commune if already in the order
+            if (o.commune) {
+                const communeSelect = document.getElementById('formCommuneSelect');
+                if (communeSelect) {
+                    let matched = false;
+                    for (let i = 0; i < communeSelect.options.length; i++) {
+                        const optVal = communeSelect.options[i].value;
+                        if (optVal === o.commune || optVal.includes(o.commune) || o.commune.includes(optVal)) {
+                            communeSelect.selectedIndex = i;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        const opt = document.createElement('option');
+                        opt.value = o.commune;
+                        opt.textContent = o.commune;
+                        opt.selected = true;
+                        communeSelect.prepend(opt);
+                    }
+                }
+            }
+
             document.getElementById('formAddress').value = o.address || '';
             document.getElementById('formPrice').value = o.priceNum || 4400;
             document.getElementById('packageModal').classList.add('active');
@@ -1140,9 +1185,11 @@
             communeSelect.innerHTML = '';
 
             const wNum = parseInt(wilayaCode) || 16;
+            const communesSource = window.algeriaCommunes || window.AlgeriaCommunes || {};
+            const list = communesSource[String(wNum)] || communesSource[wNum];
             
-            if (window.AlgeriaCommunes && window.AlgeriaCommunes[wNum]) {
-                window.AlgeriaCommunes[wNum].forEach(c => {
+            if (list && Array.isArray(list) && list.length > 0) {
+                list.forEach(c => {
                     const opt = document.createElement('option');
                     opt.value = c;
                     opt.textContent = c;
@@ -1194,8 +1241,13 @@
             const deliveryType = document.getElementById('formDeliveryType').value;
             const price = document.getElementById('formPrice').value;
 
+            const token = this.getStoredCarrierToken();
+            const baseUrl = this.getStoredCarrierBaseUrl();
+
             const payload = {
                 courierId: activeCourierId,
+                token: token,
+                baseUrl: baseUrl,
                 orderId: orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000)),
                 fullName: fullName,
                 phone: phone,
@@ -1205,7 +1257,8 @@
                 deliveryType: deliveryType,
                 price: price,
                 grandTotal: price + ' DZD',
-                priceNum: parseInt(price)
+                priceNum: parseInt(price),
+                productList: 'Pack Commande ORVA Store'
             };
 
             try {
@@ -1217,11 +1270,15 @@
                 const json = await res.json();
 
                 if (json.success) {
-                    alert(`✅ Colis expédié avec succès!\nCode de suivi: ${json.data?.tracking_code || payload.orderId}`);
+                    const tracking = json.data?.tracking_code || json.tracking_code || payload.orderId;
+                    const successAlert = currentLang === 'ar'
+                        ? `✅ تم إرسال الطرد بنجاح إلى شركة التوصيل (Redex Delivery)!\nرقم التتبع الرسمي: ${tracking}`
+                        : `✅ Colis expédié avec succès vers Redex!\nCode de suivi officiel: ${tracking}`;
+                    alert(successAlert);
                     this.closeModal('packageModal');
                     await this.fetchOrders(true);
                 } else {
-                    alert(`⚠️ Erreur: ${json.error || 'Impossible d\'expédier'}`);
+                    alert(`⚠️ ${json.error || 'Impossible d\'expédier le colis'}`);
                 }
             } catch (err) {
                 alert(`❌ Erreur: ${err.message}`);
@@ -1308,6 +1365,10 @@
         },
 
         openSettingsModal: function () {
+            const tokenInput = document.getElementById('settingsApiToken');
+            const urlInput = document.getElementById('settingsBaseUrl');
+            if (tokenInput) tokenInput.value = this.getStoredCarrierToken();
+            if (urlInput) urlInput.value = this.getStoredCarrierBaseUrl();
             document.getElementById('settingsModal').classList.add('active');
         },
 
@@ -1329,13 +1390,18 @@
         },
 
         testCarrierConnection: async function () {
+            this.saveCarrierSettings();
+            const token = this.getStoredCarrierToken();
+            const baseUrl = this.getStoredCarrierBaseUrl();
             const resEl = document.getElementById('settingsTestResult');
-            resEl.innerHTML = '<span style="color:var(--primary);"><i class="fa-solid fa-spinner fa-spin"></i> Test de connexion en cours...</span>';
+            resEl.innerHTML = '<span style="color:var(--primary);"><i class="fa-solid fa-spinner fa-spin"></i> Test de connexion en cours avec Redex DZ...</span>';
             try {
-                const res = await fetch(`/api/delivery?action=test_courier&courierId=${activeCourierId}`);
+                const res = await fetch(`/api/delivery?action=test_courier&courierId=${activeCourierId}&token=${encodeURIComponent(token)}&baseUrl=${encodeURIComponent(baseUrl)}`);
                 const json = await res.json();
                 if (json.success) {
-                    resEl.innerHTML = `<span style="color:var(--emerald); font-weight:700;">✅ ${json.message}</span>`;
+                    resEl.innerHTML = `<span style="color:var(--emerald); font-weight:700;">${json.message}</span>`;
+                } else {
+                    resEl.innerHTML = `<span style="color:var(--rose); font-weight:700;">❌ Échec: ${json.error || 'Connexion refusée'}</span>`;
                 }
             } catch (e) {
                 resEl.innerHTML = `<span style="color:var(--rose);">❌ Échec: ${e.message}</span>`;
@@ -1537,6 +1603,12 @@
             const modalBody = document.getElementById('riskModalBody');
             if (modalBody) {
                 modalBody.innerHTML = `
+                    <div style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px; font-weight:600;">
+                        ${currentLang === 'fr'
+                            ? '⚠️ Le système d\'évaluation du risque est actuellement mis en pause par l\'administration. Toutes les commandes sont approuvées sans restriction.'
+                            : '⚠️ نظام تقييم الخطورة معطل مؤقتاً بأمر الإدارة — جميع الطلبيات معتمدة ومقبولة تلقائياً بنسبة خطر 0%.'
+                        }
+                    </div>
                     <div class="tracking-summary-card mb-3">
                         <div>
                             <span>${currentLang === 'fr' ? 'Commande :' : 'الطلب :'}</span>

@@ -79,14 +79,11 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ── Rate limit (Allow Maximum 2 Attempts per Phone / Device / IP) ────
-        const rateCheck = await checkAndRecordRateLimit(clientIp, deviceId, phone);
-        if (!rateCheck.allowed) {
-            return res.status(429).json({
-                success: false,
-                error: 'RATE_LIMIT_EXCEEDED',
-                message: rateCheck.message || 'عذراً، لقد تم تسجيل طلبك مسبقاً (الحد الأقصى محاولتين). سيتصل بك فريقنا لتأكيد طلبك.'
-            });
+        // ── Rate limit (Temporarily relaxed while risk system is disabled) ──
+        try {
+            await checkAndRecordRateLimit(clientIp, deviceId, phone);
+        } catch (e) {
+            console.warn('[send-order] Rate limit check skipped:', e.message);
         }
 
         // ── Save to Google Sheets ─────────────────────────────────────────────
