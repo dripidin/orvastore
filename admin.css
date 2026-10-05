@@ -83,12 +83,64 @@ body {
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0 20px;
     position: sticky;
     top: 0;
     z-index: 900;
     box-shadow: var(--shadow-sm);
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-content: stretch;
+    justify-content: center;
+}
+
+.navbar-top-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.store-quick-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (min-width: 769px) {
+    .store-quick-nav {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+.store-nav-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.store-nav-pill:hover {
+    background: #eef2ff;
+    border-color: var(--primary-light);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.store-nav-pill i {
+    font-size: 11px;
+    color: var(--primary);
 }
 
 .navbar-brand-wrapper {
@@ -1571,8 +1623,34 @@ body {
 
 @media (max-width: 768px) {
     .app-navbar {
-        height: 56px;
-        padding: 0 12px;
+        height: 117px;
+        padding: 12px 12px;
+        justify-content: space-between;
+    }
+
+    .navbar-top-row {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .store-quick-nav {
+        position: static;
+        transform: none;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        margin-top: 6px;
+    }
+
+    .store-nav-pill {
+        flex: 1;
+        justify-content: center;
+        padding: 7px 4px;
+        font-size: 11px;
     }
 
     .navbar-search-box {

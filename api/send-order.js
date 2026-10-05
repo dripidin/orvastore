@@ -138,7 +138,7 @@ module.exports = async (req, res) => {
                 commune:        commune,
                 clientIp:       clientIp,
                 userAgent:      req.headers['user-agent'],
-                eventSourceUrl: req.headers['referer'] || req.headers['origin'] || 'https://yamahasac.vercel.app',
+                eventSourceUrl: req.headers['referer'] || req.headers['origin'] || 'https://orvastore.vercel.app',
                 fbp:            userFbp,
                 fbc:            userFbc,
                 quantity:       quantity || 1,
@@ -156,18 +156,18 @@ module.exports = async (req, res) => {
 
         if (telegramToken && telegramChatId) {
             try {
-                const adminLink = `https://yamahasac.vercel.app/admin.html?orderId=${encodeURIComponent(cleanOrderId)}`;
+                const adminLink = `https://orvastore.vercel.app/admin.html?orderId=${encodeURIComponent(cleanOrderId)}`;
                 const riskBadge = riskResult.decision === 'REVIEW'
                     ? `\n⚠️ <b>REVIEW</b> — نقاط الخطر: ${riskResult.score}/100`
                     : riskResult.score > 0 ? `\n🟡 خطر: ${riskResult.score}/100 (${riskResult.level})` : '';
 
                 const tgMsg = `
-<b>🎒 طلب جديد — ORVA Store (${resolvedProductName})</b>
+<b>📦 طلب جديد — ORVA Store (${resolvedProductName})</b>
 ━━━━━━━━━━━━━━━━━━
 <b>🆔 رقم الطلب:</b> <code>${cleanOrderId}</code>
 <b>👤 الاسم الكامل:</b> ${fullName}
 <b>📱 رقم الهاتف:</b> <code>${phone}</code>
-<b>📍 الولاية:</b> ${wilaya}
+<b>📍 الولاية والبلدية:</b> ${wilaya}${commune ? ' - ' + commune : ''}
 <b>🚚 نوع التوصيل:</b> ${deliveryType || 'توصيل للمنزل'}
 <b>⚡ مدة التوصيل:</b> ${deliveryTime || '24 - 48 H'}
 <b>📦 الكمية:</b> ${quantity} قطعة (${resolvedProductName})
@@ -177,8 +177,9 @@ module.exports = async (req, res) => {
 <b>💰 المجموع الكلي (COD):</b> <b>${grandTotal}</b>
 <b>📅 التاريخ:</b> ${dateFormatted}${riskBadge}
 ━━━━━━━━━━━━━━━━━━
-📌 <b>PS: الطلبية لم تُرسل لشركة التوصيل بعد (Redex).</b>
-👉 ${adminLink}`.trim();
+📌 <b>الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</b>
+👉 <a href="${adminLink}">لوحة التحكم (Admin Dashboard)</a>
+${adminLink}`.trim();
 
                 const tgPayload = JSON.stringify({ chat_id: telegramChatId, text: tgMsg, parse_mode: 'HTML' });
                 const options = {

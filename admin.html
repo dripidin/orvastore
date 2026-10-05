@@ -49,19 +49,97 @@
         <!-- TOP NAVBAR                                                            -->
         <!-- ===================================================================== -->
         <header class="app-navbar">
-            <div class="navbar-brand-wrapper">
-                <button class="navbar-toggler-btn" id="sidebarToggleBtn" type="button" title="Menu Navigation" onclick="storeAdmin.toggleMobileNav()">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
-                <a class="navbar-brand" href="#dashboard">
-                    <div class="brand-icon-box">
-                        <i class="fa-solid fa-store"></i>
+            <div class="navbar-top-row">
+                <div class="navbar-brand-wrapper">
+                    <button class="navbar-toggler-btn" id="sidebarToggleBtn" type="button" title="Menu Navigation" onclick="storeAdmin.toggleMobileNav()">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <a class="navbar-brand" href="#dashboard">
+                        <div class="brand-icon-box">
+                            <i class="fa-solid fa-store"></i>
+                        </div>
+                        <div class="brand-titles">
+                            <span class="brand-main">ORVA<span class="brand-highlight">STORE</span></span>
+                            <span class="brand-sub" data-i18n="brandSub">Tableau de bord</span>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="navbar-menu-wrapper">
+                    <!-- Search bar -->
+                    <div class="navbar-search-box">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="globalSearchInput" placeholder="Rechercher par commande, nom, téléphone, wilaya..." onkeyup="storeAdmin.handleSearch(this.value)" data-i18n-placeholder="searchPlaceholder">
                     </div>
-                    <div class="brand-titles">
-                        <span class="brand-main">ORVA<span class="brand-highlight">STORE</span></span>
-                        <span class="brand-sub" data-i18n="brandSub">Tableau de bord</span>
-                    </div>
-                </a>
+
+                    <!-- Right Toolbar Elements -->
+                    <ul class="navbar-actions-list">
+                        <!-- Courier Live Status Pill -->
+                        <li class="action-item hide-on-sm">
+                            <div class="status-pill courier-pill" onclick="storeAdmin.openSettingsModal()" title="Passerelle Logistique Algérie">
+                                <span class="live-dot pulse-green"></span>
+                                <span class="pill-text"><i class="fa-solid fa-truck-fast"></i> <span id="navCourierName">Ecotrack DZ</span>: <strong data-i18n="statusConnected">Connecté</strong></span>
+                            </div>
+                        </li>
+
+                        <!-- Excel DB Status Pill -->
+                        <li class="action-item hide-on-sm">
+                            <div class="status-pill excel-pill" onclick="storeAdmin.exportExcel()" title="Base de données Excel & Google Sheets">
+                                <i class="fa-solid fa-file-excel text-emerald"></i>
+                                <span class="pill-text">Excel & Sheets: <strong data-i18n="statusSync">Synchronisé</strong></span>
+                            </div>
+                        </li>
+
+                        <!-- Refresh Button -->
+                        <li class="action-item">
+                            <button class="icon-circle-btn" id="refreshBtn" onclick="storeAdmin.fetchOrders(true)" title="Actualiser les données">
+                                <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
+                            </button>
+                        </li>
+
+                        <!-- Language Submenu Dropdown -->
+                        <li class="action-item">
+                            <div class="navbar-lang-wrapper" id="navbarLangWrapper">
+                                <button class="lang-submenu-trigger" id="langSubmenuBtn" onclick="storeAdmin.toggleLangDropdown()" type="button" title="Changer la langue">
+                                    <i class="fa-solid fa-globe"></i>
+                                    <span id="currentLangLabel">FR</span>
+                                    <i class="fa-solid fa-chevron-down caret-icon"></i>
+                                </button>
+                                <div class="lang-submenu-dropdown" id="langSubmenuDropdown">
+                                    <button class="lang-dropdown-opt active" data-lang="fr" onclick="storeAdmin.setLanguage('fr'); storeAdmin.toggleLangDropdown(false);">
+                                        <span>🇫🇷 Français</span>
+                                        <i class="fa-solid fa-check check-mark"></i>
+                                    </button>
+                                    <button class="lang-dropdown-opt" data-lang="ar" onclick="storeAdmin.setLanguage('ar'); storeAdmin.toggleLangDropdown(false);">
+                                        <span>🇩🇿 العربية (RTL)</span>
+                                        <i class="fa-solid fa-check check-mark"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </li>
+
+                        <!-- Admin Profile Badge -->
+                        <li class="action-item hide-on-sm">
+                            <div class="user-profile-badge">
+                                <div class="avatar-ring">
+                                    <span class="avatar-initials">OA</span>
+                                    <span class="online-indicator"></span>
+                                </div>
+                                <div class="user-meta">
+                                    <span class="user-name">Admin ORVA</span>
+                                    <span class="user-role">Super Admin</span>
+                                </div>
+                            </div>
+                        </li>
+
+                        <!-- Logout Button -->
+                        <li class="action-item">
+                            <button class="icon-circle-btn text-rose" onclick="storeAdmin.logout()" title="تسجيل الخروج (Déconnexion)">
+                                <i class="fa-solid fa-power-off"></i>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </div>
 
             <!-- Quick Store Pages Navigation -->
@@ -75,82 +153,6 @@
                 <a href="/pack2.html" target="_blank" class="store-nav-pill" title="زيارة صفحة باك 2">
                     <i class="fa-solid fa-bolt"></i> <span>باك 2 (12950 دج)</span>
                 </a>
-            </div>
-
-            <div class="navbar-menu-wrapper">
-                <!-- Search bar -->
-                <div class="navbar-search-box">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="globalSearchInput" placeholder="Rechercher par commande, nom, téléphone, wilaya..." onkeyup="storeAdmin.handleSearch(this.value)" data-i18n-placeholder="searchPlaceholder">
-                </div>
-
-                <!-- Right Toolbar Elements -->
-                <ul class="navbar-actions-list">
-                    <!-- Courier Live Status Pill -->
-                    <li class="action-item hide-on-sm">
-                        <div class="status-pill courier-pill" onclick="storeAdmin.openSettingsModal()" title="Passerelle Logistique Algérie">
-                            <span class="live-dot pulse-green"></span>
-                            <span class="pill-text"><i class="fa-solid fa-truck-fast"></i> <span id="navCourierName">Ecotrack DZ</span>: <strong data-i18n="statusConnected">Connecté</strong></span>
-                        </div>
-                    </li>
-
-                    <!-- Excel DB Status Pill -->
-                    <li class="action-item hide-on-sm">
-                        <div class="status-pill excel-pill" onclick="storeAdmin.exportExcel()" title="Base de données Excel & Google Sheets">
-                            <i class="fa-solid fa-file-excel text-emerald"></i>
-                            <span class="pill-text">Excel & Sheets: <strong data-i18n="statusSync">Synchronisé</strong></span>
-                        </div>
-                    </li>
-
-                    <!-- Refresh Button -->
-                    <li class="action-item">
-                        <button class="icon-circle-btn" id="refreshBtn" onclick="storeAdmin.fetchOrders(true)" title="Actualiser les données">
-                            <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
-                        </button>
-                    </li>
-
-                    <!-- Language Submenu Dropdown -->
-                    <li class="action-item">
-                        <div class="navbar-lang-wrapper" id="navbarLangWrapper">
-                            <button class="lang-submenu-trigger" id="langSubmenuBtn" onclick="storeAdmin.toggleLangDropdown()" type="button" title="Changer la langue">
-                                <i class="fa-solid fa-globe"></i>
-                                <span id="currentLangLabel">FR</span>
-                                <i class="fa-solid fa-chevron-down caret-icon"></i>
-                            </button>
-                            <div class="lang-submenu-dropdown" id="langSubmenuDropdown">
-                                <button class="lang-dropdown-opt active" data-lang="fr" onclick="storeAdmin.setLanguage('fr'); storeAdmin.toggleLangDropdown(false);">
-                                    <span>🇫🇷 Français</span>
-                                    <i class="fa-solid fa-check check-mark"></i>
-                                </button>
-                                <button class="lang-dropdown-opt" data-lang="ar" onclick="storeAdmin.setLanguage('ar'); storeAdmin.toggleLangDropdown(false);">
-                                    <span>🇩🇿 العربية (RTL)</span>
-                                    <i class="fa-solid fa-check check-mark"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </li>
-
-                    <!-- Admin Profile Badge -->
-                    <li class="action-item hide-on-sm">
-                        <div class="user-profile-badge">
-                            <div class="avatar-ring">
-                                <span class="avatar-initials">OA</span>
-                                <span class="online-indicator"></span>
-                            </div>
-                            <div class="user-meta">
-                                <span class="user-name">Admin ORVA</span>
-                                <span class="user-role">Super Admin</span>
-                            </div>
-                        </div>
-                    </li>
-
-                    <!-- Logout Button -->
-                    <li class="action-item">
-                        <button class="icon-circle-btn text-rose" onclick="storeAdmin.logout()" title="تسجيل الخروج (Déconnexion)">
-                            <i class="fa-solid fa-power-off"></i>
-                        </button>
-                    </li>
-                </ul>
             </div>
         </header>
 

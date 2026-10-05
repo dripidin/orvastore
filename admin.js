@@ -507,6 +507,21 @@
                     this.renderCharts();
                     this.populateAutoFillDropdown();
                     this.fetchAnalytics();
+
+                    // If opened directly from Telegram notification with ?orderId=
+                    try {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const targetOrderId = urlParams.get('orderId');
+                        if (targetOrderId && !searchQuery) {
+                            const searchInput = document.getElementById('globalSearchInput');
+                            if (searchInput) {
+                                searchInput.value = targetOrderId;
+                                this.handleSearch(targetOrderId);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[StoreAdmin] Query param parse error:', e);
+                    }
                 }
             } catch (err) {
                 console.warn('[StoreAdmin] Fetch orders error:', err);
