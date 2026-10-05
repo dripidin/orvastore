@@ -127,7 +127,12 @@ module.exports = async (req, res) => {
         const userFbc = fbc || getCookieValue(cookieHeader, '_fbc') || undefined;
 
         try {
+            const resolvedPixelId = (resolvedProductName.includes('12950') || resolvedProductName.includes('2'))
+                ? '2347421356028365'
+                : '2340414976777036';
+
             sendMetaPurchaseEvent({
+                pixelId:        resolvedPixelId,
                 eventId:        cleanOrderId,
                 value:          numPrice,
                 currency:       'DZD',

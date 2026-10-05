@@ -17,7 +17,7 @@ const ALGERIAN_COURIERS = [
         name: 'Redex Delivery DZ',
         type: 'ecotrack',
         baseUrl: 'https://redex.ecotrack.dz',
-        defaultToken: process.env.ECOTRACK_API_TOKEN || '',
+        defaultToken: process.env.ECOTRACK_API_TOKEN || process.env.REDEX_API_TOKEN || '',
         active: true,
         logoText: 'REDEX'
     },

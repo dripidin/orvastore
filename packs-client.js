@@ -324,6 +324,21 @@
                         }));
                     } catch (e) {}
 
+                    // Track Meta Pixel Purchase Event
+                    if (typeof window.fbq === 'function') {
+                        try {
+                            window.fbq('track', 'Purchase', {
+                                value: packPrice,
+                                currency: 'DZD',
+                                content_name: productName,
+                                content_type: 'product',
+                                num_items: 1
+                            }, { eventID: data.orderId || orderId });
+                        } catch (fbErr) {
+                            console.warn('[Meta Pixel Purchase Tracking Error]:', fbErr);
+                        }
+                    }
+
                     // Show success receipt modal
                     showReceiptModal({
                         orderId: data.orderId || orderId,
