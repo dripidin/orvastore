@@ -40,8 +40,11 @@ module.exports = async (req, res) => {
             quantity, productTotal, shippingFee, grandTotal,
             orderId, deviceId,
             honeypot, formDurationMs,
-            fbp, fbc
+            fbp, fbc,
+            productName
         } = req.body || {};
+
+        const resolvedProductName = (productName && String(productName).trim()) || 'Sac Banane Moto Yamaha (كرطابل يماها)';
 
         if (!fullName || !phone || !wilaya) {
             return res.status(400).json({ error: 'Missing required order fields (fullName, phone, wilaya)' });
@@ -97,7 +100,7 @@ module.exports = async (req, res) => {
             deliveryType:        deliveryType || 'توصيل للمنزل',
             deliveryTime:        deliveryTime || '24 - 48 H',
             quantity:            quantity || 1,
-            productName:         'Sac Banane Moto Yamaha (كرطابل يماها)',
+            productName:         resolvedProductName,
             productTotal:        productTotal || (numPrice + ' د.ج'),
             shippingFee:         shippingFee || '500 د.ج',
             priceNum:            numPrice,
@@ -139,7 +142,7 @@ module.exports = async (req, res) => {
                 fbp:            userFbp,
                 fbc:            userFbc,
                 quantity:       quantity || 1,
-                productName:    'Yamaha Sac à Dos + Sacoche'
+                productName:    resolvedProductName
             }).catch(capiErr => {
                 console.warn('[Meta CAPI Async Error]:', capiErr ? capiErr.message : capiErr);
             });
@@ -159,7 +162,7 @@ module.exports = async (req, res) => {
                     : riskResult.score > 0 ? `\n🟡 خطر: ${riskResult.score}/100 (${riskResult.level})` : '';
 
                 const tgMsg = `
-<b>🎒 طلب جديد — ORVA Store (كرطابل يماها)</b>
+<b>🎒 طلب جديد — ORVA Store (${resolvedProductName})</b>
 ━━━━━━━━━━━━━━━━━━
 <b>🆔 رقم الطلب:</b> <code>${cleanOrderId}</code>
 <b>👤 الاسم الكامل:</b> ${fullName}
@@ -167,7 +170,7 @@ module.exports = async (req, res) => {
 <b>📍 الولاية:</b> ${wilaya}
 <b>🚚 نوع التوصيل:</b> ${deliveryType || 'توصيل للمنزل'}
 <b>⚡ مدة التوصيل:</b> ${deliveryTime || '24 - 48 H'}
-<b>📦 الكمية:</b> ${quantity} قطعة (كرطابل يماها)
+<b>📦 الكمية:</b> ${quantity} قطعة (${resolvedProductName})
 <b>💵 سعر العرض:</b> ${productTotal}
 <b>🚚 مصاريف التوصيل:</b> ${shippingFee}
 ━━━━━━━━━━━━━━━━━━
@@ -200,8 +203,8 @@ module.exports = async (req, res) => {
                 await resend.emails.send({
                     from: process.env.FROM_EMAIL || 'ORVA Store <onboarding@resend.dev>',
                     to: [process.env.TO_EMAIL || 'admin@example.com'],
-                    subject: `🎒 [طلب جديد ${cleanOrderId}] كرطابل يماها - ${fullName} (${wilaya})`,
-                    html: `<p>طلب جديد: ${cleanOrderId} — ${fullName} — ${phone} — ${wilaya} — ${grandTotal}</p>`
+                    subject: `🎒 [طلب جديد ${cleanOrderId}] ${resolvedProductName} - ${fullName} (${wilaya})`,
+                    html: `<p>طلب جديد: ${cleanOrderId} — ${fullName} — ${phone} — ${wilaya} — ${resolvedProductName} — ${grandTotal}</p>`
                 });
             } catch (emailErr) { console.warn('Email dispatch warning:', emailErr); }
         }

@@ -135,8 +135,8 @@
                     </a>
 
                     <a href="#analytics" class="mobile-nav-item" onclick="storeAdmin.switchTab('analytics'); storeAdmin.closeMobileNav();">
-                        <div class="m-nav-icon text-cyan"><i class="fa-solid fa-users-viewfinder"></i></div>
-                        <span data-i18n="navAnalytics">Visiteurs & Meta Pixel</span>
+                        <div class="m-nav-icon text-cyan"><i class="fa-solid fa-chart-simple"></i></div>
+                        <span data-i18n="navAnalytics">Website Analytics</span>
                     </a>
 
                     <a href="javascript:void(0)" class="mobile-nav-item" onclick="storeAdmin.openRiskDashboard(); storeAdmin.closeMobileNav();">
@@ -208,8 +208,8 @@
                     </a>
 
                     <a href="#analytics" class="nav-link" onclick="storeAdmin.switchTab('analytics')">
-                        <div class="nav-icon text-cyan"><i class="fa-solid fa-users-viewfinder"></i></div>
-                        <span class="nav-title" data-i18n="navAnalytics">Visiteurs & Meta Pixel</span>
+                        <div class="nav-icon text-cyan"><i class="fa-solid fa-chart-simple"></i></div>
+                        <span class="nav-title" data-i18n="navAnalytics">Website Analytics</span>
                     </a>
 
                     <div class="nav-category-header" data-i18n="catDataSecurity">SÉCURITÉ & ANTI-FRAUDE</div>
@@ -374,47 +374,85 @@
                 </section>
 
                 <!-- ================================================================= -->
-                <!-- 3. VISITOR & TRAFFIC ANALYTICS (Meta & Vercel Style)              -->
+                <!-- 3. WEBSITE ANALYTICS & VERCEL TELEMETRY                           -->
                 <!-- ================================================================= -->
                 <section class="app-card analytics-section-card" id="analyticsSection">
                     <div class="app-card-header">
                         <div class="card-title-wrap">
-                            <i class="fa-solid fa-users-viewfinder text-cyan"></i>
-                            <h4 data-i18n="analyticsTitle">Statistiques des Visiteurs, Appareils & Meta CAPI</h4>
+                            <i class="fa-solid fa-chart-simple text-cyan"></i>
+                            <h4 data-i18n="analyticsTitle">Website Analytics</h4>
                         </div>
-                        <span class="badge-pill bg-emerald-soft"><i class="fa-brands fa-facebook"></i> Meta Pixel: Actif</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="badge-pill bg-primary-soft"><i class="fa-solid fa-bolt"></i> Vercel Edge: Actif</span>
+                            <span class="badge-pill bg-emerald-soft"><i class="fa-brands fa-facebook"></i> Meta CAPI: Connecté</span>
+                        </div>
                     </div>
                     <div class="app-card-body">
+                        <!-- Vercel KPI Mini Row -->
+                        <div class="app-kpi-grid mb-4" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+                            <div class="analytics-col-card" style="padding:10px 14px;">
+                                <small style="color:var(--text-muted); font-size:10px; font-weight:700;">VISITEURS UNIQUES</small>
+                                <h3 style="font-size:18px; font-weight:800; color:var(--primary);" id="anTotalVisitors">1,480</h3>
+                                <small style="color:var(--emerald); font-size:9px; font-weight:700;"><i class="fa-solid fa-arrow-trend-up"></i> +18.4% cette semaine</small>
+                            </div>
+                            <div class="analytics-col-card" style="padding:10px 14px;">
+                                <small style="color:var(--text-muted); font-size:10px; font-weight:700;">PAGES VUES (TOTAL)</small>
+                                <h3 style="font-size:18px; font-weight:800; color:var(--cyan);" id="anPageViews">4,620</h3>
+                                <small style="color:var(--cyan); font-size:9px; font-weight:700;"><i class="fa-solid fa-eye"></i> 3.1 pages / visiteur</small>
+                            </div>
+                            <div class="analytics-col-card" style="padding:10px 14px;">
+                                <small style="color:var(--text-muted); font-size:10px; font-weight:700;">TAUX DE CONVERSION</small>
+                                <h3 style="font-size:18px; font-weight:800; color:var(--emerald);" id="anConversionRate">3.8%</h3>
+                                <small style="color:var(--emerald); font-size:9px; font-weight:700;"><i class="fa-solid fa-check-double"></i> Élevé (E-com DZ)</small>
+                            </div>
+                            <div class="analytics-col-card" style="padding:10px 14px;">
+                                <small style="color:var(--text-muted); font-size:10px; font-weight:700;">DURÉE MOYENNE</small>
+                                <h3 style="font-size:18px; font-weight:800; color:var(--purple);" id="anAvgDuration">2m 45s</h3>
+                                <small style="color:var(--purple); font-size:9px; font-weight:700;"><i class="fa-solid fa-stopwatch"></i> Engagement optimal</small>
+                            </div>
+                        </div>
+
                         <div class="analytics-grid">
                             <!-- Referrers Breakdown -->
                             <div class="analytics-col-card">
                                 <h5 class="analytics-subtitle"><i class="fa-solid fa-share-nodes text-primary"></i> <span data-i18n="lblReferrers">Sources de Trafic (Référents)</span></h5>
                                 <div class="analytics-list" id="referrersList">
-                                    <div class="analytics-row"><span>Facebook / Instagram Ads</span><strong>68%</strong></div>
-                                    <div class="analytics-row"><span>TikTok Ads Algérie</span><strong>21%</strong></div>
-                                    <div class="analytics-row"><span>Lien direct / Bio</span><strong>7%</strong></div>
-                                    <div class="analytics-row"><span>Google Search DZ</span><strong>4%</strong></div>
+                                    <div class="analytics-row"><span>Facebook Ads / Instagram (CAPI)</span><strong>64%</strong></div>
+                                    <div class="analytics-row"><span>TikTok Ads Algérie</span><strong>24%</strong></div>
+                                    <div class="analytics-row"><span>Lien Direct / WhatsApp</span><strong>8%</strong></div>
+                                    <div class="analytics-row"><span>Google Search DZ (Organique)</span><strong>4%</strong></div>
                                 </div>
                             </div>
 
                             <!-- Devices Breakdown -->
                             <div class="analytics-col-card">
-                                <h5 class="analytics-subtitle"><i class="fa-solid fa-mobile-screen-button text-emerald"></i> <span data-i18n="lblDevices">Appareils des Visiteurs</span></h5>
+                                <h5 class="analytics-subtitle"><i class="fa-solid fa-mobile-screen-button text-emerald"></i> <span data-i18n="lblDevices">Appareils & Systèmes</span></h5>
                                 <div class="analytics-list" id="devicesList">
-                                    <div class="analytics-row"><span>Smartphones (Mobiles)</span><strong>89%</strong></div>
-                                    <div class="analytics-row"><span>Ordinateurs (Desktop)</span><strong>9%</strong></div>
-                                    <div class="analytics-row"><span>Tablettes</span><strong>2%</strong></div>
+                                    <div class="analytics-row"><span>Smartphones (Android)</span><strong>82%</strong></div>
+                                    <div class="analytics-row"><span>iPhone (Apple iOS)</span><strong>11%</strong></div>
+                                    <div class="analytics-row"><span>Ordinateurs (Windows PC / Mac)</span><strong>7%</strong></div>
                                 </div>
                             </div>
 
-                            <!-- Browsers & OS -->
+                            <!-- Top Wilayas & Cities Traffic -->
                             <div class="analytics-col-card">
-                                <h5 class="analytics-subtitle"><i class="fa-solid fa-compass text-purple"></i> <span data-i18n="lblBrowsers">Navigateurs & Systèmes</span></h5>
+                                <h5 class="analytics-subtitle"><i class="fa-solid fa-map-location-dot text-amber"></i> <span data-i18n="lblTopCities">Villes & Wilayas Principales</span></h5>
+                                <div class="analytics-list" id="citiesList">
+                                    <div class="analytics-row"><span>16 - Alger (العاصمة)</span><strong>32%</strong></div>
+                                    <div class="analytics-row"><span>31 - Oran (وهران)</span><strong>16%</strong></div>
+                                    <div class="analytics-row"><span>25 - Constantine (قسنطينة)</span><strong>11%</strong></div>
+                                    <div class="analytics-row"><span>19 - Sétif & 09 - Blida</span><strong>17%</strong></div>
+                                </div>
+                            </div>
+
+                            <!-- Browsers & Network -->
+                            <div class="analytics-col-card">
+                                <h5 class="analytics-subtitle"><i class="fa-solid fa-compass text-purple"></i> <span data-i18n="lblBrowsers">Navigateurs & Réseau Edge</span></h5>
                                 <div class="analytics-list" id="browsersList">
-                                    <div class="analytics-row"><span>Chrome Mobile (Android)</span><strong>56%</strong></div>
-                                    <div class="analytics-row"><span>Navigateur In-App Facebook</span><strong>26%</strong></div>
-                                    <div class="analytics-row"><span>Safari Mobile (iPhone)</span><strong>12%</strong></div>
-                                    <div class="analytics-row"><span>Autres</span><strong>6%</strong></div>
+                                    <div class="analytics-row"><span>Chrome Mobile DZ</span><strong>54%</strong></div>
+                                    <div class="analytics-row"><span>Facebook In-App Browser</span><strong>28%</strong></div>
+                                    <div class="analytics-row"><span>Safari Mobile (iOS)</span><strong>11%</strong></div>
+                                    <div class="analytics-row"><span>TikTok In-App & Autres</span><strong>7%</strong></div>
                                 </div>
                             </div>
                         </div>

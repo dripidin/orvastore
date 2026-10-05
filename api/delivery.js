@@ -454,49 +454,16 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ── 6. Visitor & Device Analytics ──────────────────────────────────────
+        // ── 6. Website Analytics & Vercel Telemetry ───────────────────────────
         if (action === 'analytics') {
             const { getAllOrdersFromDb } = require('../lib/db');
+            const { getAggregatedWebsiteAnalytics } = require('../lib/vercelAnalytics');
             const orders = await getAllOrdersFromDb();
-            const totalOrders = orders.length;
+            const analyticsData = await getAggregatedWebsiteAnalytics(orders);
 
             return res.status(200).json({
                 success: true,
-                overview: {
-                    totalVisitors: 1240 + totalOrders * 45,
-                    pageViews: 3820 + totalOrders * 110,
-                    conversionRate: ((totalOrders / Math.max(1240 + totalOrders * 45, 1)) * 100).toFixed(1) + '%',
-                    bounceRate: '34.2%'
-                },
-                referrers: [
-                    { name: 'Facebook Ads / Instagram', share: '68%', count: Math.round((1240 + totalOrders * 45) * 0.68) },
-                    { name: 'TikTok Ads DZ', share: '21%', count: Math.round((1240 + totalOrders * 45) * 0.21) },
-                    { name: 'Direct Traffic (Link in Bio)', share: '7%', count: Math.round((1240 + totalOrders * 45) * 0.07) },
-                    { name: 'Google Search DZ', share: '4%', count: Math.round((1240 + totalOrders * 45) * 0.04) }
-                ],
-                devices: [
-                    { name: 'Mobile (Smartphones)', share: '89%' },
-                    { name: 'Desktop (PC / Mac)', share: '9%' },
-                    { name: 'Tablet (iPad / Android)', share: '2%' }
-                ],
-                browsers: [
-                    { name: 'Chrome Mobile', share: '56%' },
-                    { name: 'Facebook In-App Browser', share: '26%' },
-                    { name: 'Safari iOS', share: '12%' },
-                    { name: 'TikTok In-App Browser', share: '4%' },
-                    { name: 'Firefox / Edge', share: '2%' }
-                ],
-                operatingSystems: [
-                    { name: 'Android OS', share: '81%' },
-                    { name: 'iOS (iPhone)', share: '12%' },
-                    { name: 'Windows 10/11', share: '6%' },
-                    { name: 'macOS / Other', share: '1%' }
-                ],
-                metaCAPI: {
-                    pixelId: process.env.META_PIXEL_ID || '1617383883230571',
-                    status: 'ACTIVE_TRANSMITTING',
-                    lastEvent: new Date().toISOString()
-                }
+                ...analyticsData
             });
         }
 

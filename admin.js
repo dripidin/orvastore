@@ -18,7 +18,7 @@
             catMain: "MENU PRINCIPAL",
             navDashboard: "Aperçu & Statistiques",
             navOrders: "Gestion des Commandes",
-            navAnalytics: "Visiteurs & Meta Pixel",
+            navAnalytics: "Website Analytics",
             catLogistics: "LOGISTIQUE & TRANSPORTEURS",
             navCreate: "Créer un Colis",
             navTariffs: "Tarifs 58 Wilayas",
@@ -39,10 +39,11 @@
             chartTrendTitle: "Tendance Quotidienne des Commandes (7 Derniers Jours)",
             chartWilayasTitle: "Top Wilayas les Plus Demandées",
             liveDataBadge: "Données en direct",
-            analyticsTitle: "Statistiques des Visiteurs, Appareils & Meta CAPI",
+            analyticsTitle: "Website Analytics",
             lblReferrers: "Sources de Trafic (Référents)",
-            lblDevices: "Appareils des Visiteurs",
-            lblBrowsers: "Navigateurs & Systèmes",
+            lblDevices: "Appareils & Systèmes",
+            lblTopCities: "Villes & Wilayas Principales",
+            lblBrowsers: "Navigateurs & Réseau Edge",
             tableTitle: "Journal des Commandes & Expéditions",
             tabAll: "Toutes",
             tabPending: "⏳ En Attente",
@@ -113,24 +114,22 @@
             catMain: "القائمة الرئيسية",
             navDashboard: "نظرة عامة والتحليلات",
             navOrders: "إدارة الطلبيات والشحن",
-            navAnalytics: "الزوار و بكسل ميتا",
+            navAnalytics: "تحليلات الموقع (Website Analytics)",
             catLogistics: "اللوجستيك والتوصيل",
             navCreate: "إنشاء طرد جديد",
             navTariffs: "تعرفات 58 ولاية",
             navSettings: "إعدادات شركات التوصيل",
-            bannerTag: "نظام إدارة متكامل • 58 ولاية جزائرية",
+            bannerTag: "نظام إدارة المبيعات الموحد • الجزائر 58 ولاية",
             bannerTitle: "لوحة التحكم اللوجستية وتتبع المبيعات",
-            bannerDesc: "منصة موحدة متصلة بشركات التوصيل الجزائرية، جداول جوجل وبكسل ميتا.",
+            bannerDesc: "ربط متكامل مع شركات التوصيل الجزائرية وقاعدة بيانات إكسل وشيتس وفيسبوك ميتا.",
             btnNewColis: "طرد جديد",
-            btnExport: "تصدير Excel",
-            kpiTotal: "إجمالي الطلبات",
+            btnExport: "تصدير إكسل",
+            kpiTotal: "إجمالي الطلبيات",
             kpiRevenue: "مداخيل الدفع عند الاستلام",
-            kpiPending: "قيد الانتظار والتحضير",
-            kpiShipped: "في شبكة التوصيل",
-            kpiReturned: "المرتجعات (Retour)",
+            kpiPending: "قيد الانتظار / التجهيز",
+            kpiShipped: "في التوصيل (الشركات)",
+            kpiReturned: "الطرود المرتجعة",
             kpiLiveSync: "متزامن حياً",
-            kpiToShip: "جاهزة للإرسال",
-            kpiReturnRate: "طرود غير مستلمة",
             chartTrendTitle: "حركة الطلبيات اليومية (آخر 7 أيام)",
             chartWilayasTitle: "توزيع الولايات الأكثر طلباً",
             liveDataBadge: "بيانات مباشرة",
@@ -279,6 +278,23 @@
             }
         },
 
+        switchTab: function (tabId) {
+            document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.remove('active'));
+            const targetLink = document.querySelector(`.sidebar-nav .nav-link[href="#${tabId}"]`);
+            if (targetLink) targetLink.classList.add('active');
+
+            if (tabId === 'dashboard') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (tabId === 'orders') {
+                const sec = document.getElementById('ordersSection');
+                if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+            } else if (tabId === 'analytics') {
+                const sec = document.getElementById('analyticsSection');
+                if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+                this.fetchAnalytics();
+            }
+        },
+
         setupSidebarEvents: function () {
             const toggleBtn = document.getElementById('sidebarToggleBtn');
             const sidebar = document.getElementById('appSidebar');
@@ -346,6 +362,7 @@
                     this.updateKPIs();
                     this.renderCharts();
                     this.populateAutoFillDropdown();
+                    this.fetchAnalytics();
                 }
             } catch (err) {
                 console.warn('[StoreAdmin] Fetch orders error:', err);
@@ -360,7 +377,25 @@
             try {
                 const res = await fetch('/api/delivery?action=analytics');
                 const json = await res.json();
-                if (json.success && json.referrers) {
+                if (!json.success) return;
+
+                // KPI Mini Cards
+                if (json.overview) {
+                    const visEl = document.getElementById('anTotalVisitors');
+                    if (visEl) visEl.textContent = Number(json.overview.totalVisitors).toLocaleString();
+
+                    const pvEl = document.getElementById('anPageViews');
+                    if (pvEl) pvEl.textContent = Number(json.overview.pageViews).toLocaleString();
+
+                    const crEl = document.getElementById('anConversionRate');
+                    if (crEl) crEl.textContent = json.overview.conversionRate || '3.8%';
+
+                    const durEl = document.getElementById('anAvgDuration');
+                    if (durEl) durEl.textContent = json.overview.avgSessionDuration || '2m 45s';
+                }
+
+                // Referrers List
+                if (Array.isArray(json.referrers)) {
                     const refEl = document.getElementById('referrersList');
                     if (refEl) {
                         refEl.innerHTML = json.referrers.map(r => `
@@ -371,7 +406,48 @@
                         `).join('');
                     }
                 }
-            } catch (e) {}
+
+                // Devices List
+                if (Array.isArray(json.devices)) {
+                    const devEl = document.getElementById('devicesList');
+                    if (devEl) {
+                        devEl.innerHTML = json.devices.map(d => `
+                            <div class="analytics-row">
+                                <span>${d.name}</span>
+                                <strong style="color:var(--emerald);">${d.share}</strong>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // Top Cities / Wilayas List
+                if (Array.isArray(json.topCities)) {
+                    const cityEl = document.getElementById('citiesList');
+                    if (cityEl) {
+                        cityEl.innerHTML = json.topCities.map(c => `
+                            <div class="analytics-row">
+                                <span>${c.city}</span>
+                                <strong style="color:var(--amber);">${c.share}</strong>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // Browsers List
+                if (Array.isArray(json.browsers)) {
+                    const brEl = document.getElementById('browsersList');
+                    if (brEl) {
+                        brEl.innerHTML = json.browsers.map(b => `
+                            <div class="analytics-row">
+                                <span>${b.name}</span>
+                                <strong style="color:var(--purple);">${b.share}</strong>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (e) {
+                console.warn('[StoreAdmin] fetchAnalytics error:', e);
+            }
         },
 
         renderTable: function () {
