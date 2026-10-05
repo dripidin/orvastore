@@ -114,8 +114,11 @@
             defOpt.disabled = true;
             defOpt.selected = true;
 
-            const communesData = window.algeriaCommunes || {};
-            const list = communesData[wilayaId];
+            const communesData = (typeof window !== 'undefined' && window.algeriaCommunes) 
+                ? window.algeriaCommunes 
+                : (typeof algeriaCommunes !== 'undefined' ? algeriaCommunes : {});
+
+            const list = communesData[wilayaId] || communesData[String(wilayaId)] || [];
 
             if (!wilayaId || !list || !Array.isArray(list) || list.length === 0) {
                 defOpt.textContent = '-- اختر البلدية / الدائرة --';
@@ -123,7 +126,7 @@
                 return;
             }
 
-            defOpt.textContent = '-- اختر البلدية / الدائرة --';
+            defOpt.textContent = '-- اختر البلدية / الدائرة (متوفرة للتوصيل) --';
             communeSelect.appendChild(defOpt);
 
             list.forEach(cName => {

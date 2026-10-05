@@ -1,442 +1,527 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>حقيبة Yamaha Sac à Dos + Sacoche مع هدية AirPods وساعة يد — ORVA Store</title>
-    <meta name="description"
-        content="عرض حصري: حقيبة الظهر ياماها + الساكوش مع AirPods وساعة يد مجاناً بـ 4200 د.ج فقط. توصيل لجميع الولايات.">
-
-    <!-- Facebook Domain Verification -->
-    <meta name="facebook-domain-verification" content="it6cubrjay8ljmllp4qddcd2u8v4wy" />
-
-    <!-- Google Fonts -->
+    <title>ORVA STORE | متجر أورفا الرسمي في الجزائر - العروض الحصرية</title>
+    <meta name="description" content="مرحباً بكم في متجر أورفا الرسمي (ORVA STORE). اكتشف أقوى باقات الأدوات والصيانة الاحترافية بأفضل الأسعار مع التوصيل السريع لـ 58 ولاية والدفع عند الاستلام.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #FFFFFF;
+            --bg-soft: #FAF6E8;
+            --bg-card: #FFFFFF;
+            --primary: #9C7A1E;
+            --primary-dark: #7A5F14;
+            --primary-light: #F4E8B8;
+            --text-dark: #3A302A;
+            --text-muted: #6B5E55;
+            --border-soft: #EBDCB9;
+            --accent-green: #2E7D32;
+            --shadow-soft: 0 10px 30px rgba(58, 48, 42, 0.08);
+            --shadow-hover: 0 16px 40px rgba(156, 122, 30, 0.16);
+            --radius-lg: 20px;
+            --radius-md: 14px;
+        }
 
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+        }
 
-    <!-- Stylesheet -->
-    <link rel="stylesheet" href="styles.css">
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
 
-    <!-- Meta Pixel Code -->
-    <script>
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '1617383883230571');
-    fbq('track', 'PageView');
-    </script>
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=1617383883230571&ev=PageView&noscript=1"
-    /></noscript>
-    <!-- End Meta Pixel Code -->
+        /* Top Announcement Bar */
+        .top-bar {
+            background: linear-gradient(90deg, #7A5F14, #9C7A1E);
+            color: #FFFFFF;
+            text-align: center;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
 
-    <!-- Vercel Insights -->
-    <script defer src="/_vercel/insights/script.js"></script>
+        /* Header */
+        header {
+            background: #FFFFFF;
+            border-bottom: 1px solid var(--border-soft);
+            padding: 18px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .brand-logo {
+            font-size: 26px;
+            font-weight: 900;
+            color: var(--text-dark);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-logo span {
+            color: var(--primary);
+        }
+
+        .header-badge {
+            background: var(--bg-soft);
+            color: var(--primary-dark);
+            border: 1px solid var(--border-soft);
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: radial-gradient(circle at 50% 0%, #FDF9EC 0%, #FFFFFF 100%);
+            padding: 50px 20px 40px;
+            text-align: center;
+        }
+
+        .hero-container {
+            max-width: 850px;
+            margin: 0 auto;
+        }
+
+        .hero-tag {
+            display: inline-block;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 16px;
+        }
+
+        .hero h1 {
+            font-size: 38px;
+            font-weight: 900;
+            color: var(--text-dark);
+            line-height: 1.3;
+            margin-bottom: 16px;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 650px;
+            margin: 0 auto 30px;
+        }
+
+        /* Featured Packs Grid */
+        .packs-section {
+            max-width: 1100px;
+            margin: 10px auto 60px;
+            padding: 0 20px;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 900;
+            margin-bottom: 35px;
+            color: var(--text-dark);
+        }
+
+        .packs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+            align-items: stretch;
+        }
+
+        /* Pack Card */
+        .pack-card {
+            background: var(--bg-card);
+            border: 2px solid var(--border-soft);
+            border-radius: var(--radius-lg);
+            padding: 28px 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: var(--shadow-soft);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+            position: relative;
+        }
+
+        .pack-card:hover {
+            transform: translateY(-6px);
+            box-shadow: var(--shadow-hover);
+            border-color: var(--primary);
+        }
+
+        .pack-card.popular {
+            border-color: var(--primary);
+            background: linear-gradient(180deg, #FAF4DC 0%, #FFFFFF 30%);
+        }
+
+        .popular-badge {
+            position: absolute;
+            top: -14px;
+            right: 24px;
+            background: var(--primary);
+            color: #FFFFFF;
+            font-size: 13px;
+            font-weight: 800;
+            padding: 4px 16px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(156, 122, 30, 0.3);
+        }
+
+        .pack-image-wrap {
+            width: 100%;
+            height: 250px;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background: #FDF9EE;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-soft);
+        }
+
+        .pack-image-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease;
+        }
+
+        .pack-card:hover .pack-image-wrap img {
+            transform: scale(1.04);
+        }
+
+        .pack-title {
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--text-dark);
+            margin-bottom: 8px;
+        }
+
+        .pack-subtitle {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 18px;
+        }
+
+        .pack-features {
+            list-style: none;
+            margin-bottom: 24px;
+            flex-grow: 1;
+        }
+
+        .pack-features li {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-dark);
+            padding: 8px 0;
+            border-bottom: 1px dashed #EDE5D5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pack-features li:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            color: var(--primary);
+            font-weight: 900;
+            font-size: 17px;
+        }
+
+        .price-box {
+            background: var(--bg-soft);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-soft);
+        }
+
+        .price-current {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--text-dark);
+        }
+
+        .price-current span {
+            font-size: 16px;
+            color: var(--primary-dark);
+        }
+
+        .price-old {
+            font-size: 16px;
+            color: #9E8E81;
+            text-decoration: line-through;
+        }
+
+        .btn-order {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, #A88323, #856616);
+            color: #FFFFFF;
+            text-align: center;
+            text-decoration: none;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            font-size: 18px;
+            font-weight: 800;
+            box-shadow: 0 6px 20px rgba(156, 122, 30, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-order:hover {
+            background: linear-gradient(135deg, #B58F28, #917018);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(156, 122, 30, 0.4);
+        }
+
+        /* Trust Strip */
+        .trust-strip {
+            background: #FDF9EC;
+            border-top: 1px solid var(--border-soft);
+            border-bottom: 1px solid var(--border-soft);
+            padding: 40px 20px;
+            margin-bottom: 50px;
+        }
+
+        .trust-grid {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 25px;
+            text-align: center;
+        }
+
+        .trust-item {
+            padding: 15px;
+        }
+
+        .trust-item-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .trust-item-title {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 4px;
+        }
+
+        .trust-item-desc {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Footer */
+        footer {
+            background: #FFFFFF;
+            padding: 30px 20px;
+            text-align: center;
+            border-top: 1px solid var(--border-soft);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        footer p {
+            margin-bottom: 10px;
+        }
+
+        .admin-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 13px;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .admin-link:hover {
+            opacity: 1;
+            color: var(--primary);
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 28px;
+            }
+            .hero p {
+                font-size: 16px;
+            }
+            .packs-grid {
+                grid-template-columns: 1fr;
+            }
+            .price-current {
+                font-size: 24px;
+            }
+        }
+    </style>
 </head>
-
 <body>
 
-    <!-- Header Navigation -->
-    <header class="site-header" id="header">
-        <div class="header-container">
-            <!-- Brand Logo -->
-            <a href="#" class="brand-logo">
-                <div class="logo-symbol">O</div>
-                <span class="logo-text">ORVA <span class="accent">STORE</span></span>
-            </a>
+    <!-- Top Notice Bar -->
+    <div class="top-bar">
+        ⚡ تخفيضات حصرية لفترة محدودة — توصيل سريع لجميع الولايات (58 ولاية) والدفع بعد استلام الطلب والمعاينة!
+    </div>
 
-            <!-- Header Action CTA -->
-            <div class="header-actions">
-                <a href="#product-section" class="header-cta-btn">
-                    <span>اطلب الآن</span>
-                    <i class="fa-solid fa-cart-shopping"></i>
-                </a>
-            </div>
+    <!-- Header -->
+    <header>
+        <a href="/" class="brand-logo">
+            <span>ORVA</span> STORE
+        </a>
+        <div class="header-badge">
+            🇩🇿 متجر رسمي معتمد
         </div>
     </header>
 
-    <!-- Main Section -->
-    <main>
-        <!-- Top Featured Promo Banner (using header.jpg) -->
-        <div class="top-featured-banner">
-            <div class="banner-inner">
-                <img src="images/header.jpg" alt="عرض ياماها الفاخر" class="banner-full-img">
-                <div class="banner-caption-overlay">
-                    <span class="banner-badge"><i class="fa-solid fa-fire"></i> العرض المتكامل والأكثر مبيعاً</span>
-                    <h2 class="banner-heading">حقيبة Yamaha Sac à Dos + Sacoche + AirPods + ساعة يد</h2>
-                    <span class="banner-price-tag">4200 د.ج فقط</span>
-                </div>
-            </div>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <span class="hero-tag">باقات الأدوات المتكاملة 2026</span>
+            <h1>كل ما تحتاجه للخدمة، الصيانة والمنزل في باقة واحدة</h1>
+            <p>اختر الباقة المناسبة لاحتياجاتك بأفضل سعر في السوق الجزائري، مع ضمان الجودة والدفع يداً بيد عند باب منزلك.</p>
         </div>
+    </section>
 
-        <!-- Hero Section -->
-        <section class="hero-section" id="hero">
-            <div class="hero-container">
-
-                <!-- Left Side: Content & Headline -->
-                <div class="hero-content">
-                    <div class="hero-badge">
-                        <span class="badge-dot"></span>
-                        <span>⚡ عرض حصري محدود — 4200 د.ج</span>
-                    </div>
-
-                    <h1 class="hero-title">
-                        حقيبة <span class="highlight">Yamaha Sac à Dos + Sacoche</span>
-                    </h1>
-
-                    <!-- Punchy Benefits List -->
-                    <div class="punchy-offer-box">
-                        <div class="offer-item">
-                            <i class="fa-solid fa-circle-check text-cyan"></i>
-                            <span><strong>حقيبة الظهر ياماها</strong> (مقاومة للماء والخدش)</span>
-                        </div>
-                        <div class="offer-item">
-                            <i class="fa-solid fa-circle-check text-cyan"></i>
-                            <span><strong>حقيبة صغيرة (Sacoche)</strong> متناسقة ومريحة</span>
-                        </div>
-                        <div class="offer-item gift-item">
-                            <i class="fa-solid fa-gift text-cyan"></i>
-                            <span><strong>هدية مجانية 1:</strong> سماعات AirPods لاسلكية</span>
-                        </div>
-                        <div class="offer-item gift-item">
-                            <i class="fa-solid fa-gift text-cyan"></i>
-                            <span><strong>هدية مجانية 2:</strong> ساعة يد رجالية أنيقة</span>
-                        </div>
-                    </div>
-
-                    <!-- Price Notice Banner -->
-                    <div class="price-banner-strip">
-                        <span class="strip-price">4200 د.ج</span>
-                        <span class="strip-note">(يشمل الحقائب + الهدايا | مصاريف التوصيل غير مدرجة وتُحسب حسب
-                            الولاية)</span>
-                    </div>
-
-                    <!-- CTA Actions -->
-                    <div class="hero-cta-box">
-                        <a href="#product-section" class="cta-button-main">
-                            <span>اشتري الآن — تأكيد الطلب</span>
-                            <i class="fa-solid fa-arrow-left"></i>
-                        </a>
-
-                        <div class="hero-delivery-notice">
-                            <i class="fa-solid fa-truck-fast"></i>
-                            <span>توصيل 24-48 ساعة لـ 58 ولاية — الدفع عند الاستلام والمعاينة 🇩🇿</span>
-                        </div>
-                    </div>
+    <!-- Packs Section -->
+    <section class="packs-section">
+        <h2 class="section-title">العروض الحصرية المتوفرة الآن</h2>
+        
+        <div class="packs-grid">
+            
+            <!-- Pack 1 -->
+            <div class="pack-card popular">
+                <div class="popular-badge">الأكثر طلباً 🔥</div>
+                <div class="pack-image-wrap">
+                    <img src="pack 1/image/4.webp" alt="Pack 1 Pro 4-in-1" loading="lazy">
                 </div>
-
-                <!-- Right Side: 1:1 Swipable Product Image Slider Box (Without header.jpg) -->
-                <div class="hero-visual">
-                    <div class="hero-image-frame-1to1" id="swipeSliderFrame">
-                        <div class="slider-counter" id="sliderCounter">1 / 10</div>
-
-                        <button type="button" class="slider-arrow prev-arrow" id="sliderPrevBtn"
-                            aria-label="الصورة السابقة">
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                        <button type="button" class="slider-arrow next-arrow" id="sliderNextBtn"
-                            aria-label="الصورة التالية">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
-
-                        <div class="swipe-container" id="swipeContainer">
-                            <img src="images/1.jpg" alt="عرض ياماها 1" class="hero-main-img-1to1 active" data-index="0">
-                            <img src="images/2.jpg" alt="عرض ياماها 2" class="hero-main-img-1to1" data-index="1">
-                            <img src="images/3.jpg" alt="عرض ياماها 3" class="hero-main-img-1to1" data-index="2">
-                            <img src="images/4.jpg" alt="عرض ياماها 4" class="hero-main-img-1to1" data-index="3">
-                            <img src="images/5.jpg" alt="عرض ياماها 5" class="hero-main-img-1to1" data-index="4">
-                            <img src="images/6.jpg" alt="حقيبة ياماها 6" class="hero-main-img-1to1" data-index="5">
-                            <img src="images/7.jpg" alt="حقيبة ياماها 7" class="hero-main-img-1to1" data-index="6">
-                            <img src="images/8.jpg" alt="حقيبة ياماها 8" class="hero-main-img-1to1" data-index="7">
-                            <img src="images/airepods.jpg" alt="هدية سماعات AirPods" class="hero-main-img-1to1"
-                                data-index="8">
-                            <img src="images/watch.jpg" alt="هدية ساعة يد" class="hero-main-img-1to1" data-index="9">
-                        </div>
-
-                        <div class="swipe-hint">
-                            <i class="fa-solid fa-hand-pointer"></i> اسحب للتقليب بين صور المنتج (10 صور)
-                        </div>
-                    </div>
-
-                    <!-- Gallery Thumbnails (10 Items) -->
-                    <div class="hero-thumbnails-grid" id="thumbsGrid">
-                        <div class="thumb-item active" data-index="0" title="صورة 1"><img src="images/1.jpg" alt="1">
-                        </div>
-                        <div class="thumb-item" data-index="1" title="صورة 2"><img src="images/2.jpg" alt="2"></div>
-                        <div class="thumb-item" data-index="2" title="صورة 3"><img src="images/3.jpg" alt="3"></div>
-                        <div class="thumb-item" data-index="3" title="صورة 4"><img src="images/4.jpg" alt="4"></div>
-                        <div class="thumb-item" data-index="4" title="صورة 5"><img src="images/5.jpg" alt="5"></div>
-                        <div class="thumb-item" data-index="5" title="صورة 6"><img src="images/6.jpg" alt="6"></div>
-                        <div class="thumb-item" data-index="6" title="صورة 7"><img src="images/7.jpg" alt="7"></div>
-                        <div class="thumb-item" data-index="7" title="صورة 8"><img src="images/8.jpg" alt="8"></div>
-                        <div class="thumb-item" data-index="8" title="AirPods"><img src="images/airepods.jpg"
-                                alt="AirPods"></div>
-                        <div class="thumb-item" data-index="9" title="ساعة يد"><img src="images/watch.jpg" alt="ساعة">
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </section>
-
-        <!-- DEDICATED FREE GIFTS SHOWCASE SECTION -->
-        <section class="gifts-showcase-section">
-            <div class="section-header">
-                <span class="section-tag">هدايا مجانية داخل طردك</span>
-                <h2 class="section-title">احصل على الهدايا التالية بـ 0 د.ج إضافي! 🎁</h2>
-                <div class="section-divider"></div>
-            </div>
-
-            <div class="gifts-grid">
-                <!-- Gift 1: AirPods -->
-                <div class="gift-card">
-                    <div class="gift-card-media">
-                        <span class="gift-free-badge">مجاناً 100%</span>
-                        <img src="images/airepods.jpg" alt="سماعات AirPods لاسلكية مجاناً">
-                    </div>
-                    <div class="gift-card-body">
-                        <h3 class="gift-card-title"><i class="fa-solid fa-headphones-simple text-cyan"></i> سماعات
-                            AirPods لاسلكية</h3>
-                        <p class="gift-card-desc">سماعات لاسلكية عالية النقاوة مع اقتران سريع، بطارية تدوم طويلاً وعبلة
-                            شحن مدمجة مجاناً مع حقيبتك.</p>
-                    </div>
-                </div>
-
-                <!-- Gift 2: Watch -->
-                <div class="gift-card">
-                    <div class="gift-card-media">
-                        <span class="gift-free-badge">مجاناً 100%</span>
-                        <img src="images/watch.jpg" alt="ساعة يد رجالية أنيقة مجاناً">
-                    </div>
-                    <div class="gift-card-body">
-                        <h3 class="gift-card-title"><i class="fa-solid fa-clock text-cyan"></i> ساعة يد رجالية فاخرة
-                        </h3>
-                        <p class="gift-card-desc">ساعة يد رياضية وعصرية مقاومة للمقومات اليومية بتصميم متناسق يكمل
-                            أناقتك مع الحقيبة.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Product Ordering Section with Dynamic Tariff Form -->
-        <section class="product-order-section" id="product-section">
-            <div class="order-wrapper">
-
-                <!-- Product Details Column -->
-                <div class="order-info-column">
-                    <h2 class="order-product-name">حقيبة الظهر Yamaha Sac à Dos + Sacoche</h2>
-
-                    <div class="order-price-row">
-                        <div class="price-current">4200 <small>د.ج</small></div>
-                        <div class="price-old">6500 د.ج</div>
-                        <div class="discount-pill">تخفيض 35%</div>
-                    </div>
-
-                    <div class="tariff-clarification-box">
-                        <i class="fa-solid fa-info-circle text-cyan"></i>
-                        <span>سعر <strong>4200 د.ج</strong> يشمل الحقيبتين + AirPods + الساعة. <strong>مصاريف التوصيل
-                                غير مدرجة</strong> وتُضاف تلقائياً حسب الولاية عند الاختيار.</span>
-                    </div>
-
-                    <ul class="benefits-checklist">
-                        <li><i class="fa-solid fa-check text-cyan"></i> <span>حقيبة الظهر Yamaha Sac à Dos
-                                الأصلية</span></li>
-                        <li><i class="fa-solid fa-check text-cyan"></i> <span>حقيبة صغيرة متناسقة (Sacoche)</span></li>
-                        <li><i class="fa-solid fa-gift text-cyan"></i> <span>هدية مجانية 1: سماعات AirPods
-                                لاسلكية</span></li>
-                        <li><i class="fa-solid fa-gift text-cyan"></i> <span>هدية مجانية 2: ساعة يد رجالية أنيقة</span>
-                        </li>
-                        <li><i class="fa-solid fa-shield-halved text-cyan"></i> <span>مقاومة للماء والخدش والاستعمال
-                                الشاق</span></li>
-                        <li><i class="fa-solid fa-truck-fast text-cyan"></i> <span>التوصيل متوفر لجميع 58 ولاية (24-48
-                                H)</span></li>
+                <div>
+                    <h3 class="pack-title">باك 1 (Pack Pro 4-in-1)</h3>
+                    <p class="pack-subtitle">4 أدوات أساسية لا غنى عنها للسيارة والمنزل</p>
+                    
+                    <ul class="pack-features">
+                        <li><span class="check-icon">✓</span> 🚗 منفاخ عجلات TOYOTA الأصلي فائق القوة</li>
+                        <li><span class="check-icon">✓</span> 🔧 علبة مفاتيح متكاملة 46 قطعة مع كلي كليكيك</li>
+                        <li><span class="check-icon">✓</span> 🪛 مفك مرن 11 قطعة للأماكن الضيقة</li>
+                        <li><span class="check-icon">✓</span> 🔩 طقم مفكات دقيقة 6 قطع للكهرباء والصيانة</li>
                     </ul>
                 </div>
 
-                <!-- Algerian Order Form Column -->
-                <div class="order-form-column">
-                    <div class="order-form-card">
-
-                        <div class="form-header">
-                            <h3 class="form-title">إستمارة الطلب السريع</h3>
-                            <p class="form-subtitle">أدخل معلوماتك وسنتصل بك لتأكيد التوصيل</p>
+                <div>
+                    <div class="price-box">
+                        <div>
+                            <div class="price-current">4,950 <span>د.ج</span></div>
+                            <div class="price-old">9,750 د.ج</div>
                         </div>
-
-                        <form id="orvaOrderForm" class="order-form" novalidate>
-
-                            <!-- Quantity Selector (Max 3) -->
-                            <div class="form-group quantity-group">
-                                <label class="input-label">الكمية المطلوبة (حتى 3 قطع):</label>
-                                <div class="quantity-selector">
-                                    <button type="button" class="qty-btn" id="qtyMinus" aria-label="إنقاص">-</button>
-                                    <input type="number" id="orderQty" class="qty-input" value="1" min="1" max="3"
-                                        readonly>
-                                    <button type="button" class="qty-btn" id="qtyPlus" aria-label="زيادة">+</button>
-                                </div>
-                            </div>
-
-                            <!-- Full Name -->
-                            <div class="form-group">
-                                <label for="fullName" class="input-label">الاسم الكامل <span
-                                        style="color:#FF3B3B;">*</span></label>
-                                <input type="text" id="fullName" class="custom-input" placeholder="الاسم واللقب"
-                                    required>
-                                <span class="error-msg" id="fullNameError">إدخال الاسم مطلوب</span>
-                            </div>
-
-                            <!-- Wilaya -->
-                            <div class="form-group">
-                                <label for="wilayaSelect" class="input-label">الولاية <span
-                                        style="color:#FF3B3B;">*</span></label>
-                                <select id="wilayaSelect" class="custom-select" required>
-                                    <option value="" disabled selected>-- اختر ولايتك (58 ولاية) --</option>
-                                </select>
-                                <span class="error-msg" id="wilayaError">اختيار الولاية مطلوب</span>
-                            </div>
-
-                            <!-- Commune / City (البلدية) -->
-                            <div class="form-group" id="communeGroup">
-                                <label for="communeSelect" class="input-label">البلدية / الدائرة <span
-                                        style="color:#FF3B3B;">*</span></label>
-                                <select id="communeSelect" class="custom-select" required disabled>
-                                    <option value="" disabled selected>-- اختر البلدية (اختر الولاية أولاً) --</option>
-                                </select>
-                                <span class="error-msg" id="communeError">اختيار البلدية مطلوب</span>
-                            </div>
-
-                            <!-- Delivery Method Option Choice -->
-                            <div class="form-group" id="deliveryTypeGroup">
-                                <label class="input-label"><i class="fa-solid fa-truck-ramp-box"></i> خيار مكان التوصيل <span style="color:#FF3B3B;">*</span></label>
-                                <div class="delivery-options-grid">
-                                    <label class="delivery-option-card active" id="cardHome">
-                                        <input type="radio" name="deliveryType" value="domicile" checked>
-                                        <div class="delivery-card-content">
-                                            <i class="fa-solid fa-house-chimney"></i>
-                                            <div class="delivery-card-text">
-                                                <span class="delivery-title">توصيل للمنزل (Domicile)</span>
-                                                <span class="delivery-sub" id="homePriceSub">توصيل حتى باب البيت</span>
-                                            </div>
-                                        </div>
-                                    </label>
-                                    <label class="delivery-option-card" id="cardStopDesk">
-                                        <input type="radio" name="deliveryType" value="stopdesk">
-                                        <div class="delivery-card-content">
-                                            <i class="fa-solid fa-building-flag"></i>
-                                            <div class="delivery-card-text">
-                                                <span class="delivery-title">توصيل للمكتب (Stop Desk)</span>
-                                                <span class="delivery-sub" id="stopdeskPriceSub">الاستلام من المكتب</span>
-                                            </div>
-                                        </div>
-                                    </label>
-                                </div>
-                                <div class="delivery-notice-msg" id="deliveryNotice" style="display: none;"></div>
-                            </div>
-
-                            <!-- Phone Number -->
-                            <div class="form-group">
-                                <label for="phoneNumber" class="input-label">رقم الهاتف <span
-                                        style="color:#FF3B3B;">*</span></label>
-                                <input type="tel" id="phoneNumber" class="custom-input"
-                                    placeholder="06 / 07 / 05 XX XX XX XX" dir="ltr" style="text-align: right;"
-                                    required>
-                                <span class="error-msg" id="phoneError">رقم هاتف جزائري غير صحيح</span>
-                            </div>
-
-                            <!-- Live Price Summary Calculator -->
-                            <div class="order-price-summary">
-                                <div class="summary-row">
-                                    <span>سعر العرض (الحقائب + الهدايا):</span>
-                                    <span id="summaryProductPrice" class="summary-val">4200 د.ج</span>
-                                </div>
-                                <div class="summary-row">
-                                    <span>التوصيل (<span class="delivery-time-badge" id="summaryDeliveryTime">24 - 48 H</span>):</span>
-                                    <span id="summaryShippingPrice" class="summary-val">اختر الولاية</span>
-                                </div>
-                                <div class="summary-divider"></div>
-                                <div class="summary-row total-row">
-                                    <span>المبلغ الصافي عند الاستلام:</span>
-                                    <span id="summaryTotalPrice" class="total-amount">4200 د.ج</span>
-                                </div>
-                            </div>
-
-                            <!-- Submit CTA Button -->
-                            <button type="submit" class="submit-order-btn" id="submitBtn">
-                                <span>تأكيد الطلب الآن</span>
-                                <i class="fa-solid fa-check-circle"></i>
-                            </button>
-
-                        </form>
-
+                        <div style="background: #E8F5E9; color: #2E7D32; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 8px;">
+                            خصم 50%
+                        </div>
                     </div>
-                </div>
 
-            </div>
-        </section>
-    </main>
-
-    <!-- Order Success Receipt Modal -->
-    <div class="modal-overlay" id="successModal">
-        <div class="modal-card">
-            <h3 class="modal-title">تم تسجيل طلبك بنجاح! 🎉</h3>
-            <p class="modal-desc">شكراً لثقتك بمتجر ORVA. سيتصل بك فريقنا قريباً لتأكيد العنوان والتوصيل.</p>
-            <div class="modal-order-details" id="modalOrderSummary"></div>
-            <button class="modal-close-btn" id="closeModalBtn">تم، شكراً لك</button>
-        </div>
-    </div>
-
-    <!-- Contact Us Modal -->
-    <div class="modal-overlay" id="contactModal">
-        <div class="modal-card">
-            <button class="modal-close-icon" id="closeContactBtn"><i class="fa-solid fa-xmark"></i></button>
-            <h3 class="modal-title">اتصل بنا — ORVA STORE</h3>
-            <div style="display:flex; flex-direction:column; gap:14px; text-align:right; margin:20px 0;">
-                <div><strong>رقم الهاتف والواتساب:</strong>
-                    <p dir="ltr" style="margin-top:4px;"><a href="tel:0798282495" style="color:#00D2FF;">0798 28 24 95</a></p>
-                </div>
-                <div><strong>واتساب المباشر:</strong>
-                    <p dir="ltr" style="margin-top:4px;"><a href="https://wa.me/213798282495" target="_blank"
-                            rel="noopener noreferrer"
-                            style="background:#0052FF; color:#fff; padding:6px 14px; font-weight:800; text-decoration:none;">0798 28 24 95 <i class="fa-solid fa-arrow-up-right-from-square"></i></a></p>
+                    <a href="/pack1.html" class="btn-order">
+                        اطلب باك 1 الآن (4,950 د.ج) ←
+                    </a>
                 </div>
             </div>
-            <button class="modal-close-btn" id="closeContactModalBtn">إغلاق النافذة</button>
+
+            <!-- Pack 2 -->
+            <div class="pack-card">
+                <div class="pack-image-wrap">
+                    <img src="pack 2/image/6.webp" alt="Pack Elite 5-in-1" loading="lazy">
+                </div>
+                <div>
+                    <h3 class="pack-title">باك 2 (Pack Elite 5-in-1)</h3>
+                    <p class="pack-subtitle">العتاد الاحترافي الشامل للورشة، الأشغال وغسيل السيارات</p>
+                    
+                    <ul class="pack-features">
+                        <li><span class="check-icon">✓</span> ⚡ مثقاب CROWN 20V ببطاريتين 2.0Ah + 29 ملحق</li>
+                        <li><span class="check-icon">✓</span> 💦 مضخة ماء نفاثة بدون سلك عالية الضغط</li>
+                        <li><span class="check-icon">✓</span> 🔧 علبة مفاتيح ميكانيكية 46 قطعة متينة</li>
+                        <li><span class="check-icon">✓</span> 🪛 مفك براغي مرن 11 قطعة للأشغال الدقيقة</li>
+                        <li><span class="check-icon">✓</span> 🧤 قفازات عمل GILAN الواقية عالية التحمل</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <div class="price-box">
+                        <div>
+                            <div class="price-current">12,950 <span>د.ج</span></div>
+                            <div class="price-old">21,250 د.ج</div>
+                        </div>
+                        <div style="background: #E8F5E9; color: #2E7D32; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 8px;">
+                            توفير 8,300 د.ج
+                        </div>
+                    </div>
+
+                    <a href="/pack2.html" class="btn-order">
+                        اطلب باك 2 الآن (12,950 د.ج) ←
+                    </a>
+                </div>
+            </div>
+
         </div>
-    </div>
+    </section>
 
-    <!-- Floating WhatsApp Action Button -->
-    <a href="https://wa.me/213798282495" target="_blank" rel="noopener noreferrer" class="floating-whatsapp-btn"
-        aria-label="تواصل عبر الواتساب">
-        <i class="fa-brands fa-whatsapp"></i>
-        <span class="floating-tooltip">تحدث معنا عبر الواتساب 0798282495</span>
-    </a>
-
-    <!-- Sticky Mobile CTA Bar -->
-    <div class="sticky-mobile-bar" id="stickyMobileBar">
-        <div class="sticky-info">
-            <span class="sticky-title">Yamaha Sac + Sacoche + الهدايا</span>
-            <span class="sticky-price">4200 د.ج</span>
+    <!-- Trust Strip -->
+    <section class="trust-strip">
+        <div class="trust-grid">
+            <div class="trust-item">
+                <div class="trust-item-icon">🚚</div>
+                <div class="trust-item-title">توصيل لـ 58 ولاية</div>
+                <div class="trust-item-desc">توصيل سريع حتى باب دارك خلال 24 - 48 ساعة</div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-item-icon">💵</div>
+                <div class="trust-item-title">الدفع عند الاستلام</div>
+                <div class="trust-item-desc">عاينة السلعة وتأكد منها قبل أن تدفع أي دينار</div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-item-icon">🛡️</div>
+                <div class="trust-item-title">ضمان الجودة</div>
+                <div class="trust-item-desc">منتجات مجربة وأصلية مع خدمة ما بعد البيع</div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-item-icon">📞</div>
+                <div class="trust-item-title">تأكيد سريع بالهاتف</div>
+                <div class="trust-item-desc">يتصل بك فريقنا لتأكيد طلبيتك والإجابة عن استفساراتك</div>
+            </div>
         </div>
-        <a href="#product-section" class="sticky-btn">
-            <span>طلب الآن</span>
-            <i class="fa-solid fa-cart-shopping"></i>
-        </a>
-    </div>
+    </section>
 
-    <!-- JavaScript Files -->
-    <script src="algeria-communes.js"></script>
-    <script src="script.js"></script>
+    <!-- Footer -->
+    <footer>
+        <p>© 2026 <strong>ORVA STORE</strong>. جميع الحقوق محفوظة.</p>
+        <p>التجارة الإلكترونية الموثوقة في الجزائر — خدمة ممتازة وسرعة في التوصيل.</p>
+        <p style="margin-top: 15px;">
+            <a href="/admin.html" class="admin-link">لوحة التحكم (الإدارة)</a>
+        </p>
+    </footer>
+
 </body>
-
 </html>

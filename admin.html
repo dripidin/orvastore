@@ -18,7 +18,33 @@
 </head>
 <body class="light-theme">
 
-    <div class="app-layout-wrapper">
+    <!-- ===================================================================== -->
+    <!-- 🔐 PASSWORD AUTHENTICATION GATE                                       -->
+    <!-- ===================================================================== -->
+    <div id="adminAuthOverlay" class="admin-auth-overlay">
+        <div class="admin-auth-card">
+            <div class="auth-icon-wrap">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <h2>ORVA STORE</h2>
+            <p>لوحة التحكم والإدارة — يرجى إدخال كلمة السر للمتابعة</p>
+            <form onsubmit="storeAdmin.handleAuthSubmit(event)">
+                <div class="auth-input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="adminAuthPassword" placeholder="أدخل كلمة المرور..." autocomplete="current-password" required>
+                </div>
+                <div id="adminAuthError" class="auth-error-msg" style="display:none;"></div>
+                <button type="submit" class="auth-btn-submit">
+                    <span>تسجيل الدخول</span> <i class="fa-solid fa-arrow-left"></i>
+                </button>
+            </form>
+            <div class="auth-footer-note">
+                <small>كلمة السر الافتراضية: <code>orva2026</code></small>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout-wrapper" id="appLayoutWrapper">
         <!-- ===================================================================== -->
         <!-- TOP NAVBAR                                                            -->
         <!-- ===================================================================== -->
@@ -35,6 +61,19 @@
                         <span class="brand-main">ORVA<span class="brand-highlight">STORE</span></span>
                         <span class="brand-sub" data-i18n="brandSub">Tableau de bord</span>
                     </div>
+                </a>
+            </div>
+
+            <!-- Quick Store Pages Navigation -->
+            <div class="store-quick-nav">
+                <a href="/" target="_blank" class="store-nav-pill" title="زيارة المتجر الرئيسي">
+                    <i class="fa-solid fa-house"></i> <span>المتجر</span>
+                </a>
+                <a href="/pack1.html" target="_blank" class="store-nav-pill" title="زيارة صفحة باك 1">
+                    <i class="fa-solid fa-box-open"></i> <span>باك 1 (4950 دج)</span>
+                </a>
+                <a href="/pack2.html" target="_blank" class="store-nav-pill" title="زيارة صفحة باك 2">
+                    <i class="fa-solid fa-bolt"></i> <span>باك 2 (12950 دج)</span>
                 </a>
             </div>
 
@@ -103,6 +142,13 @@
                                 <span class="user-role">Super Admin</span>
                             </div>
                         </div>
+                    </li>
+
+                    <!-- Logout Button -->
+                    <li class="action-item">
+                        <button class="icon-circle-btn text-rose" onclick="storeAdmin.logout()" title="تسجيل الخروج (Déconnexion)">
+                            <i class="fa-solid fa-power-off"></i>
+                        </button>
                     </li>
                 </ul>
             </div>
@@ -337,10 +383,17 @@
                     </div>
                 </section>
 
+                <!-- Mobile Concise View Toggle Bar -->
+                <div class="mobile-charts-toggle-bar hide-on-lg" style="margin-bottom: 16px;">
+                    <button type="button" class="app-btn app-btn-outline w-100" id="toggleChartsBtn" onclick="storeAdmin.toggleMobileCharts()">
+                        <i class="fa-solid fa-chart-pie"></i> <span id="toggleChartsBtnText">عرض الرسوم البيانية والتحليلات المتقدمة</span>
+                    </button>
+                </div>
+
                 <!-- ================================================================= -->
                 <!-- 2. ANALYTICS CHARTS SECTION                                       -->
                 <!-- ================================================================= -->
-                <section class="app-charts-row">
+                <section class="app-charts-row" id="appChartsRow">
                     <!-- Daily Orders Trend Chart -->
                     <div class="app-card chart-card-lg">
                         <div class="app-card-header">
@@ -525,6 +578,9 @@
                                 </tr>
                             </tbody>
                         </table>
+
+                        <!-- Mobile Touch-friendly Orders Cards Container -->
+                        <div id="mobileOrdersContainer" class="mobile-orders-container"></div>
                     </div>
                 </section>
             </main>
@@ -764,7 +820,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Clé / Jeton API (API Token) :</label>
-                        <input type="password" id="settingsApiToken" class="app-input" value="fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo">
+                        <input type="password" id="settingsApiToken" class="app-input" value="" placeholder="Définie par la variable d'environnement Vercel">
                     </div>
                 </div>
 

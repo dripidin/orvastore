@@ -1,6 +1,11 @@
 .vercel
 node_modules
+.env
 .env.local
 .env*.local
 scratch/
 *.log
+scripts/test-*
+scripts/find-pooler.js
+scripts/init-supabase-db.js
+scripts/apply-schema.js

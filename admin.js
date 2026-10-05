@@ -267,6 +267,7 @@
     // ── 3. Main Controller Object ────────────────────────────────────────────
     const storeAdmin = {
         init: function () {
+            this.initAuthCheck();
             this.setupSidebarEvents();
             this.populateWilayaDropdowns();
             this.fetchOrders();
@@ -276,6 +277,149 @@
             if (!autoSyncInterval) {
                 autoSyncInterval = setInterval(() => this.fetchOrders(false), 20000);
             }
+        },
+
+        initAuthCheck: function () {
+            const overlay = document.getElementById('adminAuthOverlay');
+            if (!overlay) return;
+            const isAuth = sessionStorage.getItem('orva_admin_logged') === 'true';
+            if (isAuth) {
+                overlay.style.display = 'none';
+            } else {
+                overlay.style.display = 'flex';
+                setTimeout(() => {
+                    document.getElementById('adminAuthPassword')?.focus();
+                }, 300);
+            }
+        },
+
+        handleAuthSubmit: function (e) {
+            if (e) e.preventDefault();
+            const input = document.getElementById('adminAuthPassword');
+            const err = document.getElementById('adminAuthError');
+            const pass = input ? input.value.trim() : '';
+
+            if (pass === 'orva2026' || pass === 'orva-admin-2026-secure') {
+                sessionStorage.setItem('orva_admin_logged', 'true');
+                const overlay = document.getElementById('adminAuthOverlay');
+                if (overlay) overlay.style.display = 'none';
+                if (err) err.style.display = 'none';
+            } else {
+                if (err) {
+                    err.textContent = currentLang === 'fr' 
+                        ? 'Mot de passe incorrect. Veuillez réessayer.' 
+                        : 'كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
+                    err.style.display = 'block';
+                }
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                }
+            }
+        },
+
+        logout: function () {
+            sessionStorage.removeItem('orva_admin_logged');
+            const overlay = document.getElementById('adminAuthOverlay');
+            if (overlay) overlay.style.display = 'flex';
+            const input = document.getElementById('adminAuthPassword');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        },
+
+        toggleMobileCharts: function () {
+            document.body.classList.toggle('show-charts');
+            const btnText = document.getElementById('toggleChartsBtnText');
+            if (btnText) {
+                const isShowing = document.body.classList.contains('show-charts');
+                btnText.textContent = isShowing 
+                    ? (currentLang === 'fr' ? 'Masquer les graphiques' : 'إخفاء الرسوم والتحليلات') 
+                    : (currentLang === 'fr' ? 'Afficher les graphiques et métriques' : 'عرض الرسوم البيانية والتحليلات المتقدمة');
+            }
+        },
+
+        renderMobileOrders: function (orders) {
+            const container = document.getElementById('mobileOrdersContainer');
+            if (!container) return;
+
+            if (!orders || orders.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center; padding: 30px; background:#fff; border-radius:16px; border:1px solid var(--border-color); color:var(--text-muted);">
+                        <i class="fa-solid fa-inbox fa-2x mb-2" style="opacity:0.3;"></i>
+                        <p>${currentLang === 'fr' ? 'Aucune commande trouvée' : 'لا توجد أي طلبيات حالياً'}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = orders.map(o => {
+                const rawPhone = String(o.phone || '').replace(/\D/g, '');
+                const waPhone = rawPhone.startsWith('0') ? '213' + rawPhone.slice(1) : (rawPhone.startsWith('213') ? rawPhone : '213' + rawPhone);
+                const waText = encodeURIComponent(`السلام عليكم ${o.fullName || 'أخي الكريم'}، نتصل بك من متجر ORVA Store لتأكيد طلبيتك رقم ${o.orderId} (${o.productName || 'باقة الأدوات'}).`);
+
+                let badgeClass = 'badge-pending';
+                let badgeLabel = currentLang === 'fr' ? 'En Attente' : 'قيد الانتظار';
+                if (o.status === 'shipped' || o.in_redex) {
+                    badgeClass = 'badge-shipped';
+                    badgeLabel = currentLang === 'fr' ? 'Expédié' : 'تم الشحن';
+                } else if (o.status === 'delivered') {
+                    badgeClass = 'badge-delivered';
+                    badgeLabel = currentLang === 'fr' ? 'Livré' : 'تم التسليم';
+                } else if (o.status === 'returned') {
+                    badgeClass = 'badge-returned';
+                    badgeLabel = currentLang === 'fr' ? 'Retourné' : 'مرتجع';
+                }
+
+                return `
+                    <div class="mobile-order-card">
+                        <div class="card-top-row">
+                            <span class="card-order-id">${o.orderId}</span>
+                            <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+                        </div>
+
+                        <div class="card-customer-row">
+                            <div>
+                                <div class="card-customer-name">${o.fullName || 'زبون'}</div>
+                                <div class="card-location"><i class="fa-solid fa-location-dot text-amber"></i> ${o.wilaya || 'غير محدد'} (${o.commune || ''})</div>
+                            </div>
+                            <span class="card-order-date">${(o.date || o.createdAt || '').slice(0, 10)}</span>
+                        </div>
+
+                        <div class="card-product-row">
+                            <span class="card-product-name"><i class="fa-solid fa-box text-primary"></i> ${o.productName || 'Pack 1'}</span>
+                            <span class="card-total-price">${o.grandTotal || (o.priceNum + ' DZD')}</span>
+                        </div>
+
+                        <div class="card-mobile-actions">
+                            <a href="tel:${o.phone}" class="btn-mobile-call">
+                                <i class="fa-solid fa-phone"></i> <span>اتصال (${o.phone})</span>
+                            </a>
+                            <a href="https://wa.me/${waPhone}?text=${waText}" target="_blank" class="btn-mobile-whatsapp">
+                                <i class="fa-brands fa-whatsapp"></i> <span>واتساب</span>
+                            </a>
+                        </div>
+
+                        <div class="card-secondary-actions">
+                            <div style="font-size:11px; color:var(--text-muted);">
+                                ${o.in_redex ? '🚚 ' + (o.redex_tracking_code || 'في التوصيل') : 'لم تشحن بعد'}
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <button type="button" class="btn-action-sm btn-act-ship" onclick="storeAdmin.openAutoFillShipModal('${o.orderId}')" title="شحن">
+                                    <i class="fa-solid fa-truck-fast"></i>
+                                </button>
+                                <button type="button" class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="طباعة">
+                                    <i class="fa-solid fa-print"></i>
+                                </button>
+                                <button type="button" class="btn-action-sm btn-act-del" onclick="storeAdmin.deleteColis('${o.orderId}')" title="حذف">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         },
 
         switchTab: function (tabId) {
@@ -503,6 +647,7 @@
                         </td>
                     </tr>
                 `;
+                this.renderMobileOrders([]);
                 return;
             }
 
@@ -600,6 +745,8 @@
 
                 tbody.appendChild(tr);
             });
+
+            this.renderMobileOrders(filtered);
         },
 
         updateKPIs: function () {

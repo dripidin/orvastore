@@ -17,7 +17,7 @@ const ALGERIAN_COURIERS = [
         name: 'Redex Delivery DZ',
         type: 'ecotrack',
         baseUrl: 'https://redex.ecotrack.dz',
-        defaultToken: process.env.ECOTRACK_API_TOKEN || 'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo',
+        defaultToken: process.env.ECOTRACK_API_TOKEN || '',
         active: true,
         logoText: 'REDEX'
     },
@@ -101,7 +101,7 @@ const ALGERIAN_COURIERS = [
 // Active Courier Client Factory
 function getCourierClient(courierId = 'redex', customToken = '', customBaseUrl = '') {
     const courier = ALGERIAN_COURIERS.find(c => c.id === courierId) || ALGERIAN_COURIERS[0];
-    const token = customToken || courier.defaultToken || 'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo';
+    const token = customToken || courier.defaultToken || process.env.ECOTRACK_API_TOKEN || '';
     const baseUrl = customBaseUrl || courier.baseUrl;
 
     if (courier.type === 'yalidine') {

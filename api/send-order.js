@@ -151,8 +151,8 @@ module.exports = async (req, res) => {
         }
 
         // ── Telegram Notification ─────────────────────────────────────────────
-        const telegramToken  = process.env.TELEGRAM_BOT_TOKEN || '8749469493:AAG__aGu7sSVJoRFLpFQ8eR2V_XIJMZSD0o';
-        const telegramChatId = process.env.TELEGRAM_CHAT_ID   || '-1003965560132';
+        const telegramToken  = process.env.TELEGRAM_BOT_TOKEN || '';
+        const telegramChatId = process.env.TELEGRAM_CHAT_ID   || '';
 
         if (telegramToken && telegramChatId) {
             try {

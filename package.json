@@ -1,7 +1,7 @@
 {
-  "name": "orva-yamahasac-store",
+  "name": "orvastore",
   "version": "1.0.0",
-  "description": "Orva — Single Product Landing Page for Yamaha Sac à Dos with Free AirPods & Watch",
+  "description": "ORVA STORE — Multi-pack eCommerce Store for Algeria (Pack 1 Pro & Pack 2 Elite)",
   "main": "index.html",
   "scripts": {
     "dev": "node dev-server.js",
@@ -12,6 +12,7 @@
     "@supabase/supabase-js": "^2.112.3",
     "dzship": "^1.0.0",
     "googleapis": "^176.0.0",
+    "pg": "^8.23.1",
     "resend": "^3.2.0",
     "xlsx": "^0.18.5"
   },
