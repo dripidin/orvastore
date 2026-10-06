@@ -44,27 +44,46 @@ module.exports = async (req, res) => {
             productName
         } = req.body || {};
 
-        let resolvedProductName = 'PACK 4EN1 4950';
-        if (productName) {
-            const pLow = String(productName).toLowerCase();
-            if (pLow.includes('12950') || pLow.includes('pack2') || pLow.includes('5') || pLow.includes('crown')) {
-                resolvedProductName = 'PACK 5EN1 12950';
-            } else {
-                resolvedProductName = 'PACK 4EN1 4950';
-            }
-        }
+        // ── Robust Pack & Bundle Identification ──────────────────────────────
+        const reqPackId   = String(req.body.packId || '').trim().toLowerCase();
+        const reqOrderId  = String(orderId || '').trim().toLowerCase();
+        const pLow        = String(productName || '').trim().toLowerCase();
+        const rawPriceStr = String(req.body.priceNum || grandTotal || productTotal || '').replace(/[^\d]/g, '');
+        const parsedPrice = parseInt(rawPriceStr, 10) || 0;
 
+        // Pack 2 Detection (12,950 DA - Crown 5 in 1)
+        const isPack2 = (
+            reqPackId === 'pack2' ||
+            reqOrderId.startsWith('pack2') ||
+            parsedPrice >= 10000 ||
+            rawPriceStr.includes('12950') ||
+            pLow.includes('12950') ||
+            pLow.includes('pack2') ||
+            pLow.includes('5en1') ||
+            pLow.includes('5 في 1') ||
+            pLow.includes('crown')
+        );
+
+        const resolvedProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
+        const packShortTitle      = isPack2 ? 'عرض 5 في 1 الفاخر (PACK 5EN1)' : 'عرض 4 في 1 (PACK 4EN1)';
+        const packItemsDesc       = isPack2
+            ? 'ماكينة CROWN 20V ببطاريتين + مضخة ماء لاسلكية + علبة مفاتيح 46 قطعة + مفك مرن + قفازات'
+            : 'منفاخ عجلات TOYOTA الأصلي + طقم مفاتيح 46 قطعة + مفك مرن 11 قطعة + طقم 6 مفكات';
+        const defaultBasePrice    = isPack2 ? 12950 : 4950;
+        const numPrice            = parsedPrice || defaultBasePrice;
         if (!fullName || !phone || !wilaya) {
             return res.status(400).json({ error: 'Missing required order fields (fullName, phone, wilaya)' });
         }
 
         const clientIpHash  = hashIp(clientIp);
         const cleanOrderId  = orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000));
-        
-        // Accurate digits extraction avoiding comma/space truncation (e.g. "5,450 د.ج" -> 5450)
-        const rawPriceStr   = String(req.body.priceNum || grandTotal || productTotal || '').replace(/[^\d]/g, '');
-        const defaultPrice  = resolvedProductName.includes('12950') ? 12950 : 4950;
-        const numPrice      = parseInt(rawPriceStr, 10) || defaultPrice;
+
+        // Clean Location without duplicating commune
+        let cleanLocation = String(wilaya || '').trim();
+        if (commune && !cleanLocation.includes(commune)) {
+            cleanLocation += ' — ' + commune;
+        }
+
         const dateFormatted = new Date().toLocaleString('ar-DZ', { timeZone: 'Africa/Algiers' });
 
         // ── Risk Evaluation ───────────────────────────────────────────────────
@@ -112,7 +131,7 @@ module.exports = async (req, res) => {
             storeId:             'orvastore',
             fullName,
             phone,
-            wilaya,
+            wilaya:              cleanLocation,
             commune:             commune || 'الجزائر',
             deliveryType:        deliveryType || 'توصيل للمنزل',
             deliveryTime:        deliveryTime || '24 - 48 H',
@@ -144,7 +163,6 @@ module.exports = async (req, res) => {
         const userFbc = fbc || getCookieValue(cookieHeader, '_fbc') || undefined;
 
         try {
-            const isPack2 = (resolvedProductName.includes('12950') || resolvedProductName.includes('2') || (req.body.packId && String(req.body.packId).toLowerCase().includes('2')));
             const singlePixelId = '2340414976777036';
             const packContentName = isPack2 ? 'pack2' : 'pack1';
 
@@ -156,7 +174,7 @@ module.exports = async (req, res) => {
                 orderId:        cleanOrderId,
                 fullName:       fullName,
                 phone:          phone,
-                wilaya:         wilaya,
+                wilaya:         cleanLocation,
                 commune:        commune,
                 clientIp:       clientIp,
                 userAgent:      req.headers['user-agent'],
@@ -185,20 +203,25 @@ module.exports = async (req, res) => {
                     ? `\n⚠️ <b>REVIEW</b> — نقاط الخطر: ${riskResult.score}/100`
                     : riskResult.score > 0 ? `\n🟡 خطر: ${riskResult.score}/100 (${riskResult.level})` : '';
 
+                const tgHeader = isPack2
+                    ? `👑 <b>طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 12,950 د.ج)</b>`
+                    : `📦 <b>طلب جديد: عرض 4 في 1 (PACK 4EN1 — 4,950 د.ج)</b>`;
+
                 const tgMsg = `
-<b>📦 طلب جديد — ORVA Store (${resolvedProductName})</b>
+${tgHeader}
 ━━━━━━━━━━━━━━━━━━
 <b>🆔 رقم الطلب:</b> <code>${cleanOrderId}</code>
 <b>👤 الاسم الكامل:</b> ${fullName}
 <b>📱 رقم الهاتف:</b> <code>${phone}</code>
-<b>📍 الولاية والبلدية:</b> ${wilaya}${commune ? ' - ' + commune : ''}
+<b>📍 الولاية والبلدية:</b> ${cleanLocation}
 <b>🚚 نوع التوصيل:</b> ${deliveryType || 'توصيل للمنزل'}
 <b>⚡ مدة التوصيل:</b> ${deliveryTime || '24 - 48 H'}
-<b>📦 الكمية:</b> ${quantity} قطعة (${resolvedProductName})
-<b>💵 سعر العرض:</b> ${productTotal}
-<b>🚚 مصاريف التوصيل:</b> ${shippingFee}
+<b>📦 العرض والكمية:</b> ${quantity || 1} قطعة — <b>${packShortTitle}</b>
+<i>(${packItemsDesc})</i>
+<b>💵 سعر العرض:</b> ${productTotal || (defaultBasePrice + ' د.ج')}
+<b>🚚 مصاريف التوصيل:</b> ${shippingFee || '500 د.ج'}
 ━━━━━━━━━━━━━━━━━━
-<b>💰 المجموع الكلي (COD):</b> <b>${grandTotal}</b>
+<b>💰 المجموع الكلي (COD):</b> <b>${grandTotal || (numPrice + ' د.ج')}</b>
 <b>📅 التاريخ:</b> ${dateFormatted}${riskBadge}
 ━━━━━━━━━━━━━━━━━━
 📌 <b>الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</b>

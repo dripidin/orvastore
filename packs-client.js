@@ -285,9 +285,9 @@
                 const fullLocation = `${selectedWilayaObj.name} — ${communeVal}`;
                 const deliveryTypeLabel = selectedDeliveryMode === 'stopdesk' ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل';
 
-                const cleanProductName = packId === 'pack2' ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
-
-                const packKey = (String(packId || '').toLowerCase().includes('2')) ? 'pack2' : 'pack1';
+                const isPack2 = (String(packId || '').toLowerCase().includes('2') || Number(packPrice) >= 10000);
+                const packKey = isPack2 ? 'pack2' : 'pack1';
+                const cleanProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
 
                 // Trigger InitiateCheckout event if Meta Pixel is loaded
                 if (typeof window.fbq === 'function') {
