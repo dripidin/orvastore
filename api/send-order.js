@@ -91,9 +91,17 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ── Rate limit (Temporarily relaxed while risk system is disabled) ──
+        // ── Rate limit enforcement ──
         try {
-            await checkAndRecordRateLimit(clientIp, deviceId, phone);
+            const rl = await checkAndRecordRateLimit(clientIp, deviceId, phone);
+            if (!rl.allowed) {
+                console.warn('[send-order/yamahasac] RATE_LIMIT_HIT:', cleanOrderId, phone);
+                return res.status(429).json({
+                    success: false,
+                    error: 'RATE_LIMIT_EXCEEDED',
+                    message: rl.message || 'عذراً، لقد تم تسجيل طلبك مسبقاً (الحد الأقصى محاولتين). سيتصل بك فريقنا لتأكيد طلبك.'
+                });
+            }
         } catch (e) {
             console.warn('[send-order] Rate limit check skipped:', e.message);
         }
