@@ -839,7 +839,10 @@
 
         updateKPIs: function () {
             const total = ordersList.length;
-            const rev = ordersList.reduce((sum, o) => sum + (o.priceNum || 4400), 0);
+            const rev = ordersList.reduce((sum, o) => {
+                const raw = String(o.priceNum || o.grandTotal || 0).replace(/[^\d]/g, '');
+                return sum + (parseInt(raw, 10) || 4950);
+            }, 0);
             const pending = ordersList.filter(o => !o.in_redex && (o.status === 'pending' || o.status === 'قيد الانتظار')).length;
             const shipped = ordersList.filter(o => o.in_redex || o.status === 'shipped' || (o.status && o.status.includes('Redex'))).length;
             
@@ -1115,7 +1118,7 @@
             document.getElementById('formWilayaCode').value = '16';
             this.onWilayaChange('16');
             document.getElementById('formAddress').value = '';
-            document.getElementById('formPrice').value = '4400';
+            document.getElementById('formPrice').value = '4950';
             document.getElementById('packageModal').classList.add('active');
         },
 
@@ -1157,7 +1160,12 @@
             }
 
             document.getElementById('formAddress').value = o.address || '';
-            document.getElementById('formPrice').value = o.priceNum || 4400;
+            
+            // Clean price parsing for modal prefill
+            const rawPrice = String(o.priceNum || o.grandTotal || '').replace(/[^\d]/g, '');
+            const isPack2 = String(o.productName || o.orderId || '').includes('12950') || String(o.productName || o.orderId || '').includes('pack2') || String(o.productName || '').includes('5');
+            const priceVal = parseInt(rawPrice, 10) || (isPack2 ? 12950 : 4950);
+            document.getElementById('formPrice').value = priceVal;
             document.getElementById('packageModal').classList.add('active');
         },
 
@@ -1244,6 +1252,12 @@
             const token = this.getStoredCarrierToken();
             const baseUrl = this.getStoredCarrierBaseUrl();
 
+            const numPriceVal = parseInt(String(price).replace(/[^\d]/g, ''), 10) || 4950;
+            let resolvedPName = 'PACK 4EN1 4950';
+            if (numPriceVal > 8000 || String(orderId).includes('pack2') || String(orderId).includes('12950')) {
+                resolvedPName = 'PACK 5EN1 12950';
+            }
+
             const payload = {
                 courierId: activeCourierId,
                 token: token,
@@ -1255,10 +1269,10 @@
                 wilayaCode: wilayaCode,
                 commune: commune,
                 deliveryType: deliveryType,
-                price: price,
-                grandTotal: price + ' DZD',
-                priceNum: parseInt(price),
-                productList: 'Pack Commande ORVA Store'
+                price: numPriceVal,
+                grandTotal: numPriceVal + ' DZD',
+                priceNum: numPriceVal,
+                productList: resolvedPName
             };
 
             try {

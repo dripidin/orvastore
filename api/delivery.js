@@ -150,6 +150,20 @@ async function createRedexOrderDirect({ token, baseUrl, orderPayload }) {
         String(orderPayload.deliveryType || '').includes('المكتب')
     );
 
+    let resolvedProductName = 'PACK 4EN1 4950';
+    const pSource = String(orderPayload.productList || orderPayload.productName || orderPayload.orderId || '').toLowerCase();
+    if (pSource.includes('12950') || pSource.includes('pack 2') || pSource.includes('pack2') || pSource.includes('5') || pSource.includes('crown')) {
+        resolvedProductName = 'PACK 5EN1 12950';
+    } else {
+        resolvedProductName = 'PACK 4EN1 4950';
+    }
+
+    const rawPriceStr = String(orderPayload.priceNum || orderPayload.price || orderPayload.grandTotal || '').replace(/[^\d]/g, '');
+    const defaultPrice = resolvedProductName.includes('12950') ? 12950 : 4950;
+    const finalPriceNum = parseInt(rawPriceStr, 10) || defaultPrice;
+
+    const deliveryNote = isStopDesk ? 'Stop Desk (استلام من المكتب)' : 'Domicile (توصيل للمنزل)';
+
     const redexBody = {
         nom_client: orderPayload.fullName || 'Client',
         telephone: orderPayload.phone || '0555000000',
@@ -157,9 +171,9 @@ async function createRedexOrderDirect({ token, baseUrl, orderPayload }) {
         adresse: orderPayload.address || (isStopDesk ? 'Bureau Stop Desk' : 'Centre Ville'),
         code_wilaya: String(wilayaCode),
         commune: resolvedCommune,
-        montant: orderPayload.priceNum || 4950,
-        remarque: (isStopDesk ? 'Stop Desk (مكتب)' : 'Domicile (منزل)') + (orderPayload.productList ? ' - ' + orderPayload.productList : ''),
-        produit: orderPayload.productList || 'Pack Commande ORVA Store',
+        montant: finalPriceNum,
+        remarque: `${deliveryNote} - ${resolvedProductName}`,
+        produit: resolvedProductName,
         type: 1,
         stop_desk: isStopDesk ? 1 : 0,
         reference: orderPayload.orderId || ('ORVA-' + Date.now().toString().slice(-5))

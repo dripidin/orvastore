@@ -285,6 +285,8 @@
                 const fullLocation = `${selectedWilayaObj.name} — ${communeVal}`;
                 const deliveryTypeLabel = selectedDeliveryMode === 'stopdesk' ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل';
 
+                const cleanProductName = packId === 'pack2' ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
+
                 const payload = {
                     orderId,
                     fullName: nameVal,
@@ -294,10 +296,11 @@
                     deliveryType: deliveryTypeLabel,
                     deliveryTime: selectedWilayaObj.time || '24 - 48 H',
                     quantity: 1,
-                    productName: productName,
-                    productTotal: `${packPrice.toLocaleString()} د.ج`,
-                    shippingFee: `${currentShipping.toLocaleString()} د.ج`,
-                    grandTotal: `${grandTotalNum.toLocaleString()} د.ج`,
+                    productName: cleanProductName,
+                    productTotal: `${packPrice} د.ج`,
+                    shippingFee: `${currentShipping} د.ج`,
+                    priceNum: grandTotalNum,
+                    grandTotal: `${grandTotalNum} د.ج`,
                     deviceId: getDeviceId(),
                     honeypot: honeypotVal,
                     formDurationMs: Date.now() - pageLoadTime
@@ -328,9 +331,9 @@
                     if (typeof window.fbq === 'function') {
                         try {
                             window.fbq('track', 'Purchase', {
-                                value: packPrice,
+                                value: grandTotalNum,
                                 currency: 'DZD',
-                                content_name: productName,
+                                content_name: cleanProductName,
                                 content_type: 'product',
                                 num_items: 1
                             }, { eventID: data.orderId || orderId });

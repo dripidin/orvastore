@@ -44,7 +44,15 @@ module.exports = async (req, res) => {
             productName
         } = req.body || {};
 
-        const resolvedProductName = (productName && String(productName).trim()) || 'Sac Banane Moto Yamaha (كرطابل يماها)';
+        let resolvedProductName = 'PACK 4EN1 4950';
+        if (productName) {
+            const pLow = String(productName).toLowerCase();
+            if (pLow.includes('12950') || pLow.includes('pack2') || pLow.includes('5') || pLow.includes('crown')) {
+                resolvedProductName = 'PACK 5EN1 12950';
+            } else {
+                resolvedProductName = 'PACK 4EN1 4950';
+            }
+        }
 
         if (!fullName || !phone || !wilaya) {
             return res.status(400).json({ error: 'Missing required order fields (fullName, phone, wilaya)' });
@@ -52,7 +60,11 @@ module.exports = async (req, res) => {
 
         const clientIpHash  = hashIp(clientIp);
         const cleanOrderId  = orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000));
-        const numPrice      = parseInt(grandTotal) || 3900;
+        
+        // Accurate digits extraction avoiding comma/space truncation (e.g. "5,450 د.ج" -> 5450)
+        const rawPriceStr   = String(req.body.priceNum || grandTotal || productTotal || '').replace(/[^\d]/g, '');
+        const defaultPrice  = resolvedProductName.includes('12950') ? 12950 : 4950;
+        const numPrice      = parseInt(rawPriceStr, 10) || defaultPrice;
         const dateFormatted = new Date().toLocaleString('ar-DZ', { timeZone: 'Africa/Algiers' });
 
         // ── Risk Evaluation ───────────────────────────────────────────────────
