@@ -136,12 +136,12 @@ module.exports = async (req, res) => {
         const userFbc = fbc || getCookieValue(cookieHeader, '_fbc') || undefined;
 
         try {
-            const resolvedPixelId = (resolvedProductName.includes('12950') || resolvedProductName.includes('2'))
-                ? '2347421356028365'
-                : '2340414976777036';
+            const isPack2 = (resolvedProductName.includes('12950') || resolvedProductName.includes('2') || (req.body.packId && String(req.body.packId).toLowerCase().includes('2')));
+            const singlePixelId = '2340414976777036';
+            const packContentName = isPack2 ? 'pack2' : 'pack1';
 
             sendMetaPurchaseEvent({
-                pixelId:        resolvedPixelId,
+                pixelId:        singlePixelId,
                 eventId:        cleanOrderId,
                 value:          numPrice,
                 currency:       'DZD',
@@ -156,7 +156,9 @@ module.exports = async (req, res) => {
                 fbp:            userFbp,
                 fbc:            userFbc,
                 quantity:       quantity || 1,
-                productName:    resolvedProductName
+                productName:    resolvedProductName,
+                contentName:    packContentName,
+                contentIds:     [packContentName]
             }).catch(capiErr => {
                 console.warn('[Meta CAPI Async Error]:', capiErr ? capiErr.message : capiErr);
             });

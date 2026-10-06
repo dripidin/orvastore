@@ -287,8 +287,24 @@
 
                 const cleanProductName = packId === 'pack2' ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
 
+                const packKey = (String(packId || '').toLowerCase().includes('2')) ? 'pack2' : 'pack1';
+
+                // Trigger InitiateCheckout event if Meta Pixel is loaded
+                if (typeof window.fbq === 'function') {
+                    try {
+                        window.fbq('track', 'InitiateCheckout', {
+                            content_name: packKey,
+                            content_ids: [packKey],
+                            content_type: 'product',
+                            value: grandTotalNum,
+                            currency: 'DZD'
+                        });
+                    } catch (icErr) {}
+                }
+
                 const payload = {
                     orderId,
+                    packId: packKey,
                     fullName: nameVal,
                     phone: phoneVal,
                     wilaya: fullLocation,
@@ -327,14 +343,15 @@
                         }));
                     } catch (e) {}
 
-                    // Track Meta Pixel Purchase Event
+                    // Track Meta Pixel Purchase Event (Unified Pixel 2340414976777036 segmented by content_name)
                     if (typeof window.fbq === 'function') {
                         try {
                             window.fbq('track', 'Purchase', {
+                                content_name: packKey,
+                                content_ids: [packKey],
+                                content_type: 'product',
                                 value: grandTotalNum,
                                 currency: 'DZD',
-                                content_name: cleanProductName,
-                                content_type: 'product',
                                 num_items: 1
                             }, { eventID: data.orderId || orderId });
                         } catch (fbErr) {

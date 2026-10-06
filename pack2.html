@@ -19,14 +19,34 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '2347421356028365');
+    fbq('init', '2340414976777036');
     fbq('track', 'PageView');
-    fbq('track', 'ViewContent', { content_name: 'PACK 5EN1 12950', value: 12950, currency: 'DZD' });
     </script>
     <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=2347421356028365&ev=PageView&noscript=1"
+    src="https://www.facebook.com/tr?id=2340414976777036&ev=PageView&noscript=1"
     /></noscript>
     <!-- End Meta Pixel Code -->
+
+    <script>
+    // حدث مشاهدة محتوى pack2
+    fbq('track', 'ViewContent', {
+      content_name: 'pack2',
+      content_ids: ['pack2'],
+      content_type: 'product',
+      value: 0,
+      currency: 'USD'
+    });
+
+    function onPack2Purchase() {
+      if (typeof fbq === 'function') {
+        fbq('track', 'InitiateCheckout', {
+          content_name: 'pack2',
+          content_ids: ['pack2'],
+          content_type: 'product'
+        });
+      }
+    }
+    </script>
 
     <!-- Google Font: Tajawal (High Legibility for Older Readers) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -149,7 +169,7 @@
                     </div>
 
                     <!-- Primary Calming Order Button -->
-                    <button type="submit" class="order-submit-btn" id="confirmOrderBtn">
+                    <button type="submit" class="order-submit-btn" id="confirmOrderBtn" onclick="onPack2Purchase()">
                         <i class="fa-solid fa-circle-check"></i>
                         <span>اضغط هنا لتأكيد طلبك الآن</span>
                     </button>

@@ -21,12 +21,32 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '2340414976777036');
     fbq('track', 'PageView');
-    fbq('track', 'ViewContent', { content_name: 'PACK 4EN1 4950', value: 4950, currency: 'DZD' });
     </script>
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=2340414976777036&ev=PageView&noscript=1"
     /></noscript>
     <!-- End Meta Pixel Code -->
+
+    <script>
+    // حدث مشاهدة محتوى pack1
+    fbq('track', 'ViewContent', {
+      content_name: 'pack1',
+      content_ids: ['pack1'],
+      content_type: 'product',
+      value: 0,
+      currency: 'USD'
+    });
+
+    function onPack1Purchase() {
+      if (typeof fbq === 'function') {
+        fbq('track', 'InitiateCheckout', {
+          content_name: 'pack1',
+          content_ids: ['pack1'],
+          content_type: 'product'
+        });
+      }
+    }
+    </script>
 
     <!-- Google Font: Tajawal (High Legibility for Older Readers) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -149,7 +169,7 @@
                     </div>
 
                     <!-- Primary Calming Order Button -->
-                    <button type="submit" class="order-submit-btn" id="confirmOrderBtn">
+                    <button type="submit" class="order-submit-btn" id="confirmOrderBtn" onclick="onPack1Purchase()">
                         <i class="fa-solid fa-circle-check"></i>
                         <span>اضغط هنا لتأكيد طلبك الآن</span>
                     </button>
