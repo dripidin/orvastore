@@ -98,10 +98,10 @@ module.exports = async (req, res) => {
             console.warn('[send-order] Rate limit check skipped:', e.message);
         }
 
-        // ── Save to Google Sheets ─────────────────────────────────────────────
+        // ── Save Order to Supabase Database ───────────────────────────────────
         await saveOrderToDb({
             orderId:             cleanOrderId,
-            storeId:             'yamahasac',
+            storeId:             'orvastore',
             fullName,
             phone,
             wilaya,
