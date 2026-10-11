@@ -470,9 +470,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const fbpCookie = getCookie('_fbp') || undefined;
             const fbcCookie = getCookie('_fbc') || undefined;
+            const eventId = `order_${orderId}_${Date.now()}`;
 
             const payload = {
                 orderId,
+                eventId,
                 fullName: nameVal,
                 phone: phoneVal,
                 wilaya: fullLocationText,
@@ -522,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 orderCreatedSuccessfully = true;
                 finalOrderId = result.orderId || orderId;
+                const sharedEventId = result.eventId || eventId;
 
                 // Record successful attempt in local storage
                 try {
@@ -541,9 +544,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             currency: 'DZD',
                             num_items: currentQty
                         }, {
-                            eventID: finalOrderId
+                            eventID: sharedEventId
                         });
-                        console.log('[Meta Pixel] Browser Purchase event tracked with eventID:', finalOrderId, grandTotalNum, 'DZD');
+                        console.log('[Meta Pixel] Browser Purchase event tracked with eventID:', sharedEventId, grandTotalNum, 'DZD');
                     } catch (pxErr) {
                         console.warn('[Meta Pixel] Event tracking error:', pxErr);
                     }

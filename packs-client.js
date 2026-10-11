@@ -204,7 +204,7 @@
             return /^(05|06|07)[0-9]{8}$/.test(cleaned);
         }
 
-        // 6. Device Fingerprint
+        // 6. Device Fingerprint & Helpers
         function getDeviceId() {
             try {
                 let devId = localStorage.getItem('metachagour_device_id');
@@ -218,10 +218,73 @@
             }
         }
 
-        // 7. Form submission
+        function getCookie(name) {
+            try {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+            } catch (e) {}
+            return null;
+        }
+
+        function getUrlParam(name) {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                return params.get(name);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // 7. Tracking Guards & Checkout Flow
+        const isPack2 = (String(packId || '').toLowerCase().includes('2') || Number(packPrice) >= 10000);
+        const packKey = isPack2 ? 'pack2' : 'pack1';
+        const cleanProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
+
+        let initiateCheckoutFired = false;
+        let isSubmitting = false;
+        let purchaseFired = false;
+
+        function triggerInitiateCheckoutOnce() {
+            if (initiateCheckoutFired) return;
+            initiateCheckoutFired = true;
+
+            const currentTotal = packPrice + currentShipping;
+            if (typeof window.fbq === 'function') {
+                try {
+                    window.fbq('track', 'InitiateCheckout', {
+                        content_name: packKey,
+                        content_ids: [packKey],
+                        content_type: 'product',
+                        value: currentTotal,
+                        currency: 'DZD'
+                    });
+                    console.log('[Meta Pixel] InitiateCheckout tracked once:', {
+                        content_name: packKey,
+                        value: currentTotal,
+                        currency: 'DZD'
+                    });
+                } catch (icErr) {
+                    console.warn('[Meta Pixel InitiateCheckout Error]:', icErr);
+                }
+            }
+        }
+
+        // Trigger InitiateCheckout on first click of the confirmation button
+        if (submitBtn) {
+            submitBtn.addEventListener('click', () => {
+                triggerInitiateCheckoutOnce();
+            });
+        }
+
+        // 8. Form submission
         if (form) {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (isSubmitting) return;
+
+                // Guarantee InitiateCheckout fired if user pressed Enter
+                triggerInitiateCheckoutOnce();
 
                 const nameInput = document.getElementById('fullName');
                 const phoneInput = document.getElementById('phoneNumber');
@@ -274,36 +337,34 @@
                     return;
                 }
 
+                isSubmitting = true;
                 const originalBtnContent = submitBtn ? submitBtn.innerHTML : '';
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     submitBtn.innerHTML = '<span>جارٍ إرسال طلبك...</span> <i class="fa-solid fa-spinner fa-spin"></i>';
                 }
 
-                const orderId = `${packId}-${Math.floor(10000 + Math.random() * 90000)}`;
+                const orderId = `${packKey.toUpperCase()}-${Math.floor(10000 + Math.random() * 90000)}`;
+                const timestamp = Date.now();
+                const eventId = `order_${orderId}_${timestamp}`;
                 const grandTotalNum = packPrice + currentShipping;
                 const fullLocation = `${selectedWilayaObj.name} — ${communeVal}`;
                 const deliveryTypeLabel = selectedDeliveryMode === 'stopdesk' ? 'توصيل للمكتب (Stop Desk)' : 'توصيل للمنزل';
 
-                const isPack2 = (String(packId || '').toLowerCase().includes('2') || Number(packPrice) >= 10000);
-                const packKey = isPack2 ? 'pack2' : 'pack1';
-                const cleanProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
-
-                // Trigger InitiateCheckout event if Meta Pixel is loaded
-                if (typeof window.fbq === 'function') {
-                    try {
-                        window.fbq('track', 'InitiateCheckout', {
-                            content_name: packKey,
-                            content_ids: [packKey],
-                            content_type: 'product',
-                            value: grandTotalNum,
-                            currency: 'DZD'
-                        });
-                    } catch (icErr) {}
+                // Advanced Matching & Test code retrieval
+                const userFbp = getCookie('_fbp') || undefined;
+                let userFbc = getCookie('_fbc') || undefined;
+                if (!userFbc) {
+                    const fbclid = getUrlParam('fbclid');
+                    if (fbclid) {
+                        userFbc = `fb.1.${timestamp}.${fbclid}`;
+                    }
                 }
+                const testEventCode = getUrlParam('test_event_code') || undefined;
 
                 const payload = {
                     orderId,
+                    eventId,
                     packId: packKey,
                     fullName: nameVal,
                     phone: phoneVal,
@@ -319,7 +380,10 @@
                     grandTotal: `${grandTotalNum} د.ج`,
                     deviceId: getDeviceId(),
                     honeypot: honeypotVal,
-                    formDurationMs: Date.now() - pageLoadTime
+                    formDurationMs: Date.now() - pageLoadTime,
+                    fbp: userFbp,
+                    fbc: userFbc,
+                    testEventCode: testEventCode
                 };
 
                 try {
@@ -332,6 +396,11 @@
 
                     if (!res.ok || data.success === false) {
                         alert(data.message || 'حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.');
+                        isSubmitting = false;
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalBtnContent;
+                        }
                         return;
                     }
 
@@ -343,8 +412,12 @@
                         }));
                     } catch (e) {}
 
+                    const finalOrderId = data.orderId || orderId;
+                    const sharedEventId = data.eventId || eventId;
+
                     // Track Meta Pixel Purchase Event (Unified Pixel 2340414976777036 segmented by content_name)
-                    if (typeof window.fbq === 'function') {
+                    if (!purchaseFired && typeof window.fbq === 'function') {
+                        purchaseFired = true;
                         try {
                             window.fbq('track', 'Purchase', {
                                 content_name: packKey,
@@ -353,7 +426,17 @@
                                 value: grandTotalNum,
                                 currency: 'DZD',
                                 num_items: 1
-                            }, { eventID: data.orderId || orderId });
+                            }, { eventID: sharedEventId });
+
+                            console.log('[Tracking Deduplication] SUCCESS:', {
+                                event: 'Purchase',
+                                browser_eventID: sharedEventId,
+                                server_event_id: data.eventId || sharedEventId,
+                                value: grandTotalNum,
+                                currency: 'DZD',
+                                content_ids: [packKey],
+                                test_event_code: testEventCode || 'NONE'
+                            });
                         } catch (fbErr) {
                             console.warn('[Meta Pixel Purchase Tracking Error]:', fbErr);
                         }
@@ -361,7 +444,7 @@
 
                     // Show success receipt modal
                     showReceiptModal({
-                        orderId: data.orderId || orderId,
+                        orderId: finalOrderId,
                         fullName: nameVal,
                         phone: phoneVal,
                         location: fullLocation,
@@ -372,21 +455,16 @@
                         grandTotal: `${grandTotalNum.toLocaleString()} د.ج`
                     });
 
+                    // Keep button in success state to avoid duplicate re-orders
+                    if (submitBtn) {
+                        submitBtn.innerHTML = '<span>تم تأكيد طلبك بنجاح ✅</span>';
+                        submitBtn.disabled = true;
+                    }
+
                 } catch (err) {
                     console.error('Submit error:', err);
-                    // Offline fallback receipt display
-                    showReceiptModal({
-                        orderId: orderId,
-                        fullName: nameVal,
-                        phone: phoneVal,
-                        location: fullLocation,
-                        deliveryType: deliveryTypeLabel,
-                        productName: productName,
-                        productTotal: `${packPrice.toLocaleString()} د.ج`,
-                        shippingFee: `${currentShipping.toLocaleString()} د.ج`,
-                        grandTotal: `${grandTotalNum.toLocaleString()} د.ج`
-                    });
-                } finally {
+                    alert('حدث خطأ في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.');
+                    isSubmitting = false;
                     if (submitBtn) {
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnContent;

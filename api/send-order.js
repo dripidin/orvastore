@@ -41,7 +41,9 @@ module.exports = async (req, res) => {
             orderId, deviceId,
             honeypot, formDurationMs,
             fbp, fbc,
-            productName
+            productName,
+            eventId, event_id,
+            testEventCode, test_event_code
         } = req.body || {};
 
         // ── Robust Pack & Bundle Identification ──────────────────────────────
@@ -77,6 +79,8 @@ module.exports = async (req, res) => {
 
         const clientIpHash  = hashIp(clientIp);
         const cleanOrderId  = orderId || ('ORVA-' + Math.floor(10000 + Math.random() * 90000));
+        const finalEventId  = eventId || event_id || `order_${cleanOrderId}_${Date.now()}`;
+        const activeTestCode = testEventCode || test_event_code || process.env.META_TEST_EVENT_CODE || null;
 
         // Clean Location without duplicating commune
         let cleanLocation = String(wilaya || '').trim();
@@ -166,9 +170,11 @@ module.exports = async (req, res) => {
             const singlePixelId = '2340414976777036';
             const packContentName = isPack2 ? 'pack2' : 'pack1';
 
+            console.log(`[Meta CAPI] Dispatching Purchase event: event_id=${finalEventId}, value=${numPrice} DZD, pack=${packContentName}, test_code=${activeTestCode || 'NONE'}`);
+
             sendMetaPurchaseEvent({
                 pixelId:        singlePixelId,
-                eventId:        cleanOrderId,
+                eventId:        finalEventId,
                 value:          numPrice,
                 currency:       'DZD',
                 orderId:        cleanOrderId,
@@ -184,7 +190,12 @@ module.exports = async (req, res) => {
                 quantity:       quantity || 1,
                 productName:    resolvedProductName,
                 contentName:    packContentName,
-                contentIds:     [packContentName]
+                contentIds:     [packContentName],
+                testEventCode:  activeTestCode
+            }).then(capiRes => {
+                if (capiRes && capiRes.success) {
+                    console.log(`[Meta CAPI Deduplication] Server Purchase sent with event_id=${finalEventId}`);
+                }
             }).catch(capiErr => {
                 console.warn('[Meta CAPI Async Error]:', capiErr ? capiErr.message : capiErr);
             });
@@ -261,6 +272,7 @@ ${adminLink}`.trim();
             success: true,
             message: riskResult.decision === 'REVIEW' ? 'تم استلام طلبك وسيتم مراجعته قريباً.' : 'تم استلام طلبك بنجاح!',
             orderId: cleanOrderId,
+            eventId: finalEventId,
             review:  riskResult.decision === 'REVIEW'
         });
 
