@@ -53,12 +53,14 @@ module.exports = async (req, res) => {
         const rawPriceStr = String(req.body.priceNum || grandTotal || productTotal || '').replace(/[^\d]/g, '');
         const parsedPrice = parseInt(rawPriceStr, 10) || 0;
 
-        // Pack 2 Detection (12,950 DA - Crown 5 in 1)
+        // Pack 2 Detection (13,390 DA - Crown 5 in 1)
         const isPack2 = (
             reqPackId === 'pack2' ||
             reqOrderId.startsWith('pack2') ||
             parsedPrice >= 10000 ||
+            rawPriceStr.includes('13390') ||
             rawPriceStr.includes('12950') ||
+            pLow.includes('13390') ||
             pLow.includes('12950') ||
             pLow.includes('pack2') ||
             pLow.includes('5en1') ||
@@ -66,12 +68,12 @@ module.exports = async (req, res) => {
             pLow.includes('crown')
         );
 
-        const resolvedProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
+        const resolvedProductName = isPack2 ? 'PACK 5EN1 13390' : 'PACK 4EN1 4950';
         const packShortTitle      = isPack2 ? 'عرض 5 في 1 الفاخر (PACK 5EN1)' : 'عرض 4 في 1 (PACK 4EN1)';
         const packItemsDesc       = isPack2
-            ? 'ماكينة CROWN 20V ببطاريتين + مضخة ماء لاسلكية + علبة مفاتيح 46 قطعة + مفك مرن + قفازات'
+            ? 'ماكينة CROWN 20V ببطاريتين + طقم مفكات 6 قطع + علبة مفاتيح 46 قطعة + مفك مرن + قفازات'
             : 'منفاخ عجلات TOYOTA الأصلي + طقم مفاتيح 46 قطعة + مفك مرن 11 قطعة + طقم 6 مفكات';
-        const defaultBasePrice    = isPack2 ? 12950 : 4950;
+        const defaultBasePrice    = isPack2 ? 13390 : 4950;
         const numPrice            = parsedPrice || defaultBasePrice;
         if (!fullName || !phone || !wilaya) {
             return res.status(400).json({ error: 'Missing required order fields (fullName, phone, wilaya)' });
@@ -215,7 +217,7 @@ module.exports = async (req, res) => {
                     : riskResult.score > 0 ? `\n🟡 خطر: ${riskResult.score}/100 (${riskResult.level})` : '';
 
                 const tgHeader = isPack2
-                    ? `👑 <b>طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 12,950 د.ج)</b>`
+                    ? `👑 <b>طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 13,390 د.ج)</b>`
                     : `📦 <b>طلب جديد: عرض 4 في 1 (PACK 4EN1 — 4,950 د.ج)</b>`;
 
                 const tgMsg = `

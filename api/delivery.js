@@ -152,14 +152,14 @@ async function createRedexOrderDirect({ token, baseUrl, orderPayload }) {
 
     let resolvedProductName = 'PACK 4EN1 4950';
     const pSource = String(orderPayload.productList || orderPayload.productName || orderPayload.orderId || '').toLowerCase();
-    if (pSource.includes('12950') || pSource.includes('pack 2') || pSource.includes('pack2') || pSource.includes('5') || pSource.includes('crown')) {
-        resolvedProductName = 'PACK 5EN1 12950';
+    if (pSource.includes('13390') || pSource.includes('12950') || pSource.includes('pack 2') || pSource.includes('pack2') || pSource.includes('5') || pSource.includes('crown')) {
+        resolvedProductName = 'PACK 5EN1 13390';
     } else {
         resolvedProductName = 'PACK 4EN1 4950';
     }
 
     const rawPriceStr = String(orderPayload.priceNum || orderPayload.price || orderPayload.grandTotal || '').replace(/[^\d]/g, '');
-    const defaultPrice = resolvedProductName.includes('12950') ? 12950 : 4950;
+    const defaultPrice = (resolvedProductName.includes('13390') || resolvedProductName.includes('12950')) ? 13390 : 4950;
     const finalPriceNum = parseInt(rawPriceStr, 10) || defaultPrice;
 
     const deliveryNote = isStopDesk ? 'Stop Desk (استلام من المكتب)' : 'Domicile (توصيل للمنزل)';

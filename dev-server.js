@@ -33,12 +33,14 @@ const MIME_TYPES = {
     '.gif': 'image/gif',
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon',
+    '.webp': 'image/webp',
     '.txt': 'text/plain; charset=utf-8',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 };
 
 function serveStatic(req, res, pathname) {
-    let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
+    const decodedPath = decodeURIComponent(pathname);
+    let filePath = path.join(PUBLIC_DIR, decodedPath === '/' ? 'index.html' : decodedPath);
     
     // Prevent directory traversal
     if (!filePath.startsWith(PUBLIC_DIR)) {

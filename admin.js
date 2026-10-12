@@ -1163,8 +1163,8 @@
             
             // Clean price parsing for modal prefill
             const rawPrice = String(o.priceNum || o.grandTotal || '').replace(/[^\d]/g, '');
-            const isPack2 = String(o.productName || o.orderId || '').includes('12950') || String(o.productName || o.orderId || '').includes('pack2') || String(o.productName || '').includes('5');
-            const priceVal = parseInt(rawPrice, 10) || (isPack2 ? 12950 : 4950);
+            const isPack2 = String(o.productName || o.orderId || '').includes('13390') || String(o.productName || o.orderId || '').includes('12950') || String(o.productName || o.orderId || '').includes('pack2') || String(o.productName || '').includes('5');
+            const priceVal = parseInt(rawPrice, 10) || (isPack2 ? 13390 : 4950);
             document.getElementById('formPrice').value = priceVal;
             document.getElementById('packageModal').classList.add('active');
         },
@@ -1254,8 +1254,8 @@
 
             const numPriceVal = parseInt(String(price).replace(/[^\d]/g, ''), 10) || 4950;
             let resolvedPName = 'PACK 4EN1 4950';
-            if (numPriceVal > 8000 || String(orderId).includes('pack2') || String(orderId).includes('12950')) {
-                resolvedPName = 'PACK 5EN1 12950';
+            if (numPriceVal > 8000 || String(orderId).includes('pack2') || String(orderId).includes('13390') || String(orderId).includes('12950')) {
+                resolvedPName = 'PACK 5EN1 13390';
             }
 
             const payload = {

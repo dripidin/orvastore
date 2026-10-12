@@ -1,6 +1,6 @@
 /**
  * ORVA STORE — Multi-Pack Client Engine (packs-client.js)
- * Supports Pack 1 (4,950 DA) & Pack 2 (12,950 DA)
+ * Supports Pack 1 (4,950 DA) & Pack 2 (13,390 DA)
  * Handles 58 Wilayas, Communes, Shipping Tariffs, Anti-Fraud, and /api/send-order Dispatch
  */
 
@@ -239,7 +239,7 @@
         // 7. Tracking Guards & Checkout Flow
         const isPack2 = (String(packId || '').toLowerCase().includes('2') || Number(packPrice) >= 10000);
         const packKey = isPack2 ? 'pack2' : 'pack1';
-        const cleanProductName = isPack2 ? 'PACK 5EN1 12950' : 'PACK 4EN1 4950';
+        const cleanProductName = isPack2 ? 'PACK 5EN1 13390' : 'PACK 4EN1 4950';
 
         let initiateCheckoutFired = false;
         let isSubmitting = false;
