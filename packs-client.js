@@ -254,8 +254,6 @@
                 try {
                     window.fbq('track', 'InitiateCheckout', {
                         content_name: packKey,
-                        content_ids: [packKey],
-                        content_type: 'product',
                         value: currentTotal,
                         currency: 'DZD'
                     });
@@ -360,7 +358,12 @@
                         userFbc = `fb.1.${timestamp}.${fbclid}`;
                     }
                 }
-                const testEventCode = getUrlParam('test_event_code') || undefined;
+                let testEventCode = getUrlParam('test_event_code') || undefined;
+                if (testEventCode) {
+                    try { sessionStorage.setItem('meta_test_event_code', testEventCode); } catch (e) {}
+                } else {
+                    try { testEventCode = sessionStorage.getItem('meta_test_event_code') || undefined; } catch (e) {}
+                }
 
                 const payload = {
                     orderId,
@@ -421,8 +424,6 @@
                         try {
                             window.fbq('track', 'Purchase', {
                                 content_name: packKey,
-                                content_ids: [packKey],
-                                content_type: 'product',
                                 value: grandTotalNum,
                                 currency: 'DZD',
                                 num_items: 1
@@ -434,7 +435,6 @@
                                 server_event_id: data.eventId || sharedEventId,
                                 value: grandTotalNum,
                                 currency: 'DZD',
-                                content_ids: [packKey],
                                 test_event_code: testEventCode || 'NONE'
                             });
                         } catch (fbErr) {

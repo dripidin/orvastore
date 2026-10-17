@@ -192,7 +192,6 @@ module.exports = async (req, res) => {
                 quantity:       quantity || 1,
                 productName:    resolvedProductName,
                 contentName:    packContentName,
-                contentIds:     [packContentName],
                 testEventCode:  activeTestCode
             }).then(capiRes => {
                 if (capiRes && capiRes.success) {
