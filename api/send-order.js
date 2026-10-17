@@ -169,7 +169,7 @@ module.exports = async (req, res) => {
         const userFbc = fbc || getCookieValue(cookieHeader, '_fbc') || undefined;
 
         try {
-            const singlePixelId = '2340414976777036';
+            const singlePixelId = process.env.META_PIXEL_ID || '2340414976777036';
             const packContentName = isPack2 ? 'pack2' : 'pack1';
 
             console.log(`[Meta CAPI] Dispatching Purchase event: event_id=${finalEventId}, value=${numPrice} DZD, pack=${packContentName}, test_code=${activeTestCode || 'NONE'}`);
