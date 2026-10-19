@@ -28,7 +28,7 @@
             </div>
             <h2>ORVA STORE</h2>
             <p>لوحة التحكم والإدارة — يرجى إدخال كلمة السر للمتابعة</p>
-            <form onsubmit="storeAdmin.handleAuthSubmit(event)">
+            <form onsubmit="event.preventDefault(); if (window.storeAdmin && window.storeAdmin.handleAuthSubmit) { window.storeAdmin.handleAuthSubmit(event); } return false;">
                 <div class="auth-input-group">
                     <i class="fa-solid fa-lock"></i>
                     <input type="password" id="adminAuthPassword" placeholder="أدخل كلمة المرور..." autocomplete="current-password" required>

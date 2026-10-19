@@ -20,8 +20,19 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const body = req.body || {};
-        const inputPassword = (body.password || '').toString().trim();
+        let body = req.body || {};
+        if (typeof body === 'string') {
+            try {
+                body = JSON.parse(body);
+            } catch (e) {
+                // Not JSON, check if it's urlencoded
+                try {
+                    const parsed = new URLSearchParams(body);
+                    body = Object.fromEntries(parsed);
+                } catch (_) {}
+            }
+        }
+        const inputPassword = (body.password || body.token || (req.query && req.query.password) || '').toString().trim();
 
         // 1. Read admin password from Vercel environment variables
         // Priority: ADMIN_PASSWORD -> ADMIN_API_TOKEN -> fallback 'orva2026'
