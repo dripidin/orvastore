@@ -19,3 +19,4 @@ skills-lock.json
 dist-hostinger/
 *.zip
 node.cmd
+scripts/run-dev.bat

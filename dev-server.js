@@ -166,6 +166,21 @@ const server = http.createServer((req, res) => {
     serveStatic(req, res, pathname);
 });
 
+server.on('error', (err) => {
+    console.error('[Server Error]:', err);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception]:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Rejection]:', reason);
+});
+
+// Keep event loop active
+setInterval(() => {}, 3600000);
+
 server.listen(PORT, () => {
     console.log('\n================================================================');
     console.log(`🚀 Yamaha Sac / ORVA Store — Local Dev Server Running on Port ${PORT}`);
