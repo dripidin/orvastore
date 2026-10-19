@@ -18,3 +18,4 @@ skills-lock.json
 *.code-workspace
 dist-hostinger/
 *.zip
+node.cmd

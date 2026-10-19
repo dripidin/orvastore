@@ -19,7 +19,8 @@ const routes = {
     '/api/orders': require('./api/orders'),
     '/api/delivery': require('./api/delivery'),
     '/api/send-order': require('./api/send-order'),
-    '/api/risk': require('./api/risk')
+    '/api/risk': require('./api/risk'),
+    '/api/auth': require('./api/auth')
 };
 
 const MIME_TYPES = {
