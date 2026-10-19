@@ -2198,6 +2198,62 @@ body {
         background: #1ebc57;
     }
 
+    .card-mobile-ops {
+        margin-top: 2px;
+    }
+
+    .btn-mobile-ship {
+        background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+        color: #FFFFFF;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-mobile-ship:hover {
+        background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+        transform: translateY(-1px);
+    }
+
+    .btn-mobile-ship:active {
+        transform: translateY(0);
+    }
+
+    .btn-mobile-delete {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: #FFFFFF;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-mobile-delete:hover {
+        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        transform: translateY(-1px);
+    }
+
+    .btn-mobile-delete:active {
+        transform: translateY(0);
+    }
+
     .card-secondary-actions {
         display: flex;
         align-items: center;

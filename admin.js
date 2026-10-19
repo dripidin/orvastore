@@ -483,26 +483,29 @@
 
                         <div class="card-mobile-actions">
                             <a href="tel:${o.phone}" class="btn-mobile-call">
-                                <i class="fa-solid fa-phone"></i> <span>اتصال (${o.phone})</span>
+                                <i class="fa-solid fa-phone"></i> <span>${currentLang === 'fr' ? 'Appeler' : 'اتصال'} (${o.phone})</span>
                             </a>
                             <a href="https://wa.me/${waPhone}?text=${waText}" target="_blank" class="btn-mobile-whatsapp">
-                                <i class="fa-brands fa-whatsapp"></i> <span>واتساب</span>
+                                <i class="fa-brands fa-whatsapp"></i> <span>${currentLang === 'fr' ? 'WhatsApp' : 'واتساب'}</span>
                             </a>
                         </div>
 
+                        <div class="card-mobile-actions card-mobile-ops">
+                            <button type="button" class="btn-mobile-ship" onclick="storeAdmin.openAutoFillShipModal('${o.orderId}')">
+                                <i class="fa-solid fa-truck-fast"></i> <span>${currentLang === 'fr' ? 'Expédier au transporteur' : 'إرسال لشركة التوصيل'}</span>
+                            </button>
+                            <button type="button" class="btn-mobile-delete" onclick="event.stopPropagation(); storeAdmin.deleteColis('${o.orderId}')">
+                                <i class="fa-solid fa-trash-can"></i> <span>${currentLang === 'fr' ? 'Supprimer' : 'حذف الطلبية'}</span>
+                            </button>
+                        </div>
+
                         <div class="card-secondary-actions">
-                            <div style="font-size:11px; color:var(--text-muted);">
-                                ${o.in_redex ? '🚚 ' + (o.redex_tracking_code || 'في التوصيل') : 'لم تشحن بعد'}
+                            <div style="font-size:11px; color:var(--text-muted); font-weight:600;">
+                                ${o.in_redex ? '🚚 ' + (o.redex_tracking_code || 'في التوصيل') : (currentLang === 'fr' ? 'Non expédié' : 'لم تشحن بعد')}
                             </div>
                             <div style="display:flex; gap:6px;">
-                                <button type="button" class="btn-action-sm btn-act-ship" onclick="storeAdmin.openAutoFillShipModal('${o.orderId}')" title="شحن">
-                                    <i class="fa-solid fa-truck-fast"></i>
-                                </button>
-                                <button type="button" class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="طباعة">
-                                    <i class="fa-solid fa-print"></i>
-                                </button>
-                                <button type="button" class="btn-action-sm btn-act-del" onclick="event.stopPropagation(); storeAdmin.deleteColis('${o.orderId}')" title="حذف">
-                                    <i class="fa-solid fa-trash"></i>
+                                <button type="button" class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="${currentLang === 'fr' ? 'Étiquette' : 'طباعة'}">
+                                    <i class="fa-solid fa-print"></i> <span>${currentLang === 'fr' ? 'Étiquette' : 'طباعة الملصق'}</span>
                                 </button>
                             </div>
                         </div>
