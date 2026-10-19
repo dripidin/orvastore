@@ -501,7 +501,7 @@
                                 <button type="button" class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="طباعة">
                                     <i class="fa-solid fa-print"></i>
                                 </button>
-                                <button type="button" class="btn-action-sm btn-act-del" onclick="storeAdmin.deleteColis('${o.orderId}')" title="حذف">
+                                <button type="button" class="btn-action-sm btn-act-del" onclick="event.stopPropagation(); storeAdmin.deleteColis('${o.orderId}')" title="حذف">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </div>
@@ -781,7 +781,7 @@
                         <button class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="${currentLang === 'fr' ? 'Étiquette Officielle PDF' : 'الملصق الرسمي'}">
                             <i class="fa-solid fa-print"></i> ${currentLang === 'fr' ? 'Étiquette' : 'ملصق'}
                         </button>
-                        <button class="btn-action-sm btn-act-del" onclick="storeAdmin.deleteColis('${o.orderId}')" title="${currentLang === 'fr' ? 'Supprimer' : 'حذف'}">
+                        <button type="button" class="btn-action-sm btn-act-del" onclick="event.stopPropagation(); storeAdmin.deleteColis('${o.orderId}')" title="${currentLang === 'fr' ? 'Supprimer' : 'حذف'}">
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
@@ -793,7 +793,7 @@
                         <button class="btn-action-sm btn-act-print" onclick="storeAdmin.printOfficialLabel('${o.orderId}')" title="${currentLang === 'fr' ? 'Étiquette' : 'ملصق'}">
                             <i class="fa-solid fa-print"></i>
                         </button>
-                        <button class="btn-action-sm btn-act-del" onclick="storeAdmin.deleteColis('${o.orderId}')" title="${currentLang === 'fr' ? 'Supprimer' : 'حذف'}">
+                        <button type="button" class="btn-action-sm btn-act-del" onclick="event.stopPropagation(); storeAdmin.deleteColis('${o.orderId}')" title="${currentLang === 'fr' ? 'Supprimer' : 'حذف'}">
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
@@ -1305,19 +1305,57 @@
 
         // ── 8. Delete & Sync Order ────────────────────────────────────────────
         deleteColis: async function (orderId) {
+            if (!orderId) return;
+
             const confirmMsg = currentLang === 'fr'
-                ? `Êtes-vous sûr de vouloir supprimer la commande ${orderId} ?`
-                : `هل أنت متأكد من حذف الطلبية ${orderId}؟`;
+                ? `Êtes-vous sûr de vouloir supprimer définitivement la commande #${orderId} ?`
+                : `هل أنت متأكد من حذف الطلبية #${orderId} بشكل نهائي؟`;
             if (!confirm(confirmMsg)) return;
 
+            // Optimistic UI update: Remove from local memory and UI immediately
+            const originalOrders = [...ordersList];
+            ordersList = ordersList.filter(o => o.orderId !== orderId);
+            this.renderTable();
+            this.updateKPIs();
+
+            this.showToast(
+                currentLang === 'fr' ? `Suppression de la commande #${orderId}...` : `جاري حذف الطلبية #${orderId}...`,
+                'info'
+            );
+
             try {
-                const res = await fetch(`/api/delivery?action=delete&id=${orderId}`, { method: 'DELETE' });
-                const json = await res.json();
-                if (json.success) {
-                    this.fetchOrders(true);
+                const res = await fetch(`/api/delivery?action=delete&id=${encodeURIComponent(orderId)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: orderId, id: orderId })
+                });
+                const json = await res.json().catch(() => ({}));
+
+                if (res.ok && json.success) {
+                    this.showToast(
+                        currentLang === 'fr' ? `Commande #${orderId} supprimée avec succès.` : `تم حذف الطلبية #${orderId} بنجاح.`,
+                        'success'
+                    );
+                    this.fetchOrders(false);
+                } else {
+                    // Revert if error
+                    ordersList = originalOrders;
+                    this.renderTable();
+                    this.updateKPIs();
+                    this.showToast(
+                        currentLang === 'fr' ? `Échec de la suppression: ${json.error || 'Erreur inconnue'}` : `تعذر حذف الطلبية: ${json.error || 'خطأ غير معروف'}`,
+                        'error'
+                    );
                 }
             } catch (e) {
-                alert('Erreur: ' + e.message);
+                // Revert on network exception
+                ordersList = originalOrders;
+                this.renderTable();
+                this.updateKPIs();
+                this.showToast(
+                    currentLang === 'fr' ? `Erreur réseau: ${e.message}` : `خطأ في الاتصال: ${e.message}`,
+                    'error'
+                );
             }
         },
 

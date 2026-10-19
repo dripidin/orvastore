@@ -79,6 +79,62 @@ if ($action === 'update_status' || $action === 'status' || $action === 'change_s
     exit;
 }
 
+// ── 1.9. Delete Order (Direct Supabase Removal) ──────────────────────────────
+if ($action === 'delete') {
+    $rawInput = file_get_contents('php://input');
+    $body = json_decode($rawInput, true) ?? [];
+    $targetId = trim($_GET['id'] ?? $_GET['orderId'] ?? $body['orderId'] ?? $body['id'] ?? '');
+
+    if (empty($targetId)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Missing order id']);
+        exit;
+    }
+
+    // 1. Direct Supabase Hard Delete via REST API
+    $delUrl = "{$supabaseUrl}/rest/v1/orders?order_id=eq." . urlencode($targetId);
+    $ch = curl_init($delUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'apikey: ' . $supabaseKey,
+        'Authorization: Bearer ' . $supabaseKey,
+        'Prefer: return=minimal'
+    ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+    $delResp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    // 2. Fallback: If DELETE didn't succeed with 2xx, update status to 'deleted'
+    if ($httpCode >= 400 || $httpCode === 0) {
+        $patchUrl = "{$supabaseUrl}/rest/v1/orders?order_id=eq." . urlencode($targetId);
+        $ch2 = curl_init($patchUrl);
+        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch2, CURLOPT_CUSTOMREQUEST, 'PATCH');
+        curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode([
+            'status' => 'deleted',
+            'updated_at' => date('c')
+        ]));
+        curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+            'apikey: ' . $supabaseKey,
+            'Authorization: Bearer ' . $supabaseKey,
+            'Content-Type: application/json',
+            'Prefer: return=minimal'
+        ]);
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 6);
+        curl_exec($ch2);
+        curl_close($ch2);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => "Order {$targetId} deleted successfully",
+        'orderId' => $targetId
+    ]);
+    exit;
+}
+
 // ── 2. Get All Orders ─────────────────────────────────────────────────────────
 if ($action === 'get_all_orders' || $action === 'orders') {
     $ch = curl_init("{$supabaseUrl}/rest/v1/orders?select=*&order=created_at.desc&limit=500");
@@ -97,6 +153,8 @@ if ($action === 'get_all_orders' || $action === 'orders') {
     $normalized = [];
 
     foreach ($rows as $r) {
+        // Skip deleted orders
+        if (strtolower($r['status'] ?? '') === 'deleted') continue;
         $normalized[] = [
             'orderId'            => $r['order_id'] ?? '',
             'storeId'            => $r['store_id'] ?? 'orvastore',

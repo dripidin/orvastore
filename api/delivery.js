@@ -713,7 +713,8 @@ module.exports = async (req, res) => {
 
         // ── 7. Delete / Archive Order ──────────────────────────────────────────
         if (action === 'delete' && (method === 'DELETE' || method === 'POST' || method === 'GET')) {
-            const targetId = id || (req.body && (req.body.id || req.body.orderId));
+            const body = req.body || {};
+            const targetId = id || (req.query && (req.query.orderId || req.query.id)) || body.orderId || body.id;
             if (targetId) {
                 addBlacklistedOrder(targetId);
                 const { deleteOrderFromDb } = require('../lib/db');
@@ -721,7 +722,8 @@ module.exports = async (req, res) => {
             }
             return res.status(200).json({
                 success: true,
-                message: `Commande ${targetId} supprimée et synchronisée.`
+                message: `Commande ${targetId} supprimée et synchronisée.`,
+                orderId: targetId
             });
         }
 
