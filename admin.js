@@ -96,10 +96,14 @@
             navRisk: "Bouclier Anti-Fraude & Trust",
             tabRisk: "🛡️ Risque & Fraude",
             modalRiskTitle: "Bouclier Anti-Fraude & Évaluation de Confiance",
+            tabConfirmed: "📞 Confirmées",
+            tabCancelled: "❌ Annulées",
             statusPendingBadge: "En Attente",
+            statusConfirmedBadge: "Confirmé",
             statusShippedBadge: "Chez Transporteur",
             statusDeliveredBadge: "Livré ✅",
             statusReturnedBadge: "Retourné ⚠️",
+            statusCancelledBadge: "Annulé",
             alertLabelNotShipped: "L'étiquette officielle n'est disponible qu'après l'envoi du colis au transporteur. Cliquez d'abord sur 'Expédier'."
         },
         ar: {
@@ -185,10 +189,14 @@
             thHomeRate: "توصيل للمنزل",
             thDeskRate: "استلام من المكتب (Stop Desk)",
             thCoverage: "التغطية",
+            tabConfirmed: "📞 مؤكدة",
+            tabCancelled: "❌ ملغاة",
             statusPendingBadge: "قيد الانتظار",
+            statusConfirmedBadge: "مؤكدة",
             statusShippedBadge: "في شبكة التوصيل",
             statusDeliveredBadge: "تم التسليم ✅",
             statusReturnedBadge: "مرتجع ⚠️",
+            statusCancelledBadge: "ملغاة",
             alertLabelNotShipped: "الملصق الرسمي متاح فقط بعد إرسال الطرد إلى شركة التوصيل. يرجى الضغط على 'إرسال' أولاً."
         }
     };
@@ -440,24 +448,13 @@
                 const waPhone = rawPhone.startsWith('0') ? '213' + rawPhone.slice(1) : (rawPhone.startsWith('213') ? rawPhone : '213' + rawPhone);
                 const waText = encodeURIComponent(`السلام عليكم ${o.fullName || 'أخي الكريم'}، نتصل بك من متجر ORVA Store لتأكيد طلبيتك رقم ${o.orderId} (${o.productName || 'باقة الأدوات'}).`);
 
-                let badgeClass = 'badge-pending';
-                let badgeLabel = currentLang === 'fr' ? 'En Attente' : 'قيد الانتظار';
-                if (o.status === 'shipped' || o.in_redex) {
-                    badgeClass = 'badge-shipped';
-                    badgeLabel = currentLang === 'fr' ? 'Expédié' : 'تم الشحن';
-                } else if (o.status === 'delivered') {
-                    badgeClass = 'badge-delivered';
-                    badgeLabel = currentLang === 'fr' ? 'Livré' : 'تم التسليم';
-                } else if (o.status === 'returned') {
-                    badgeClass = 'badge-returned';
-                    badgeLabel = currentLang === 'fr' ? 'Retourné' : 'مرتجع';
-                }
+                const statusSelectHtml = this.renderStatusSelect(o);
 
                 return `
                     <div class="mobile-order-card">
                         <div class="card-top-row">
                             <span class="card-order-id">${o.orderId}</span>
-                            <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+                            ${statusSelectHtml}
                         </div>
 
                         <div class="card-customer-row">
@@ -700,12 +697,16 @@
             // Status Filter Tab
             if (currentFilter === 'pending') {
                 filtered = filtered.filter(o => !o.in_redex && (o.status === 'pending' || o.status === 'قيد الانتظار'));
+            } else if (currentFilter === 'confirmed') {
+                filtered = filtered.filter(o => o.status === 'confirmed' || o.status === 'مؤكدة');
             } else if (currentFilter === 'shipped') {
                 filtered = filtered.filter(o => o.in_redex || o.status === 'shipped' || (o.status && o.status.includes('Redex')));
             } else if (currentFilter === 'delivered') {
                 filtered = filtered.filter(o => o.status === 'delivered' || (o.status && o.status.includes('Livré')));
             } else if (currentFilter === 'returned') {
                 filtered = filtered.filter(o => o.status === 'returned' || (o.status && (o.status.includes('Retour') || o.status.includes('مرتجع'))));
+            } else if (currentFilter === 'cancelled') {
+                filtered = filtered.filter(o => o.status === 'cancelled' || o.status === 'ملغاة');
             } else if (currentFilter === 'risk') {
                 filtered = filtered.filter(o => (o.riskScore && o.riskScore >= 40) || o.riskLevel === 'HIGH' || o.riskDecision === 'BLOCK');
             }
@@ -751,21 +752,8 @@
             filtered.forEach(o => {
                 const tr = document.createElement('tr');
                 
-                // Status Badges
-                let badgeClass = 'badge-pending';
-                let badgeLabel = currentLang === 'fr' ? 'En Attente' : 'قيد الانتظار';
-                if (o.status === 'shipped' || o.in_redex) {
-                    badgeClass = 'badge-shipped';
-                    badgeLabel = currentLang === 'fr' ? 'Expédié' : 'تم الشحن';
-                }
-                if (o.status === 'delivered') {
-                    badgeClass = 'badge-delivered';
-                    badgeLabel = currentLang === 'fr' ? 'Livré ✅' : 'تم التسليم ✅';
-                }
-                if (o.status === 'returned') {
-                    badgeClass = 'badge-returned';
-                    badgeLabel = currentLang === 'fr' ? 'Retourné ⚠️' : 'مرتجع ⚠️';
-                }
+                // Status Selector
+                const statusSelectHtml = this.renderStatusSelect(o);
 
                 // Courier Status Badge
                 const isInCourier = o.in_redex || (o.tracking_code && o.tracking_code.startsWith('ECE'));
@@ -825,7 +813,7 @@
                     </td>
                     <td>${carrierBadge}</td>
                     <td>
-                        <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+                        ${statusSelectHtml}
                         ${riskPill}
                     </td>
                     <td>${actionsHtml}</td>
@@ -1684,6 +1672,134 @@
             } catch (e) {
                 alert('Erreur réseau: ' + e.message);
             }
+        },
+
+        renderStatusSelect: function (o) {
+            let norm = String(o.status || 'pending').toLowerCase().trim();
+            if (norm === 'قيد الانتظار' || norm === 'en attente') norm = 'pending';
+            else if (norm === 'مؤكدة' || norm === 'confirme' || norm === 'confirmee') norm = 'confirmed';
+            else if (norm === 'تم الشحن' || norm === 'expedie' || norm === 'shipped' || o.in_redex) norm = 'shipped';
+            else if (norm === 'تم التسليم' || norm === 'livre' || norm === 'livree' || norm === 'delivered') norm = 'delivered';
+            else if (norm === 'مرتجع' || norm === 'retour' || norm === 'retourne' || norm === 'returned') norm = 'returned';
+            else if (norm === 'ملغاة' || norm === 'annule' || norm === 'annulee' || norm === 'cancelled') norm = 'cancelled';
+            else if (!['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'].includes(norm)) norm = 'pending';
+
+            const isAr = currentLang === 'ar';
+            return `
+                <div class="status-select-wrap">
+                    <select class="status-select status-select-${norm}" data-current="${norm}" onchange="storeAdmin.changeOrderStatus('${o.orderId}', this.value, this)" title="${isAr ? 'تغيير حالة الطلبية' : 'Modifier l\\'état'}">
+                        <option value="pending" ${norm === 'pending' ? 'selected' : ''}>⏳ ${isAr ? 'قيد الانتظار' : 'En Attente'}</option>
+                        <option value="confirmed" ${norm === 'confirmed' ? 'selected' : ''}>📞 ${isAr ? 'مؤكدة' : 'Confirmé'}</option>
+                        <option value="shipped" ${norm === 'shipped' ? 'selected' : ''}>🚚 ${isAr ? 'تم الشحن' : 'Expédié'}</option>
+                        <option value="delivered" ${norm === 'delivered' ? 'selected' : ''}>✅ ${isAr ? 'تم التسليم' : 'Livré'}</option>
+                        <option value="returned" ${norm === 'returned' ? 'selected' : ''}>⚠️ ${isAr ? 'مرتجع' : 'Retourné'}</option>
+                        <option value="cancelled" ${norm === 'cancelled' ? 'selected' : ''}>❌ ${isAr ? 'ملغاة' : 'Annulé'}</option>
+                    </select>
+                </div>
+            `;
+        },
+
+        changeOrderStatus: async function (orderId, newStatus, selectEl) {
+            if (!orderId || !newStatus) return;
+
+            const oldStatus = selectEl ? selectEl.getAttribute('data-current') : null;
+            if (selectEl) {
+                selectEl.classList.add('is-updating');
+                selectEl.disabled = true;
+            }
+
+            try {
+                const res = await fetch('/api/delivery?action=update_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId, status: newStatus })
+                });
+
+                const json = await res.json().catch(() => ({}));
+
+                if (res.ok && json.success) {
+                    const ord = ordersList.find(x => x.orderId === orderId);
+                    if (ord) {
+                        ord.status = newStatus;
+                    }
+
+                    if (selectEl) {
+                        selectEl.setAttribute('data-current', newStatus);
+                        selectEl.className = `status-select status-select-${newStatus}`;
+                    }
+
+                    // Sync other selects for the same order if present (e.g. table vs mobile)
+                    document.querySelectorAll(`.status-select[onchange*="${orderId}"]`).forEach(el => {
+                        if (el !== selectEl) {
+                            el.value = newStatus;
+                            el.setAttribute('data-current', newStatus);
+                            el.className = `status-select status-select-${newStatus}`;
+                        }
+                    });
+
+                    const label = this.getStatusLabel(newStatus);
+                    this.showToast(
+                        currentLang === 'fr' 
+                            ? `Commande #${orderId} mise à jour vers : ${label}` 
+                            : `تم تحديث حالة الطلبية #${orderId} إلى "${label}" بنجاح`,
+                        'success'
+                    );
+
+                    this.updateKPIs();
+                } else {
+                    throw new Error(json.error || 'Erreur lors de la mise à jour');
+                }
+            } catch (err) {
+                console.error('[Admin] Error updating order status:', err);
+                if (selectEl && oldStatus) {
+                    selectEl.value = oldStatus;
+                    selectEl.className = `status-select status-select-${oldStatus}`;
+                }
+                this.showToast(
+                    currentLang === 'fr' 
+                        ? `Échec de mise à jour : ${err.message}` 
+                        : `فشل تحديث الحالة: ${err.message}`,
+                    'error'
+                );
+            } finally {
+                if (selectEl) {
+                    selectEl.classList.remove('is-updating');
+                    selectEl.disabled = false;
+                }
+            }
+        },
+
+        getStatusLabel: function (status) {
+            const s = String(status || '').toLowerCase().trim();
+            const isAr = currentLang === 'ar';
+            if (s === 'confirmed' || s === 'مؤكدة') return isAr ? 'مؤكدة 📞' : 'Confirmé 📞';
+            if (s === 'shipped' || s === 'تم الشحن') return isAr ? 'تم الشحن 🚚' : 'Expédié 🚚';
+            if (s === 'delivered' || s === 'تم التسليم') return isAr ? 'تم التسليم ✅' : 'Livré ✅';
+            if (s === 'returned' || s === 'مرتجع') return isAr ? 'مرتجع ⚠️' : 'Retourné ⚠️';
+            if (s === 'cancelled' || s === 'ملغاة') return isAr ? 'ملغاة ❌' : 'Annulé ❌';
+            return isAr ? 'قيد الانتظار ⏳' : 'En Attente ⏳';
+        },
+
+        showToast: function (msg, type = 'success') {
+            let container = document.getElementById('adminToastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'adminToastContainer';
+                container.className = 'admin-toast-container';
+                document.body.appendChild(container);
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `admin-toast toast-${type}`;
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${msg}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('toast-fadeout');
+                setTimeout(() => toast.remove(), 350);
+            }, 3000);
         },
 
         exportExcel: function () {

@@ -413,6 +413,28 @@ module.exports = async (req, res) => {
             return res.status(200).json({ success: true, count: finalOrders.length, data: finalOrders });
         }
 
+        // ── 1.2. Update Order Status (Direct Admin Control) ───────────────────
+        if (action === 'update_status' || action === 'status' || action === 'change_status') {
+            const body = req.body || {};
+            const targetId = id || body.orderId || body.id || req.query.orderId || req.query.id;
+            const newStatus = (body.status || req.query.status || '').toString().trim();
+
+            if (!targetId || !newStatus) {
+                return res.status(400).json({ success: false, error: 'Numéro de commande ou statut manquant' });
+            }
+
+            const { updateOrderInDb } = require('../lib/db');
+            const updated = await updateOrderInDb(targetId, { status: newStatus });
+
+            return res.status(200).json({
+                success: true,
+                message: `Statut de la commande ${targetId} mis à jour vers '${newStatus}'.`,
+                orderId: targetId,
+                status: newStatus,
+                data: updated
+            });
+        }
+
         // ── 1.5. Admin Login Verification (against Vercel ADMIN_PASSWORD) ─────
         if (action === 'login' || action === 'auth') {
             const body = req.body || {};

@@ -1,0 +1,9 @@
+# ==============================================================================
+# ORVA STORE — API Directory Security
+# ==============================================================================
+
+# Deny direct access to config and PHP source files not meant to be browsed
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>

@@ -16,3 +16,5 @@ scripts/apply-schema.js
 .windsurf/
 skills-lock.json
 *.code-workspace
+dist-hostinger/
+*.zip
