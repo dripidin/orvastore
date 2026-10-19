@@ -42,6 +42,18 @@ RewriteRule ^api/delivery/?$ api/delivery.php [L,QSA]
     ExpiresByType text/html "access plus 1 hour"
 </IfModule>
 
+# ── 5.1. Never Cache Admin Dashboard Assets (Real-time updates) ──────────────
+<FilesMatch "^(admin\.html|admin\.js|admin\.css)$">
+    FileETag None
+    <IfModule mod_headers.c>
+        Header unset ETag
+        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "Wed, 11 Jan 1984 05:00:00 GMT"
+        Header set X-LiteSpeed-Cache-Control "no-cache"
+    </IfModule>
+</FilesMatch>
+
 # ── 6. Gzip / Deflate Compression ─────────────────────────────────────────────
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE text/plain
