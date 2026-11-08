@@ -58,6 +58,7 @@ export interface EcoTrackTrackingInfo {
   currentStation?: string;
   status?: string;
   statusAr?: string;
+  financialStatus?: string;
   originCity?: number | string;
   destLocationCity?: number | string;
   activity: EcoTrackActivityItem[];
@@ -684,9 +685,13 @@ export class EcoTrackClient {
         return { success: true, message: 'Commande supprimée avec succès' };
       }
 
+      const failMsg = data?.delete === 'fail'
+        ? 'الطرد مسجل أو معتمد لدى شركة التوصيل Redex (تم توثيق الإلغاء محلياً في النظام)'
+        : (data?.message || `HTTP ${res.status}: ${res.statusText}`);
+
       return {
         success: false,
-        error: data?.message || `HTTP ${res.status}: ${res.statusText}`,
+        error: failMsg,
       };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Network error deleting parcel' };

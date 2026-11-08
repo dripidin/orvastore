@@ -26,71 +26,193 @@ function formatWilayaLabel(code?: number, name?: string): string {
 }
 
 /**
- * Common order deletion helper:
- * 1. Cancels parcel on Redex (if it has a tracking code)
- * 2. Removes order from Supabase
- * 3. Removes order from persistent fallback store
+ * Standard Order Cancellation (v2.1.0):
+ * 1. Cancels parcel on Redex if it has an active tracking code
+ * 2. Updates Supabase orders status to 'CANCELLED' without deleting the record
+ * 3. Appends cancellation event to order remarks/timeline
+ * 4. Updates deliveries table status to 'CANCELLED'
  */
-async function executeOrderDeletion(orderIdOrTracking: string) {
+async function executeOrderCancellation(orderIdOrTracking: string, reason?: string, actor?: string) {
   const target = String(orderIdOrTracking || '').trim();
-  if (!target) return { success: false, error: 'Order ID or Tracking code is required' };
+  if (!target) return { success: false, error: 'معرّف الطلبية أو رقم التتبع مطلوب للإلغاء' };
 
-  let trackingToDelete: string | null = null;
   const supabase = getSupabaseServerClient() as any;
+  let trackingCode: string | null = null;
+  let resolvedOrderId = target;
+  let previousRemarks: any[] = [];
+  let previousStatus = 'PENDING';
 
-  // 1. Find tracking if target is an order ID
+  // 1. Find order record in Supabase
   try {
     const { data: orderRow } = await supabase
       .from('orders')
-      .select('redex_tracking_code, tracking_number')
-      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`)
+      .select('*')
+      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target},tracking_code.eq.${target},redex_tracking_code.eq.${target}`)
       .maybeSingle();
 
     if (orderRow) {
-      trackingToDelete = orderRow.redex_tracking_code || orderRow.tracking_number;
+      resolvedOrderId = orderRow.order_id || orderRow.order_number || orderRow.id;
+      trackingCode = orderRow.tracking_code || orderRow.redex_tracking_code;
+      previousStatus = orderRow.status || 'PENDING';
+      if (Array.isArray(orderRow.remarks)) {
+        previousRemarks = orderRow.remarks;
+      }
     }
   } catch (findErr) {
-    console.warn('[API /api/delivery] Deletion search warning:', findErr);
+    console.warn('[API /api/delivery] Cancellation search warning:', findErr);
   }
 
-  if (!trackingToDelete && target.startsWith('EC')) {
-    trackingToDelete = target;
+  if (!trackingCode && target.startsWith('EC')) {
+    trackingCode = target;
   }
 
-  // 2. Cancel/Delete on Redex if tracking is present
-  if (trackingToDelete) {
+  // 2. Cancel on Redex if tracking is present
+  let redexCancelled = false;
+  let redexError: string | null = null;
+  if (trackingCode) {
     try {
       const ecotrack = getEcoTrackClient();
-      await ecotrack.deleteOrder(trackingToDelete);
-    } catch (courierErr) {
-      console.warn('[API /api/delivery] Courier deletion attempt warning:', courierErr);
+      const cancelRes = await ecotrack.deleteOrder(trackingCode);
+      redexCancelled = cancelRes.success;
+      if (!cancelRes.success) {
+        redexError = cancelRes.error || null;
+      }
+    } catch (courierErr: any) {
+      console.warn('[API /api/delivery] Courier cancellation attempt warning:', courierErr);
+      redexError = courierErr?.message || 'تعذر إلغاء الطرد في Redex';
     }
   }
 
-  // 3. Delete from Supabase
+  const cancelEvent = {
+    event: 'ORDER_CANCELLED',
+    reason: reason || 'إلغاء الطلبية من لوحة التحكم (Admin Cancel)',
+    actor: actor || 'Admin',
+    timestamp_utc: new Date().toISOString(),
+    previous_status: previousStatus,
+    redex_tracking_code: trackingCode,
+    redex_cancelled: redexCancelled,
+    redex_error: redexError,
+  };
+
+  const updatedRemarks = [...previousRemarks, cancelEvent];
+
+  // 3. Update Supabase orders table (NEVER DELETE, keep history)
+  let dbSuccess = false;
+  try {
+    const { error: updateErr } = await supabase
+      .from('orders')
+      .update({
+        status: 'CANCELLED',
+        remarks: updatedRemarks,
+        updated_at: new Date().toISOString(),
+      })
+      .or(`id.eq.${resolvedOrderId},order_id.eq.${resolvedOrderId},order_number.eq.${resolvedOrderId}`);
+
+    dbSuccess = !updateErr;
+    if (updateErr) {
+      console.warn('[API /api/delivery] Supabase cancellation update error:', updateErr);
+    }
+  } catch (dbErr) {
+    console.warn('[API /api/delivery] Supabase cancellation exception:', dbErr);
+  }
+
+  // 4. Update Supabase deliveries table
+  try {
+    await supabase
+      .from('deliveries')
+      .update({
+        status: 'CANCELLED',
+        carrier_status: 'annule',
+        carrier_status_ar: 'ملغى لدى شركة التوصيل',
+        updated_at: new Date().toISOString(),
+      })
+      .or(`order_id.eq.${resolvedOrderId},tracking_number.eq.${trackingCode}`);
+  } catch (delivErr) {
+    // Deliveries table may not be migrated yet
+  }
+
+  // 5. Update fallback persistent store
+  const allStored = getStoredFallbackOrders();
+  for (const fb of allStored) {
+    if (
+      fb.id === resolvedOrderId ||
+      fb.orderNumber === resolvedOrderId ||
+      (fb as any).redex_tracking_code === trackingCode ||
+      (fb as any).tracking_code === trackingCode
+    ) {
+      fb.status = 'CANCELLED' as any;
+      if (!fb.remarks) fb.remarks = [];
+      fb.remarks.push(cancelEvent);
+    }
+  }
+  saveAllFallbackOrders(allStored);
+
+  return {
+    success: true,
+    orderId: resolvedOrderId,
+    trackingCode,
+    redexCancelled,
+    status: 'cancelled',
+    message: redexCancelled
+      ? `تم إلغاء الطلبية #${resolvedOrderId} والشحنة لدى Redex (${trackingCode}) بنجاح.`
+      : `تم إلغاء الطلبية #${resolvedOrderId} محلياً في النظام بنجاح.`,
+  };
+}
+
+/**
+ * Hard Delete Order (Only for cleanup when specifically required)
+ */
+async function executeOrderHardDeletion(orderIdOrTracking: string) {
+  const target = String(orderIdOrTracking || '').trim();
+  if (!target) return { success: false, error: 'Order ID is required' };
+
+  const supabase = getSupabaseServerClient() as any;
+
+  // Cancel on Redex first
+  try {
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('tracking_code, redex_tracking_code')
+      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`)
+      .maybeSingle();
+
+    const tracking = orderRow?.tracking_code || orderRow?.redex_tracking_code || (target.startsWith('EC') ? target : null);
+    if (tracking) {
+      const ecotrack = getEcoTrackClient();
+      await ecotrack.deleteOrder(tracking);
+    }
+  } catch (err) {
+    console.warn('[API /api/delivery] Hard delete Redex check error:', err);
+  }
+
+  // Delete from Supabase orders & deliveries
   try {
     await supabase
       .from('orders')
       .delete()
-      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target},redex_tracking_code.eq.${target},tracking_number.eq.${target}`);
+      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`);
+    await supabase
+      .from('deliveries')
+      .delete()
+      .or(`order_id.eq.${target}`);
   } catch (dbErr) {
-    console.warn('[API /api/delivery] Supabase delete warning:', dbErr);
+    console.warn('[API /api/delivery] Supabase hard delete warning:', dbErr);
   }
 
-  // 4. Delete from fallback store
+  // Remove from fallback store
   const allStored = getStoredFallbackOrders();
   const filtered = allStored.filter(
     (fb) =>
       fb.id !== target &&
       fb.orderNumber !== target &&
       (fb as any).redex_tracking_code !== target &&
-      (fb as any).trackingNumber !== target
+      (fb as any).tracking_code !== target
   );
   if (filtered.length !== allStored.length) {
     saveAllFallbackOrders(filtered);
   }
 
-  return { success: true, message: `تم حذف الطلبية #${target} بنجاح من قاعدة البيانات ومنصة التوصيل.` };
+  return { success: true, message: `تم حذف الطلبية #${target} نهائياً.` };
 }
 
 // ── GET HANDLER ─────────────────────────────────────────────────────────────
@@ -108,31 +230,60 @@ export async function GET(request: NextRequest) {
     const ecotrack = getEcoTrackClient();
     const trackingInfo = await ecotrack.getTrackingInfo(tracking);
 
-    // If tracking indicates an advanced or terminal status, update Supabase & fallback
+    // If tracking indicates an advanced or terminal status, update deliveries & orders
     if (trackingInfo.success && trackingInfo.status) {
       const statusCode = trackingInfo.status.toLowerCase();
       let newDbStatus: string | null = null;
+      let newDeliveryStatus = 'IN_TRANSIT';
+
       if (['livred', 'livre_non_encaisse', 'encaisse_non_paye', 'encaissed', 'payed', 'paye_et_archive'].includes(statusCode)) {
         newDbStatus = 'DELIVERED';
+        newDeliveryStatus = 'DELIVERED';
       } else if (['return_asked', 'return_in_transit', 'retour_chez_livreur', 'retour_transit_entrepot', 'retour_en_traitement', 'retour_recu', 'return_received', 'retour_archive'].includes(statusCode)) {
         newDbStatus = 'RETURNED';
+        newDeliveryStatus = 'RETURNED';
       } else if (['annule'].includes(statusCode)) {
         newDbStatus = 'CANCELLED';
-      } else if (['en_livraison', 'vers_wilaya', 'en_hub', 'dispatched_to_driver', 'picked'].includes(statusCode)) {
-        newDbStatus = 'SHIPPED';
+        newDeliveryStatus = 'CANCELLED';
+      } else if (['en_livraison', 'dispatched_to_driver'].includes(statusCode)) {
+        newDeliveryStatus = 'OUT_FOR_DELIVERY';
+      } else if (['prete_a_expedier', 'order_information_received_by_carrier'].includes(statusCode)) {
+        newDeliveryStatus = 'CREATED';
       }
 
+      const supabase = getSupabaseServerClient() as any;
+
+      // Update deliveries table
+      try {
+        await supabase
+          .from('deliveries')
+          .update({
+            status: newDeliveryStatus,
+            carrier_status: statusCode,
+            carrier_status_ar: trackingInfo.statusAr || ECOTRACK_STATUS_MAP_AR[statusCode] || statusCode,
+            raw_response: {
+              activity: trackingInfo.activity,
+              currentStation: trackingInfo.currentStation,
+              financialStatus: trackingInfo.financialStatus,
+              last_synced_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('tracking_number', tracking);
+      } catch (delivErr) {
+        // deliveries table fallback
+      }
+
+      // Update orders table if terminal status
       if (newDbStatus) {
         try {
-          const supabase = getSupabaseServerClient() as any;
           await supabase
             .from('orders')
             .update({
               status: newDbStatus,
-              delivery_status: newDbStatus,
               updated_at: new Date().toISOString(),
             })
-            .or(`redex_tracking_code.eq.${tracking},tracking_number.eq.${tracking}`);
+            .or(`tracking_code.eq.${tracking},redex_tracking_code.eq.${tracking}`);
         } catch (dbErr) {
           console.warn('[API /api/delivery] Supabase sync on tracking update:', dbErr);
         }
@@ -140,7 +291,7 @@ export async function GET(request: NextRequest) {
         const allStored = getStoredFallbackOrders();
         let fallbackUpdated = false;
         for (const fb of allStored) {
-          if ((fb as any).redex_tracking_code === tracking || (fb as any).trackingNumber === tracking) {
+          if ((fb as any).redex_tracking_code === tracking || (fb as any).tracking_code === tracking) {
             fb.status = newDbStatus as any;
             fallbackUpdated = true;
           }
@@ -185,8 +336,8 @@ export async function GET(request: NextRequest) {
       const supabase = getSupabaseServerClient() as any;
       const { data: dbOrders, error } = await supabase
         .from('orders')
-        .select('id, order_id, redex_tracking_code, tracking_number, status')
-        .or('in_redex.eq.true,courier_provider.eq.REDEX,redex_tracking_code.not.is.null')
+        .select('id, order_id, order_number, tracking_code, redex_tracking_code, status')
+        .or('in_redex.eq.true,courier.eq.REDEX,tracking_code.not.is.null,redex_tracking_code.not.is.null')
         .not('status', 'in', '("DELIVERED","RETURNED","CANCELLED")')
         .limit(100);
 
@@ -196,7 +347,7 @@ export async function GET(request: NextRequest) {
 
       const trackings: string[] = [];
       for (const row of dbOrders) {
-        const tracking = row.redex_tracking_code || row.tracking_number;
+        const tracking = row.tracking_code || row.redex_tracking_code;
         if (tracking && !trackings.includes(tracking)) {
           trackings.push(tracking);
         }
@@ -225,8 +376,8 @@ export async function GET(request: NextRequest) {
           if (newDbStatus) {
             await supabase
               .from('orders')
-              .update({ status: newDbStatus, delivery_status: newDbStatus, updated_at: new Date().toISOString() })
-              .or(`redex_tracking_code.eq.${tracking},tracking_number.eq.${tracking}`);
+              .update({ status: newDbStatus, updated_at: new Date().toISOString() })
+              .or(`tracking_code.eq.${tracking},redex_tracking_code.eq.${tracking}`);
             updatedCount++;
           }
         }
@@ -250,7 +401,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   }
 
-  // 5. Platform Data: Get Communes (page-2026-11-08-18-58-29.md)
+  // 5. Platform Data: Get Communes
   if (action === 'get_communes') {
     const wilayaId = searchParams.get('wilaya_id') ? parseInt(searchParams.get('wilaya_id')!, 10) : undefined;
     const ecotrack = getEcoTrackClient();
@@ -258,14 +409,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: communes, total: communes.length });
   }
 
-  // 6. Platform Data: Get Fees (Tarifs des prestations)
+  // 6. Platform Data: Get Fees
   if (action === 'get_fees') {
     const ecotrack = getEcoTrackClient();
     const feesResult = await ecotrack.getFees();
     return NextResponse.json(feesResult);
   }
 
-  // 7. Platform Data: Get Desks (Bureaux Stop Desk)
+  // 7. Platform Data: Get Desks
   if (action === 'get_desks') {
     const ecotrack = getEcoTrackClient();
     const desksResult = await ecotrack.getDesks();
@@ -279,7 +430,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(wilayasResult);
   }
 
-  // 9. Platform Data: Get Products List (Produits & Stock)
+  // 9. Platform Data: Get Products List
   if (action === 'get_products') {
     const page = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
     const ecotrack = getEcoTrackClient();
@@ -287,10 +438,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(productsResult);
   }
 
-  // 10. Fetch all orders (Supabase + Fallback Store + Mock)
+  // 10. Fetch all orders (Supabase + Deliveries + Fallback)
   if (action === 'get_all_orders') {
     const combinedOrders: any[] = [];
     const seenIds = new Set<string>();
+    let supabaseSuccess = false;
 
     // 1. Fetch from Supabase
     try {
@@ -301,6 +453,24 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (!error && Array.isArray(dbOrders)) {
+        supabaseSuccess = true;
+
+        // Fetch deliveries records to link shipping state
+        let deliveriesMap = new Map<string, any>();
+        try {
+          const { data: delivRows } = await supabase
+            .from('deliveries')
+            .select('*');
+          if (Array.isArray(delivRows)) {
+            for (const d of delivRows) {
+              if (d.order_id) deliveriesMap.set(String(d.order_id), d);
+              if (d.tracking_number) deliveriesMap.set(String(d.tracking_number), d);
+            }
+          }
+        } catch {
+          // deliveries table optional if not yet migrated
+        }
+
         for (const row of dbOrders) {
           const id = row.order_id || row.order_number || row.id;
           if (seenIds.has(id)) continue;
@@ -325,6 +495,12 @@ export async function GET(request: NextRequest) {
                 : `Pack ${row.metadata.packId.replace('PACK', '')}`
               : 'Pack ORVA');
 
+          const resolvedTracking = row.tracking_code || row.redex_tracking_code || null;
+          const deliveryInfo = deliveriesMap.get(id) || (resolvedTracking ? deliveriesMap.get(resolvedTracking) : null);
+
+          // Operational status only
+          const opStatus = (row.status || 'pending').toLowerCase();
+
           combinedOrders.push({
             orderId: id,
             storeId: row.store_id || 'orvastore',
@@ -336,12 +512,16 @@ export async function GET(request: NextRequest) {
             deliveryTime: row.delivery_time || '24 - 48 H',
             quantity: row.quantity || 1,
             productName: resolvedProductName,
-            priceNum: Number(row.price_num || row.subtotal || 4950),
+            priceNum: Number(row.price_num || row.unit_price || row.subtotal || 4950),
             shippingFee: row.shipping_fee ? String(row.shipping_fee) : `${Number(row.delivery_fee || 500)} د.ج`,
-            grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total || 5450)} د.ج`,
-            status: (row.status || 'pending').toLowerCase(),
-            in_redex: Boolean(row.in_redex) || (row.courier_provider === 'REDEX' && (row.status === 'SHIPPED' || Boolean(row.tracking_number))),
-            redex_tracking_code: row.redex_tracking_code || row.tracking_number || null,
+            grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total_price || row.total || 5450)} د.ج`,
+            status: opStatus,
+            in_redex: Boolean(row.in_redex) || Boolean(resolvedTracking),
+            redex_tracking_code: resolvedTracking,
+            tracking_code: resolvedTracking,
+            tracking_number: resolvedTracking,
+            carrier_status: deliveryInfo?.carrier_status || (resolvedTracking ? 'prete_a_expedier' : null),
+            carrier_status_ar: deliveryInfo?.carrier_status_ar || (resolvedTracking ? 'جاهز للإرسال' : null),
             created_at: row.created_at || new Date().toISOString(),
             remarks: Array.isArray(row.remarks) && row.remarks.length > 0
               ? row.remarks
@@ -364,6 +544,8 @@ export async function GET(request: NextRequest) {
       if (seenIds.has(id)) continue;
       seenIds.add(id);
 
+      const resolvedTracking = (fb as any).redex_tracking_code || (fb as any).tracking_code || null;
+
       combinedOrders.push({
         orderId: id,
         storeId: (fb as any).storeId || 'orvastore',
@@ -379,19 +561,26 @@ export async function GET(request: NextRequest) {
         shippingFee: `${fb.shippingFee || 500} د.ج`,
         grandTotal: `${fb.totalPayable} د.ج`,
         status: (fb.status || 'pending').toLowerCase(),
-        in_redex: Boolean((fb as any).in_redex),
-        redex_tracking_code: (fb as any).redex_tracking_code || null,
+        in_redex: Boolean((fb as any).in_redex) || Boolean(resolvedTracking),
+        redex_tracking_code: resolvedTracking,
+        tracking_code: resolvedTracking,
+        tracking_number: resolvedTracking,
+        carrier_status: resolvedTracking ? 'prete_a_expedier' : null,
+        carrier_status_ar: resolvedTracking ? 'جاهز للإرسال' : null,
         created_at: fb.createdAt,
         remarks: fb.remarks || [],
       });
     }
 
-    // 3. Append Default Mock Seed Orders for complete demo / testing experience
-    for (const mock of DEFAULT_MOCK_ORDERS) {
-      const id = String(mock.orderId || mock.id);
-      if (!seenIds.has(id)) {
-        seenIds.add(id);
-        combinedOrders.push(mock);
+    // 3. ZERO MOCK DATA IN PRODUCTION:
+    // Only inject default mock orders if database is completely empty and no fallback orders exist (e.g. brand new fresh dev clone)
+    if (combinedOrders.length === 0 && !supabaseSuccess) {
+      for (const mock of DEFAULT_MOCK_ORDERS) {
+        const id = String(mock.orderId || mock.id);
+        if (!seenIds.has(id)) {
+          seenIds.add(id);
+          combinedOrders.push(mock);
+        }
       }
     }
 
@@ -413,26 +602,25 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
+    // Update Status
     if (action === 'update_status') {
       const { orderId, status, actor } = body;
       if (!orderId || !status) {
         return NextResponse.json({ success: false, error: 'orderId and status required' }, { status: 400 });
       }
 
-      const normalizedStatus = String(status).toLowerCase();
+      const normalizedStatus = String(status).toUpperCase();
 
       // Update in fallback store
       const allStored = getStoredFallbackOrders();
       let updatedFallback = false;
       for (const fb of allStored) {
         if (fb.id === orderId || fb.orderNumber === orderId) {
-          fb.status = normalizedStatus.toUpperCase() as any;
+          fb.status = normalizedStatus as any;
           updatedFallback = true;
         }
       }
-      if (updatedFallback) {
-        saveAllFallbackOrders(allStored);
-      }
+      if (updatedFallback) saveAllFallbackOrders(allStored);
 
       // Update in Supabase
       try {
@@ -440,7 +628,7 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('orders')
           .update({
-            status: normalizedStatus.toUpperCase(),
+            status: normalizedStatus,
             updated_at: new Date().toISOString(),
           })
           .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`);
@@ -451,39 +639,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         orderId,
-        status: normalizedStatus,
+        status: normalizedStatus.toLowerCase(),
         message: 'Order status updated successfully',
       });
     }
 
+    // Bulk Update Status
     if (action === 'bulk_update_status') {
       const { orderIds, status, actor } = body;
       if (!Array.isArray(orderIds) || !status) {
         return NextResponse.json({ success: false, error: 'orderIds array and status required' }, { status: 400 });
       }
 
-      const normalizedStatus = String(status).toLowerCase();
+      const normalizedStatus = String(status).toUpperCase();
 
       const allStored = getStoredFallbackOrders();
       let updatedFallback = false;
       for (const id of orderIds) {
         for (const fb of allStored) {
           if (fb.id === id || fb.orderNumber === id) {
-            fb.status = normalizedStatus.toUpperCase() as any;
+            fb.status = normalizedStatus as any;
             updatedFallback = true;
           }
         }
       }
-      if (updatedFallback) {
-        saveAllFallbackOrders(allStored);
-      }
+      if (updatedFallback) saveAllFallbackOrders(allStored);
 
       try {
         const supabase = getSupabaseServerClient() as any;
         await supabase
           .from('orders')
           .update({
-            status: normalizedStatus.toUpperCase(),
+            status: normalizedStatus,
             updated_at: new Date().toISOString(),
           })
           .or(`order_id.in.(${orderIds.join(',')}),id.in.(${orderIds.join(',')}),order_number.in.(${orderIds.join(',')})`);
@@ -499,6 +686,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Cancel Order (Non-destructive: Cancels parcel on Redex and sets status CANCELLED)
+    if (action === 'cancel_order') {
+      const orderId = body.orderId || body.id || body.orderNumber || body.tracking;
+      const reason = body.reason || 'إلغاء الطلبية من قبل الإدارة';
+      const actor = body.actor || 'Admin';
+
+      const result = await executeOrderCancellation(orderId, reason, actor);
+      return NextResponse.json(result);
+    }
+
+    // Switch / Reroute Order
     if (action === 'switch_order' || action === 'reroute_order') {
       const payload: OrderReRoutingPayload = {
         orderId: body.orderId,
@@ -511,7 +709,7 @@ export async function POST(request: NextRequest) {
         newCommuneName: body.newCommuneName || body.commune || 'Alger',
         newDeliveryType: (body.newDeliveryType || (body.deliveryType?.includes('مكتب') ? 'STOP_DESK' : 'DOMICILE')) as any,
         newDeliveryAddress: body.newDeliveryAddress || body.deliveryAddress || body.address,
-        reason: body.reason || 'تحويل الطلبية بناء على طلب الزبون',
+        reason: body.reason || 'تحويل الطلبية بناءً على طلب الزبون',
         operator: body.operator || body.claimedOperatorName || 'Admin',
         shippedOverrideConfirmed: Boolean(body.shippedOverrideConfirmed || body.operatorOverride),
       };
@@ -530,7 +728,7 @@ export async function POST(request: NextRequest) {
     if (action === 'create' || action === 'push_order') {
       const orderId = body.orderId || body.orderNumber || body.id;
       if (!orderId) {
-        return NextResponse.json({ success: false, error: 'Order ID is required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'معرّف الطلبية (orderId) مطلوب للإرسال' }, { status: 400 });
       }
 
       let clientName = body.fullName || body.customerName || body.client || '';
@@ -546,11 +744,11 @@ export async function POST(request: NextRequest) {
       let codAmount = body.codAmountDzd ?? body.priceNum ?? body.price ?? 0;
       let productName = body.productName || body.items || 'Pack ORVA';
       let notes = body.notes || body.remarque || '';
-      let reference = orderId;
+      let reference = String(orderId);
 
       const supabase = getSupabaseServerClient() as any;
 
-      // Enrich from Supabase if fields are missing
+      // 1. Enrich from Supabase if fields are missing
       if (!clientName || !clientPhone || !wilayaName) {
         try {
           const { data: existingRow } = await supabase
@@ -571,7 +769,11 @@ export async function POST(request: NextRequest) {
               stopDeskFlag = existingRow.delivery_type.includes('مكتب') || existingRow.delivery_type === 'STOP_DESK' ? 1 : 0;
             }
             if (!codAmount) {
-              codAmount = Number(existingRow.grand_total ? String(existingRow.grand_total).replace(/[^\d]/g, '') : existingRow.total || 5450);
+              codAmount = Number(
+                existingRow.grand_total
+                  ? String(existingRow.grand_total).replace(/[^\d]/g, '')
+                  : existingRow.total_price || existingRow.total || 5450
+              );
             }
             productName = productName || existingRow.product_name || 'Pack ORVA';
           }
@@ -580,20 +782,40 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // 2. Validate essential inputs
       const finalWilayaCode = extractWilayaCode(wilayaCode || wilayaName);
+      if (!finalWilayaCode || finalWilayaCode < 1 || finalWilayaCode > 58) {
+        return NextResponse.json({
+          success: false,
+          error: `رمز ولاية غير صالح (${wilayaCode || wilayaName}). يجب اختيار ولاية جزائرية بين 1 و 58.`,
+        }, { status: 400 });
+      }
+
       const cleanPhone = cleanAlgerianPhone(clientPhone);
+      if (!cleanPhone || cleanPhone.length < 9) {
+        return NextResponse.json({
+          success: false,
+          error: `رقم هاتف العميل غير صالح (${clientPhone}). يجب إدخال 10 أرقام صحيحة.`,
+        }, { status: 400 });
+      }
+
+      if (!Number(codAmount) || Number(codAmount) <= 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'مبلغ الدفع عند الاستلام (COD) يجب أن يكون أكبر من 0 د.ج.',
+        }, { status: 400 });
+      }
 
       const ecotrack = getEcoTrackClient({
         baseUrl: body.baseUrl,
         token: body.token,
       });
 
-      // Intelligent Commune Resolver: Resolves Arabic / arbitrary communes to valid Latin communes registered in Redex
+      // 3. Intelligent Commune Resolver
       const resolved = await ecotrack.resolveCommuneForWilaya(finalWilayaCode, rawCommune);
       const finalCommune = resolved.resolvedCommune;
       const finalStopDeskCode = stopDeskCode || resolved.stopDeskStationCode || undefined;
 
-      // Ensure customer's original address information is retained if commune was translated
       const finalAddress = rawCommune && rawCommune !== finalCommune
         ? `${rawCommune} — ${address}`
         : address;
@@ -602,7 +824,7 @@ export async function POST(request: NextRequest) {
         ? (notes ? `${notes} (بلدية: ${rawCommune})` : `بلدية: ${rawCommune}`)
         : notes;
 
-      // 1. Create order in Redex
+      // 4. Create parcel in Redex
       const createResult = await ecotrack.createOrder({
         reference,
         nom_client: clientName,
@@ -630,35 +852,64 @@ export async function POST(request: NextRequest) {
 
       const trackingCode = createResult.tracking;
 
-      // 2. Auto-validate order immediately
+      // 5. Auto-validate order immediately
       const validResult = await ecotrack.validOrder(trackingCode, 0);
 
-      // 3. Update Supabase: Automatically transition to CONFIRMED upon pushing to courier
+      // 6. Record shipment in deliveries table
       try {
         await supabase
+          .from('deliveries')
+          .upsert({
+            order_id: String(orderId),
+            provider: 'REDEX',
+            tracking_number: trackingCode,
+            status: 'CREATED',
+            carrier_status: 'prete_a_expedier',
+            carrier_status_ar: 'جاهز للإرسال',
+            raw_response: {
+              redex_response: createResult.raw,
+              validated: validResult.success,
+              pushed_at: new Date().toISOString(),
+              commune_resolved: finalCommune,
+              original_commune: rawCommune,
+            },
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tracking_number' });
+      } catch (delivErr) {
+        console.warn('[API /api/delivery] Deliveries table record warning:', delivErr);
+      }
+
+      // 7. Update Supabase orders table: Automatically transition to CONFIRMED
+      let supabaseUpdated = false;
+      try {
+        const { error: orderUpdateErr } = await supabase
           .from('orders')
           .update({
             in_redex: true,
             redex_tracking_code: trackingCode,
-            tracking_number: trackingCode,
-            courier_provider: 'REDEX',
+            tracking_code: trackingCode,
+            courier: 'REDEX',
             status: 'CONFIRMED',
-            delivery_status: 'CONFIRMED',
-            dispatched_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`);
+
+        supabaseUpdated = !orderUpdateErr;
+        if (orderUpdateErr) {
+          console.warn('[API /api/delivery] Supabase dispatch update warning:', orderUpdateErr);
+        }
       } catch (dbErr) {
-        console.warn('[API /api/delivery] Supabase dispatch update warning:', dbErr);
+        console.warn('[API /api/delivery] Supabase dispatch update exception:', dbErr);
       }
 
-      // 4. Update Fallback store
+      // 8. Update Fallback store
       const allStored = getStoredFallbackOrders();
       for (const fb of allStored) {
         if (fb.id === orderId || fb.orderNumber === orderId) {
           fb.status = 'CONFIRMED' as any;
           (fb as any).in_redex = true;
           (fb as any).redex_tracking_code = trackingCode;
+          (fb as any).tracking_code = trackingCode;
         }
       }
       saveAllFallbackOrders(allStored);
@@ -667,18 +918,20 @@ export async function POST(request: NextRequest) {
         success: true,
         trackingCode,
         trackingNumber: trackingCode,
+        status: 'confirmed',
         courierId: 'redex',
         courierName: 'Redex Express (EcoTrack)',
         labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`,
         validation: validResult,
-        message: 'تم إرسال الطلبية واعتمادها بنجاح لدى شركة Redex Express.',
+        supabaseSynced: supabaseUpdated,
+        message: `تم إرسال الطلبية #${orderId} واعتمادها بنجاح لدى Redex Express. رقم التتبع: ${trackingCode}`,
       });
     }
 
-    // Support legacy POST { action: 'delete' }
-    if (action === 'delete') {
+    // Hard delete legacy support
+    if (action === 'delete' || action === 'hard_delete') {
       const orderId = body.orderId || body.orderNumber || body.id || body.tracking;
-      const result = await executeOrderDeletion(orderId);
+      const result = await executeOrderHardDeletion(orderId);
       return NextResponse.json(result);
     }
 
@@ -697,12 +950,19 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const body = await request.json().catch(() => ({}));
     const orderId = searchParams.get('orderId') || searchParams.get('id') || searchParams.get('tracking') || body.orderId || body.id || body.tracking;
+    const isHardDelete = searchParams.get('hard') === 'true' || body.hard === true;
 
     if (!orderId) {
-      return NextResponse.json({ success: false, error: 'معرّف الطلبية (orderId) مطلوب للحذف' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'معرّف الطلبية (orderId) مطلوب' }, { status: 400 });
     }
 
-    const result = await executeOrderDeletion(orderId);
+    if (isHardDelete) {
+      const result = await executeOrderHardDeletion(orderId);
+      return NextResponse.json(result);
+    }
+
+    // Default DELETE is cancellation (preserves order history)
+    const result = await executeOrderCancellation(orderId, body.reason, body.actor);
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || 'Delete error occurred' }, { status: 500 });

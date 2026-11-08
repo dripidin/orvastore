@@ -62,10 +62,12 @@ export class ApiOrdersRepository implements IOrdersRepository {
     status: OrderStatus | string,
     actor?: string
   ): Promise<OrvaOrder> {
-    await this.requestJson("/api/delivery?action=update_status", {
+    const norm = String(status).toLowerCase();
+    const action = norm === "cancelled" ? "cancel_order" : "update_status";
+    await this.requestJson(`/api/delivery?action=${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status, actor }),
+      body: JSON.stringify({ orderId, status: norm, actor }),
     });
     const order = await this.getOrderById(orderId);
     if (!order) throw new Error("تعذر جلب تفاصيل الطلبية بعد التحديث.");

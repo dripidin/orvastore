@@ -97,7 +97,7 @@ export function OrderDetailsDrawer({
   const [trackingLoading, setTrackingLoading] = React.useState(false);
   const [trackingData, setTrackingData] = React.useState<any>(null);
 
-  const trackingCode = order?.redex_tracking_code || null;
+  const trackingCode = order?.redex_tracking_code || (order as any)?.tracking_code || (order as any)?.tracking_number || null;
 
   const fetchTracking = React.useCallback(async (code: string) => {
     if (!code) return;
@@ -115,13 +115,14 @@ export function OrderDetailsDrawer({
     }
   }, []);
 
+  // Isolated tracking per order: Clear previous tracking state immediately when switching orders or opening drawer
   React.useEffect(() => {
+    setTrackingData(null);
+    setTrackingLoading(false);
     if (open && trackingCode) {
       fetchTracking(trackingCode);
-    } else {
-      setTrackingData(null);
     }
-  }, [open, trackingCode, fetchTracking]);
+  }, [open, order?.id, trackingCode, fetchTracking]);
 
   if (!order) return null;
 
@@ -192,28 +193,33 @@ export function OrderDetailsDrawer({
     if (!window.confirm(`هل أنت متأكد من رغبتك في إلغاء الطلبية #${order.id}؟`)) return;
     setIsUpdatingStatus(true);
     try {
-      if (onUpdateStatus) {
-        await onUpdateStatus(order.id, "cancelled");
-      }
-      if (order.redex_tracking_code) {
-        try {
-          await fetch(`/api/delivery?action=delete&tracking=${encodeURIComponent(order.redex_tracking_code)}`, {
-            method: "POST",
-          });
-        } catch {
-          // ignore external cancel error
-        }
-      }
-      toast.add({
-        title: "تم إلغاء الطلبية",
-        description: `تم تحديث حالة الطلبية #${order.id} إلى ملغاة بنجاح.`,
-        type: "success",
+      const res = await fetch(`/api/delivery?action=cancel_order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id,
+          tracking: trackingCode,
+          reason: "إلغاء الطلبية من قبل الإدارة في لوحة التحكم",
+        }),
       });
-      onOpenChange(false);
-    } catch {
+      const json = await res.json();
+      if (json.success) {
+        if (onUpdateStatus) {
+          await onUpdateStatus(order.id, "cancelled");
+        }
+        toast.add({
+          title: "تم إلغاء الطلبية",
+          description: json.message || `تم تحديث حالة الطلبية #${order.id} إلى ملغاة بنجاح.`,
+          type: "success",
+        });
+        onOpenChange(false);
+      } else {
+        throw new Error(json.error || "تعذر إلغاء الطلبية");
+      }
+    } catch (err: any) {
       toast.add({
         title: "فشل الإلغاء",
-        description: "تعذر تحديث حالة الطلبية.",
+        description: err?.message || "تعذر إلغاء الطلبية.",
         type: "error",
       });
     } finally {
@@ -418,9 +424,10 @@ export function OrderDetailsDrawer({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-[11px]">الحالة اللوجستية:</span>
-                    <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold border-purple-500/30">
-                      {trackingData?.statusAr || "قيد المعالجة لدى الناقل"}
+                    <span className="text-muted-foreground text-[11px]">حالة الناقل (Redex):</span>
+                    <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold border-purple-500/30 gap-1">
+                      <span>{trackingData?.statusAr || (order as any)?.carrier_status_ar || "جاهز للإرسال"}</span>
+                      <span className="font-mono text-[10px] opacity-75">({trackingData?.status || (order as any)?.carrier_status || "prete_a_expedier"})</span>
                     </Badge>
                   </div>
 
