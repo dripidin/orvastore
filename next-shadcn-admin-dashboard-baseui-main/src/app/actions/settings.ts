@@ -343,23 +343,29 @@ export async function testTelegramNotificationAction(
     };
   }
 
-  const sampleOrderNumber = `ORV-TEST-${Date.now().toString().slice(-4)}`;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce?orderId=${encodeURIComponent(sampleOrderNumber)}`;
+  const sampleOrderNumber = 'PACK2-67904';
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://orvastore.vercel.app').replace(/\/$/, '');
+  const dashboardOrderUrl = `${appUrl}/admin.html?orderId=${encodeURIComponent(sampleOrderNumber)}`;
   const sampleText = [
-    `🔔 *طلب جديد — متجر أورفا ORVA Store*`,
-    `────────────────────────`,
-    `📦 *رقم الطلب:* \`${sampleOrderNumber}\``,
-    `👤 *الزبون:* ياسين التواتي (Yassine Touati)`,
-    `📞 *الهاتف:* \`0555123456\``,
-    `📍 *الوجهة:* ولاية الجزائر (16) — باب الوادي`,
-    `🏠 *العنوان:* شارع العقيد لطفي رقم 14`,
-    `🚚 *طريقة التوصيل:* توصيل لباب المنزل (Domicile)`,
-    `🛠️ *المنتج:* باك كومبريسار و المفاتيح 4 في 1`,
-    `💰 *المبلغ المستحق:* *5,450 د.ج*`,
-    `────────────────────────`,
-    `🔗 *لوحة التحكم:* [معاينة وإدارة الطلب في لوحة التحكم ↗️](${dashboardOrderUrl})`,
-    `📞 _يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم._`,
+    `👑 *طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 13,390 د.ج)*`,
+    `━━━━━━━━━━━━━━━━━━`,
+    `🆔 *رقم الطلب:* \`${sampleOrderNumber}\``,
+    `👤 *الاسم الكامل:* شواف نبيل`,
+    `📱 *رقم الهاتف:* \`0784504058\``,
+    `📍 *الولاية والبلدية:* 23 - عنابة — البوني`,
+    `🚚 *نوع التوصيل:* توصيل للمكتب (Stop Desk)`,
+    `⚡️ *مدة التوصيل:* 24 - 48 H`,
+    `📦 *العرض والكمية:* 1 قطعة — عرض 5 في 1 الفاخر (PACK 5EN1)`,
+    `(ماكينة CROWN 20V ببطاريتين + طقم مفكات 6 قطع + علبة مفاتيح 46 قطعة + مفك مرن + قفازات)`,
+    `💵 *سعر العرض:* 13390 د.ج`,
+    `🚚 *مصاريف التوصيل:* 450 د.ج`,
+    `━━━━━━━━━━━━━━━━━━`,
+    `💰 *المجموع الكلي (COD):* *13840 د.ج*`,
+    `📅 *التاريخ:* 7/11/2026، 12:00:55 ص`,
+    `━━━━━━━━━━━━━━━━━━`,
+    `📌 _الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد)._`,
+    `👉 [لوحة التحكم (Admin Dashboard)](${dashboardOrderUrl})`,
+    `${dashboardOrderUrl}`,
   ].join('\n');
 
   // If token is simulated/offline test token

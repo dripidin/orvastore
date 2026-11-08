@@ -617,24 +617,28 @@ export function AdminSettingsDashboard() {
                 </div>
 
                 <div className="rounded-xl border bg-slate-900 text-slate-100 p-4 font-sans text-xs leading-relaxed max-w-lg shadow-inner space-y-1.5">
-                  <div className="font-bold text-sky-400 flex items-center gap-1.5">
-                    <span>🔔</span>
-                    <span>طلب جديد — متجر أورفا ORVA Store</span>
+                  <div className="font-bold text-amber-400 flex items-center gap-1.5">
+                    <span>👑</span>
+                    <span>طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 13,390 د.ج)</span>
                   </div>
-                  <div className="border-b border-slate-700/80 my-1" />
-                  <div><span className="text-slate-400">📦 رقم الطلب: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300">ORV-261107-777</code></div>
-                  <div><span className="text-slate-400">👤 الزبون: </span><span className="font-medium text-slate-200">ياسين التواتي (Yassine Touati)</span></div>
-                  <div><span className="text-slate-400">📞 الهاتف: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-emerald-400">0555123456</code></div>
-                  <div><span className="text-slate-400">📍 الوجهة: </span><span>ولاية الجزائر (16) — باب الوادي</span></div>
-                  <div><span className="text-slate-400">🏠 العنوان: </span><span>شارع العقيد لطفي رقم 14</span></div>
-                  <div><span className="text-slate-400">🚚 طريقة التوصيل: </span><span>توصيل لباب المنزل (Domicile)</span></div>
-                  <div><span className="text-slate-400">🛠️ المنتج: </span><span>باك كومبريسار و المفاتيح 4 في 1</span></div>
-                  <div><span className="text-slate-400">💰 المبلغ المستحق: </span><strong className="text-amber-400 font-bold text-sm">5,450 د.ج</strong></div>
-                  <div className="border-b border-slate-700/80 my-1" />
-                  <div><span className="text-slate-400">🔗 لوحة التحكم: </span><span className="text-sky-400 underline cursor-pointer">معاينة وإدارة الطلب في لوحة التحكم ↗️</span></div>
-                  <div className="text-[10px] text-slate-400 italic">
-                    📞 يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم.
-                  </div>
+                  <div className="text-slate-600 font-mono text-[10px]">━━━━━━━━━━━━━━━━━━</div>
+                  <div><span className="text-slate-400">🆔 رقم الطلب: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300">PACK2-67904</code></div>
+                  <div><span className="text-slate-400">👤 الاسم الكامل: </span><span className="font-medium text-slate-200">شواف نبيل</span></div>
+                  <div><span className="text-slate-400">📱 رقم الهاتف: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-emerald-400">0784504058</code></div>
+                  <div><span className="text-slate-400">📍 الولاية والبلدية: </span><span>23 - عنابة — البوني</span></div>
+                  <div><span className="text-slate-400">🚚 نوع التوصيل: </span><span>توصيل للمكتب (Stop Desk)</span></div>
+                  <div><span className="text-slate-400">⚡️ مدة التوصيل: </span><span className="text-amber-300">24 - 48 H</span></div>
+                  <div><span className="text-slate-400">📦 العرض والكمية: </span><span>1 قطعة — عرض 5 في 1 الفاخر (PACK 5EN1)</span></div>
+                  <div className="text-[11px] text-slate-400 pl-4">(ماكينة CROWN 20V ببطاريتين + طقم مفكات 6 قطع + علبة مفاتيح 46 قطعة + مفك مرن + قفازات)</div>
+                  <div><span className="text-slate-400">💵 سعر العرض: </span><span>13390 د.ج</span></div>
+                  <div><span className="text-slate-400">🚚 مصاريف التوصيل: </span><span>450 د.ج</span></div>
+                  <div className="text-slate-600 font-mono text-[10px]">━━━━━━━━━━━━━━━━━━</div>
+                  <div><span className="text-slate-400">💰 المجموع الكلي (COD): </span><strong className="text-emerald-400 font-bold text-sm">13840 د.ج</strong></div>
+                  <div><span className="text-slate-400">📅 التاريخ: </span><span className="text-slate-300">7/11/2026، 12:00:55 ص</span></div>
+                  <div className="text-slate-600 font-mono text-[10px]">━━━━━━━━━━━━━━━━━━</div>
+                  <div className="text-[10px] text-slate-400 italic">📌 الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</div>
+                  <div><span className="text-sky-400 underline cursor-pointer">👉 [لوحة التحكم (Admin Dashboard)]</span></div>
+                  <div className="text-[11px] text-sky-400/90 break-all select-all">https://orvastore.vercel.app/admin.html?orderId=PACK2-67904</div>
                 </div>
               </div>
             </CardContent>

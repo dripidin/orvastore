@@ -22,6 +22,51 @@ export type { FallbackOrderRecord };
 
 // ── Non-Blocking Telegram Alert ─────────────────────────────────────────────
 
+interface PackNotificationMeta {
+  headerTitle: string;
+  packDisplayName: string;
+  packContents: string;
+}
+
+function getPackNotificationMeta(
+  packId: string | undefined,
+  productName: string,
+  productPrice: number
+): PackNotificationMeta {
+  const priceFormatted = productPrice.toLocaleString();
+  const cleanPack = (packId || '').toUpperCase().trim();
+
+  if (cleanPack === 'PACK1') {
+    return {
+      headerTitle: `عرض 4 في 1 المتكامل (PACK 4EN1 — ${priceFormatted} د.ج)`,
+      packDisplayName: `عرض 4 في 1 المتكامل (PACK 4EN1)`,
+      packContents: `(منفاخ عجلات TOYOTA + علبة مفاتيح 46 قطعة STARCLE PRO + مفك مرن 11 قطعة + طقم 6 مفكات)`,
+    };
+  }
+
+  if (cleanPack === 'PACK2') {
+    return {
+      headerTitle: `عرض 5 في 1 الفاخر (PACK 5EN1 — ${priceFormatted} د.ج)`,
+      packDisplayName: `عرض 5 في 1 الفاخر (PACK 5EN1)`,
+      packContents: `(ماكينة CROWN 20V ببطاريتين + طقم مفكات 6 قطع + علبة مفاتيح 46 قطعة + مفك مرن + قفازات)`,
+    };
+  }
+
+  if (cleanPack === 'PACK3') {
+    return {
+      headerTitle: `عرض ماكينة اللحام والورشة (PACK 3 — ${priceFormatted} د.ج)`,
+      packDisplayName: `عرض ماكينة اللحام والورشة (PACK 3)`,
+      packContents: `(ماكينة لحام CROWN MMA-200 MINI + قفازات حماية GILAN + قناع لحام + كوابل نحاسية + طقم مفكات 6 قطع)`,
+    };
+  }
+
+  return {
+    headerTitle: `${productName} (${priceFormatted} د.ج)`,
+    packDisplayName: productName,
+    packContents: '',
+  };
+}
+
 async function triggerTelegramAlert(params: {
   orderNumber: string;
   customerName: string;
@@ -32,6 +77,9 @@ async function triggerTelegramAlert(params: {
   deliveryType: string;
   deliveryAddress?: string | null;
   productName: string;
+  packId?: string;
+  productPrice?: number;
+  shippingFee?: number;
   quantity?: number;
   total: number;
 }) {
@@ -71,33 +119,66 @@ async function triggerTelegramAlert(params: {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce?orderId=${encodeURIComponent(params.orderNumber)}`;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://orvastore.vercel.app').replace(/\/$/, '');
+    const dashboardOrderUrl = `${appUrl}/admin.html?orderId=${encodeURIComponent(params.orderNumber)}`;
+
+    const meta = getPackNotificationMeta(
+      params.packId,
+      params.productName,
+      params.productPrice || params.total
+    );
+
+    const formattedDate = new Date().toLocaleString('ar-DZ', {
+      timeZone: 'Africa/Algiers',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
 
     const lines: string[] = [
-      `🔔 <b>طلب جديد — متجر أورفا ORVA Store</b>`,
-      `────────────────────────`,
-      `📦 <b>رقم الطلب:</b> <code>${escapeHtml(params.orderNumber)}</code>`,
-      `👤 <b>الزبون:</b> ${escapeHtml(params.customerName)}`,
-      `📞 <b>الهاتف:</b> <code>${escapeHtml(params.customerPhone)}</code>`,
+      `👑 <b>طلب جديد: ${escapeHtml(meta.headerTitle)}</b>`,
+      `━━━━━━━━━━━━━━━━━━`,
+      `🆔 <b>رقم الطلب:</b> <code>${escapeHtml(params.orderNumber)}</code>`,
+      `👤 <b>الاسم الكامل:</b> ${escapeHtml(params.customerName)}`,
+      `📱 <b>رقم الهاتف:</b> <code>${escapeHtml(params.customerPhone)}</code>`,
     ];
 
     if (params.customerPhone2) {
-      lines.push(`📱 <b>هاتف بديل:</b> <code>${escapeHtml(params.customerPhone2)}</code>`);
+      lines.push(`📱 <b>رقم الهاتف 2:</b> <code>${escapeHtml(params.customerPhone2)}</code>`);
     }
 
-    lines.push(`📍 <b>الوجهة:</b> ولاية ${escapeHtml(params.wilaya)} — بلدية ${escapeHtml(params.commune)}`);
+    lines.push(`📍 <b>الولاية والبلدية:</b> ${escapeHtml(params.wilaya)} — ${escapeHtml(params.commune)}`);
 
-    if (params.deliveryAddress) {
+    if (params.deliveryAddress && params.deliveryAddress !== 'Bureau Stop-Desk') {
       lines.push(`🏠 <b>العنوان:</b> ${escapeHtml(params.deliveryAddress)}`);
     }
 
-    lines.push(`🚚 <b>طريقة التوصيل:</b> ${escapeHtml(params.deliveryType)}`);
-    lines.push(`🛠️ <b>المنتج:</b> ${escapeHtml(params.productName)}${params.quantity && params.quantity > 1 ? ` (×${params.quantity})` : ''}`);
-    lines.push(`💰 <b>المبلغ المستحق:</b> <b>${params.total.toLocaleString()} د.ج</b>`);
-    lines.push(`────────────────────────`);
-    lines.push(`🔗 <b>لوحة التحكم:</b> <a href="${dashboardOrderUrl}">معاينة وإدارة الطلب في لوحة التحكم ↗️</a>`);
-    lines.push(`📞 <i>يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم.</i>`);
+    lines.push(`🚚 <b>نوع التوصيل:</b> ${escapeHtml(params.deliveryType)}`);
+    lines.push(`⚡️ <b>مدة التوصيل:</b> 24 - 48 H`);
+    lines.push(`📦 <b>العرض والكمية:</b> ${params.quantity || 1} قطعة — ${escapeHtml(meta.packDisplayName)}`);
+
+    if (meta.packContents) {
+      lines.push(escapeHtml(meta.packContents));
+    }
+
+    if (params.productPrice !== undefined) {
+      lines.push(`💵 <b>سعر العرض:</b> ${params.productPrice} د.ج`);
+    }
+    if (params.shippingFee !== undefined) {
+      lines.push(`🚚 <b>مصاريف التوصيل:</b> ${params.shippingFee} د.ج`);
+    }
+
+    lines.push(`━━━━━━━━━━━━━━━━━━`);
+    lines.push(`💰 <b>المجموع الكلي (COD):</b> <b>${params.total} د.ج</b>`);
+    lines.push(`📅 <b>التاريخ:</b> ${formattedDate}`);
+    lines.push(`━━━━━━━━━━━━━━━━━━`);
+    lines.push(`📌 <i>الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</i>`);
+    lines.push(`👉 <a href="${dashboardOrderUrl}">[لوحة التحكم (Admin Dashboard)]</a>`);
+    lines.push(dashboardOrderUrl);
 
     const htmlText = lines.join('\n');
 
@@ -201,7 +282,9 @@ export async function submitCodOrderAction(
     }
 
     const validated = parseResult.data;
-    const orderNumber = generateOrderNumber();
+    const cleanPack = (validated.packId || '').toUpperCase().trim();
+    const random5Digits = Math.floor(10000 + Math.random() * 90000).toString();
+    const orderNumber = cleanPack ? `${cleanPack}-${random5Digits}` : generateOrderNumber();
     const normalizedPhone = normalizeAlgerianPhone(validated.customerPhone);
     const normalizedPhone2 = validated.customerPhone2
       ? normalizeAlgerianPhone(validated.customerPhone2)
@@ -289,14 +372,17 @@ export async function submitCodOrderAction(
         customerName: validated.customerName,
         customerPhone: normalizedPhone,
         customerPhone2: normalizedPhone2,
-        wilaya: validated.wilayaName,
+        wilaya: `${validated.wilayaCode} - ${validated.wilayaName}`,
         commune: validated.communeName,
         deliveryType:
           validated.deliveryType === 'DOMICILE'
-            ? 'توصيل لباب المنزل (Domicile)'
-            : 'استلام من مكتب التوصيل (Stop-Desk Bureau)',
+            ? 'توصيل للمنزل'
+            : 'توصيل للمكتب (Stop Desk)',
         deliveryAddress: address,
         productName: validated.productName,
+        packId: validated.packId,
+        productPrice: validated.productPrice,
+        shippingFee: validated.shippingFee,
         quantity: 1,
         total: validated.totalPayable,
       }),
