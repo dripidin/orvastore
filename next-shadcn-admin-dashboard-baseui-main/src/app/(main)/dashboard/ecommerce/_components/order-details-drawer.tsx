@@ -4,6 +4,7 @@ import * as React from "react";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
+  Ban,
   Calendar,
   Check,
   CheckCircle2,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { formatDzd } from "@/lib/orva-api";
+import { OrderTrackingPipeline } from "./order-tracking-pipeline";
 
 import type { ConversionEvent, OrderRow } from "./recent-orders-table/schema";
 
@@ -178,6 +180,40 @@ export function OrderDetailsDrawer({
       toast.add({
         title: "خطأ في التحديث",
         description: "تعذر تحديث حالة الطلبية، يرجى المحاولة لاحقاً.",
+        type: "error",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!order || isUpdatingStatus) return;
+    if (!window.confirm(`هل أنت متأكد من رغبتك في إلغاء الطلبية #${order.id}؟`)) return;
+    setIsUpdatingStatus(true);
+    try {
+      if (onUpdateStatus) {
+        await onUpdateStatus(order.id, "cancelled");
+      }
+      if (order.redex_tracking_code) {
+        try {
+          await fetch(`/api/delivery?action=delete&tracking=${encodeURIComponent(order.redex_tracking_code)}`, {
+            method: "POST",
+          });
+        } catch {
+          // ignore external cancel error
+        }
+      }
+      toast.add({
+        title: "تم إلغاء الطلبية",
+        description: `تم تحديث حالة الطلبية #${order.id} إلى ملغاة بنجاح.`,
+        type: "success",
+      });
+      onOpenChange(false);
+    } catch {
+      toast.add({
+        title: "فشل الإلغاء",
+        description: "تعذر تحديث حالة الطلبية.",
         type: "error",
       });
     } finally {
@@ -356,6 +392,14 @@ export function OrderDetailsDrawer({
 
             {trackingCode ? (
               <div className="space-y-3 text-xs">
+                {/* Visual Interactive EcoTrack Pipeline Stepper */}
+                <OrderTrackingPipeline
+                  status={trackingData?.status || "prete_a_expedier"}
+                  statusAr={trackingData?.statusAr || "جاهز للإرسال"}
+                  currentStation={trackingData?.currentStation}
+                  activity={trackingData?.activity}
+                />
+
                 <div className="flex flex-wrap items-center justify-between gap-2 bg-background/80 rounded-lg p-2.5 border">
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-[11px]">رقم التتبع:</span>
@@ -552,18 +596,45 @@ export function OrderDetailsDrawer({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {!order.in_redex && !isTerminal && onOpenPushDialog && (
+              <Button
+                size="sm"
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenPushDialog(order);
+                }}
+              >
+                <Truck className="size-3.5" />
+                <span>إرسال لـ Redex (Push)</span>
+              </Button>
+            )}
+
             {!isTerminal && onOpenSwitchDialog && (
               <Button
                 size="sm"
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-xs"
                 onClick={() => {
                   onOpenChange(false);
                   onOpenSwitchDialog(order);
                 }}
               >
-                <RefreshCw className="size-4" />
-                <span>تحويل الطلبية (Réacheminement)</span>
+                <RefreshCw className="size-3.5" />
+                <span>تحويل الطلبية (Switch)</span>
+              </Button>
+            )}
+
+            {!isTerminal && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs font-semibold text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleCancelOrder}
+                disabled={isUpdatingStatus}
+              >
+                <Ban className="size-3.5" />
+                <span>إلغاء الطلبية (Annuler)</span>
               </Button>
             )}
           </div>

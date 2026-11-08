@@ -208,7 +208,7 @@ function OrderPushDialogForm({
 
       const updatedRow: OrderRow = {
         ...order,
-        status: "shipped",
+        status: "confirmed",
         in_redex: true,
         redex_tracking_code: result.trackingCode,
         deliveryType: deliveryType === "desk" ? "استلام من المكتب (Stop Desk)" : "توصيل للمنزل",

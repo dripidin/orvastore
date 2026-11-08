@@ -633,7 +633,7 @@ export async function POST(request: NextRequest) {
       // 2. Auto-validate order immediately
       const validResult = await ecotrack.validOrder(trackingCode, 0);
 
-      // 3. Update Supabase
+      // 3. Update Supabase: Automatically transition to CONFIRMED upon pushing to courier
       try {
         await supabase
           .from('orders')
@@ -642,8 +642,8 @@ export async function POST(request: NextRequest) {
             redex_tracking_code: trackingCode,
             tracking_number: trackingCode,
             courier_provider: 'REDEX',
-            status: 'SHIPPED',
-            delivery_status: 'SHIPPED',
+            status: 'CONFIRMED',
+            delivery_status: 'CONFIRMED',
             dispatched_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -656,7 +656,7 @@ export async function POST(request: NextRequest) {
       const allStored = getStoredFallbackOrders();
       for (const fb of allStored) {
         if (fb.id === orderId || fb.orderNumber === orderId) {
-          fb.status = 'SHIPPED' as any;
+          fb.status = 'CONFIRMED' as any;
           (fb as any).in_redex = true;
           (fb as any).redex_tracking_code = trackingCode;
         }

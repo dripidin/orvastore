@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import {
   AlertCircle,
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Clock,
   Copy,
@@ -430,6 +431,28 @@ export function createRecentOrdersColumns(
                       <div className="flex items-center gap-2">
                         <Truck className="size-3.5" />
                         <span>إرسال لشركة التوصيل (Push Order)</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+
+                  {!isTerminal && onUpdateStatus && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        if (window.confirm(`هل تريد بالتأكيد إلغاء الطلبية #${row.original.id}؟`)) {
+                          onUpdateStatus(row.original.id, "cancelled");
+                          if (row.original.redex_tracking_code) {
+                            fetch(`/api/delivery?action=delete&tracking=${encodeURIComponent(row.original.redex_tracking_code)}`, {
+                              method: "POST",
+                            }).catch(() => {});
+                          }
+                        }
+                      }}
+                      disabled={isUpdating}
+                      className="cursor-pointer font-semibold text-destructive flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Ban className="size-3.5 text-destructive" />
+                        <span>إلغاء الطلبية (Cancel Order)</span>
                       </div>
                     </DropdownMenuItem>
                   )}
