@@ -37,18 +37,19 @@ export async function GET(request: NextRequest) {
 
       if (!error && Array.isArray(dbOrders)) {
         for (const row of dbOrders) {
-          const id = row.order_number || row.id;
+          const id = row.order_id || row.order_number || row.id;
           if (seenIds.has(id)) continue;
           seenIds.add(id);
 
           const deliveryTypeLabel =
-            row.delivery_type === 'STOP_DESK' || row.delivery_method === 'STOP_DESK'
+            row.delivery_type ||
+            (row.delivery_method === 'STOP_DESK'
               ? 'استلام من المكتب (Stop Desk)'
-              : 'توصيل للمنزل';
+              : 'توصيل للمنزل');
 
           const resolvedProductName =
-            row.metadata?.productName ||
             row.product_name ||
+            row.metadata?.productName ||
             (row.metadata?.packId
               ? row.metadata.packId === 'PACK1'
                 ? 'باك منفاخ تويوتا وطقم المفاتيح'
@@ -61,27 +62,29 @@ export async function GET(request: NextRequest) {
 
           combinedOrders.push({
             orderId: id,
-            storeId: 'orvastore',
-            fullName: row.customer_name || '—',
-            phone: row.customer_phone || '',
-            wilaya: formatWilayaLabel(row.wilaya_code, row.wilaya_name || row.delivery_wilaya),
-            commune: row.commune_name || row.delivery_commune || '—',
+            storeId: row.store_id || 'orvastore',
+            fullName: row.full_name || row.customer_name || '—',
+            phone: row.phone || row.customer_phone || '',
+            wilaya: row.wilaya || formatWilayaLabel(row.wilaya_code, row.wilaya_name || row.delivery_wilaya),
+            commune: row.commune || row.commune_name || row.delivery_commune || '—',
             deliveryType: deliveryTypeLabel,
-            deliveryTime: '24 - 48 H',
-            quantity: 1,
+            deliveryTime: row.delivery_time || '24 - 48 H',
+            quantity: row.quantity || 1,
             productName: resolvedProductName,
-            priceNum: Number(row.subtotal || 4950),
-            shippingFee: `${Number(row.delivery_fee || 500)} د.ج`,
-            grandTotal: `${Number(row.total || 5450)} د.ج`,
+            priceNum: Number(row.price_num || row.subtotal || 4950),
+            shippingFee: row.shipping_fee ? String(row.shipping_fee) : `${Number(row.delivery_fee || 500)} د.ج`,
+            grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total || 5450)} د.ج`,
             status: (row.status || 'pending').toLowerCase(),
-            in_redex: row.courier_provider === 'REDEX' && (row.status === 'SHIPPED' || Boolean(row.tracking_number)),
-            redex_tracking_code: row.tracking_number || null,
+            in_redex: Boolean(row.in_redex) || (row.courier_provider === 'REDEX' && (row.status === 'SHIPPED' || Boolean(row.tracking_number))),
+            redex_tracking_code: row.redex_tracking_code || row.tracking_number || null,
             created_at: row.created_at || new Date().toISOString(),
-            remarks: Array.isArray(row.metadata?.conversionLog)
-              ? row.metadata.conversionLog
-              : row.metadata?.conversionLog
-                ? [row.metadata.conversionLog]
-                : [],
+            remarks: Array.isArray(row.remarks) && row.remarks.length > 0
+              ? row.remarks
+              : Array.isArray(row.metadata?.conversionLog)
+                ? row.metadata.conversionLog
+                : row.metadata?.conversionLog
+                  ? [row.metadata.conversionLog]
+                  : [],
           });
         }
       }
@@ -189,7 +192,7 @@ export async function POST(request: NextRequest) {
             status: normalizedStatus.toUpperCase(),
             updated_at: new Date().toISOString(),
           })
-          .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+          .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`);
       } catch (err) {
         console.warn('[API /api/delivery] Supabase status update warning:', err);
       }
@@ -232,7 +235,7 @@ export async function POST(request: NextRequest) {
             status: normalizedStatus.toUpperCase(),
             updated_at: new Date().toISOString(),
           })
-          .in('order_number', orderIds);
+          .or(`order_id.in.(${orderIds.join(',')}),id.in.(${orderIds.join(',')}),order_number.in.(${orderIds.join(',')})`);
       } catch (err) {
         console.warn('[API /api/delivery] Supabase bulk update warning:', err);
       }

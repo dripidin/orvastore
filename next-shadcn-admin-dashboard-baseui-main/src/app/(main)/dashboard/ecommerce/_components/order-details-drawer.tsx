@@ -248,7 +248,7 @@ export function OrderDetailsDrawer({
               <div className="space-y-1">
                 <span className="text-muted-foreground block text-[11px]">الولاية والبلدية:</span>
                 <span className="font-medium text-foreground">
-                  {order.wilaya} {order.commune ? `— ${order.commune}` : ""}
+                  {order.wilaya}{order.commune && !order.wilaya.includes(order.commune) && order.commune !== "—" ? ` — ${order.commune}` : ""}
                 </span>
               </div>
 

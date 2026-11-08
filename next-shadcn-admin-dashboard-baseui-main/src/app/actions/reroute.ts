@@ -78,24 +78,24 @@ export async function rerouteOrderAction(
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .or(`id.eq.${validated.orderId},order_number.eq.${validated.orderId}`)
+        .or(`id.eq.${validated.orderId},order_id.eq.${validated.orderId},order_number.eq.${validated.orderId}`)
         .maybeSingle();
 
       if (!error && data) {
         sourceOrder = {
           id: data.id,
-          orderNumber: data.order_number || data.id,
-          customerName: data.customer_name || 'Client',
-          customerPhone: data.customer_phone || '',
-          wilayaName: data.wilaya_name || '',
-          communeName: data.commune_name || '',
+          orderNumber: data.order_id || data.order_number || data.id,
+          customerName: data.full_name || data.customer_name || 'Client',
+          customerPhone: data.phone || data.customer_phone || '',
+          wilayaName: data.wilaya || data.wilaya_name || '',
+          communeName: data.commune || data.commune_name || '',
           deliveryType: (data.delivery_type as any) || 'DOMICILE',
-          productPrice: Number(data.subtotal || 4950),
-          shippingFee: Number(data.delivery_fee || 500),
-          totalPayable: Number(data.total || 5450),
+          productPrice: Number(data.price_num || data.subtotal || 4950),
+          shippingFee: Number(data.shipping_fee || data.delivery_fee || 500),
+          totalPayable: Number(data.price_num || data.total || 5450),
           status: data.status || 'PENDING',
           packId: data.metadata?.packId || 'PACK1',
-          productName: data.metadata?.productName || 'ORVA Pack',
+          productName: data.product_name || data.metadata?.productName || 'ORVA Pack',
         };
       }
     } catch (err) {
