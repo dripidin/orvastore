@@ -91,3 +91,4 @@ BEGIN
         ALTER TABLE public.orders ADD COLUMN remarks JSONB DEFAULT '[]'::jsonb;
     END IF;
 END $$;
+
