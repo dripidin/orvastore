@@ -21,7 +21,10 @@ scratch/
 **/*.tsbuildinfo
 
 # Environment & Sensitive configs
+.env
+.env.*
 .env*.local
+!.env.example
 *.pem
 *.key
 
