@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from '../framework/test-suite';
+import { describe, it, expect, resolveProjectPath } from '../framework/test-suite';
 import { PRODUCT_PACKS } from '../framework/domain-engine';
 
 describe('Feature 10: Pack 3 Detail Page (15,950 DZD & 6 Welding Items)', { tier: 'tier1', featureId: 'F10' }, () => {
-  const pack3HtmlPath = path.resolve(__dirname, '../../../../pack3.html');
+  const pack3HtmlPath = resolveProjectPath('pack3.html');
 
   it('F10-T01: Pack 3 price is exactly 15,950 DZD', () => {
     const pack = PRODUCT_PACKS.PACK3;

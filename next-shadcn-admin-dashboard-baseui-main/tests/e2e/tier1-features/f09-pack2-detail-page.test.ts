@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from '../framework/test-suite';
+import { describe, it, expect, resolveProjectPath } from '../framework/test-suite';
 import { PRODUCT_PACKS } from '../framework/domain-engine';
 
 describe('Feature 9: Pack 2 Detail Page (5 Items & Crown 20V Drill)', { tier: 'tier1', featureId: 'F09' }, () => {
-  const pack2HtmlPath = path.resolve(__dirname, '../../../../pack2.html');
+  const pack2HtmlPath = resolveProjectPath('pack2.html');
 
   it('F09-T01: Pack 2 represents Pro Workshop pack with 5 tools', () => {
     const pack = PRODUCT_PACKS.PACK2;

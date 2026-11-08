@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect, assertThrows } from '../framework/test-suite';
+import { describe, it, expect, assertThrows, resolveProjectPath } from '../framework/test-suite';
 import {
   submitCodOrder,
   calculateDeliveryTariff,
@@ -255,7 +255,7 @@ describe('Tier 3: Cross-Feature Pairwise Interaction Flows', { tier: 'tier3', fe
 
   // Pair 11: F05 + F20
   it('T3-11 [F05+F20]: Order submission respects database schema column constraints', () => {
-    const schemaSqlPath = path.resolve(__dirname, '../../../../template/DATABASE_SCHEMA.sql');
+    const schemaSqlPath = resolveProjectPath('template/DATABASE_SCHEMA.sql');
     const sql = fs.readFileSync(schemaSqlPath, 'utf8');
     // Verify columns exist in SQL schema definition
     expect(sql).toContain('delivery_wilaya TEXT NOT NULL');
@@ -521,7 +521,7 @@ describe('Tier 3: Cross-Feature Pairwise Interaction Flows', { tier: 'tier3', fe
 
   // Pair 23: F11 + F05
   it('T3-23 [F11+F05]: Pack 1 HTML template co-locates single-page order form alongside reassurance grid', () => {
-    const pack1HtmlPath = path.resolve(__dirname, '../../../../pack1.html');
+    const pack1HtmlPath = resolveProjectPath('pack1.html');
     const html = fs.readFileSync(pack1HtmlPath, 'utf8');
     expect(html).toContain('id="order-form"');
     expect(html).toContain('guarantee-list-section');

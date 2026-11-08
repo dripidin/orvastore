@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from '../framework/test-suite';
+import { describe, it, expect, resolveProjectPath } from '../framework/test-suite';
 
 describe('Feature 2: Storefront Branding & Tajawal Font', { tier: 'tier1', featureId: 'F02' }, () => {
-  const pack1Path = path.resolve(__dirname, '../../../../pack1.html');
+  const pack1Path = resolveProjectPath('pack1.html');
 
   it('F02-T01: Brand name ORVA STORE is prominently featured in storefront header', () => {
     expect(fs.existsSync(pack1Path)).toBe(true);

@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from '../framework/test-suite';
+import { describe, it, expect, resolveProjectPath } from '../framework/test-suite';
 
 describe('Boundary B20: Database RLS Security Boundaries', { tier: 'tier2', featureId: 'B20' }, () => {
-  const schemaSqlPath = path.resolve(__dirname, '../../../../template/DATABASE_SCHEMA.sql');
+  const schemaSqlPath = resolveProjectPath('template/DATABASE_SCHEMA.sql');
 
   it('B20-T01: No public SELECT policy grants anonymous role access to orders table', () => {
     const sql = fs.readFileSync(schemaSqlPath, 'utf8');

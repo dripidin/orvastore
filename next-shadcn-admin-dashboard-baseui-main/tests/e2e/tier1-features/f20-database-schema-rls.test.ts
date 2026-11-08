@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from '../framework/test-suite';
+import { describe, it, expect, resolveProjectPath } from '../framework/test-suite';
 
 describe('Feature 20: Database Schema & Supabase RLS Policies', { tier: 'tier1', featureId: 'F20' }, () => {
-  const schemaSqlPath = path.resolve(__dirname, '../../../../template/DATABASE_SCHEMA.sql');
+  const schemaSqlPath = resolveProjectPath('template/DATABASE_SCHEMA.sql');
 
   it('F20-T01: DATABASE_SCHEMA.sql defines all required commerce and logistics tables', () => {
     expect(fs.existsSync(schemaSqlPath)).toBe(true);

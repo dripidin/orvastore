@@ -7,7 +7,19 @@
  * - Both standalone per-file execution and aggregate execution via runner.ts
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 export type Tier = 'tier1' | 'tier2' | 'tier3' | 'tier4';
+
+export function resolveProjectPath(relPath: string): string {
+  const root = path.resolve(__dirname, '../../../..');
+  const direct = path.resolve(root, relPath);
+  if (fs.existsSync(direct)) return direct;
+  const inUnused = path.resolve(root, 'الملفات غير المستعملة', relPath);
+  if (fs.existsSync(inUnused)) return inUnused;
+  return direct;
+}
 
 export interface TestCase {
   id: string;
