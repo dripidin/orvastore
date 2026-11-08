@@ -344,18 +344,22 @@ export async function testTelegramNotificationAction(
   }
 
   const sampleOrderNumber = `ORV-TEST-${Date.now().toString().slice(-4)}`;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce?orderId=${encodeURIComponent(sampleOrderNumber)}`;
   const sampleText = [
     `🔔 *طلب جديد — متجر أورفا ORVA Store*`,
     `────────────────────────`,
     `📦 *رقم الطلب:* \`${sampleOrderNumber}\``,
     `👤 *الزبون:* ياسين التواتي (Yassine Touati)`,
-    `📞 *الهاتف:* \`0555 •• •• 56\``,
+    `📞 *الهاتف:* \`0555123456\``,
     `📍 *الوجهة:* ولاية الجزائر (16) — باب الوادي`,
+    `🏠 *العنوان:* شارع العقيد لطفي رقم 14`,
     `🚚 *طريقة التوصيل:* توصيل لباب المنزل (Domicile)`,
     `🛠️ *المنتج:* باك كومبريسار و المفاتيح 4 في 1`,
     `💰 *المبلغ المستحق:* *5,450 د.ج*`,
     `────────────────────────`,
-    `✅ *إشعار تجريبي لاختبار ربط البوت بنجاح.*`,
+    `🔗 *لوحة التحكم:* [معاينة وإدارة الطلب في لوحة التحكم ↗️](${dashboardOrderUrl})`,
+    `📞 _يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم._`,
   ].join('\n');
 
   // If token is simulated/offline test token

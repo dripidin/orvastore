@@ -611,8 +611,8 @@ export function AdminSettingsDashboard() {
                     <Sparkles className="size-3.5 text-amber-500" />
                     <span>معاينة حية لرسالة الإشعار التلقائية (Live Telegram Alert Preview)</span>
                   </Label>
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    حجب رقم الهاتف (PII Masking) مفعل تلقائياً
+                  <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">
+                    بيانات الطلب كاملة وواضحة (Full Unmasked Data)
                   </Badge>
                 </div>
 
@@ -624,12 +624,14 @@ export function AdminSettingsDashboard() {
                   <div className="border-b border-slate-700/80 my-1" />
                   <div><span className="text-slate-400">📦 رقم الطلب: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300">ORV-261107-777</code></div>
                   <div><span className="text-slate-400">👤 الزبون: </span><span className="font-medium text-slate-200">ياسين التواتي (Yassine Touati)</span></div>
-                  <div><span className="text-slate-400">📞 الهاتف: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-emerald-400">0555 •• •• 56</code></div>
+                  <div><span className="text-slate-400">📞 الهاتف: </span><code className="bg-slate-800 px-1 py-0.5 rounded text-emerald-400">0555123456</code></div>
                   <div><span className="text-slate-400">📍 الوجهة: </span><span>ولاية الجزائر (16) — باب الوادي</span></div>
-                  <div><span className="text-slate-400">🚚 الاستلام: </span><span>توصيل لباب المنزل (Domicile)</span></div>
+                  <div><span className="text-slate-400">🏠 العنوان: </span><span>شارع العقيد لطفي رقم 14</span></div>
+                  <div><span className="text-slate-400">🚚 طريقة التوصيل: </span><span>توصيل لباب المنزل (Domicile)</span></div>
                   <div><span className="text-slate-400">🛠️ المنتج: </span><span>باك كومبريسار و المفاتيح 4 في 1</span></div>
-                  <div><span className="text-slate-400">💰 المبلغ الصافي: </span><strong className="text-amber-400 font-bold text-sm">5,450 د.ج</strong></div>
+                  <div><span className="text-slate-400">💰 المبلغ المستحق: </span><strong className="text-amber-400 font-bold text-sm">5,450 د.ج</strong></div>
                   <div className="border-b border-slate-700/80 my-1" />
+                  <div><span className="text-slate-400">🔗 لوحة التحكم: </span><span className="text-sky-400 underline cursor-pointer">معاينة وإدارة الطلب في لوحة التحكم ↗️</span></div>
                   <div className="text-[10px] text-slate-400 italic">
                     📞 يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم.
                   </div>

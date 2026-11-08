@@ -53,9 +53,14 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
     }
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("orva_admin_token");
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      }
       const response = await orvaFetch("/api/auth", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ action: "session" }),
       });
       const result = (await response.json().catch(() => null)) as { success?: boolean } | null;
@@ -84,12 +89,14 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "login", password: password.trim() }),
       });
-      const result = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      const result = (await response.json().catch(() => null)) as { success?: boolean; error?: string; token?: string } | null;
       if (response.ok && result?.success) {
         setPassword("");
         if (typeof window !== "undefined") {
-          // Real PHP session — clear demo flag so APIs use live auth cookie
           localStorage.removeItem("orva_demo_session_active");
+          if (result.token) {
+            localStorage.setItem("orva_admin_token", result.token);
+          }
         }
         setState("signed-in");
         setServiceUnavailable(false);
@@ -116,6 +123,7 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
     } finally {
       if (typeof window !== "undefined") {
         localStorage.setItem("orva_demo_session_active", "false");
+        localStorage.removeItem("orva_admin_token");
       }
       setState("signed-out");
       setPassword("");

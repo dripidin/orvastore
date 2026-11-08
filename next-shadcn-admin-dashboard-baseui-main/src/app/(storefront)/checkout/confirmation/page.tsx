@@ -49,11 +49,8 @@ function ConfirmationContent() {
 
   const currentPack = packLabels[packId] || packLabels.PACK1;
 
-  // Mask phone for privacy in UI
-  const maskedPhone =
-    customerPhone.length === 10
-      ? `${customerPhone.slice(0, 4)} •• •• ${customerPhone.slice(-2)}`
-      : customerPhone;
+  // Customer phone displayed clearly in full
+  const displayPhone = customerPhone;
 
   // 1-Click Clipboard Copy
   const copyOrderNumber = () => {
@@ -176,7 +173,7 @@ function ConfirmationContent() {
           <div>
             <span className="text-slate-400 text-xs block">الهاتف:</span>
             <span className="font-mono text-slate-800" dir="ltr">
-              {maskedPhone}
+              {displayPhone}
             </span>
           </div>
           <div>

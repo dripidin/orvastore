@@ -26,10 +26,13 @@ async function triggerTelegramAlert(params: {
   orderNumber: string;
   customerName: string;
   customerPhone: string;
+  customerPhone2?: string | null;
   wilaya: string;
   commune: string;
   deliveryType: string;
+  deliveryAddress?: string | null;
   productName: string;
+  quantity?: number;
   total: number;
 }) {
   try {
@@ -68,19 +71,35 @@ async function triggerTelegramAlert(params: {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    const htmlText = [
-      `🔔 <b>طلب جديد — متجر أورفا ORVA COD</b>`,
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce?orderId=${encodeURIComponent(params.orderNumber)}`;
+
+    const lines: string[] = [
+      `🔔 <b>طلب جديد — متجر أورفا ORVA Store</b>`,
       `────────────────────────`,
       `📦 <b>رقم الطلب:</b> <code>${escapeHtml(params.orderNumber)}</code>`,
       `👤 <b>الزبون:</b> ${escapeHtml(params.customerName)}`,
-      `📱 <b>الهاتف:</b> <code>${escapeHtml(params.customerPhone)}</code>`,
-      `📍 <b>الوجهة:</b> ولاية ${escapeHtml(params.wilaya)} — بلدية ${escapeHtml(params.commune)}`,
-      `🚚 <b>طريقة التوصيل:</b> ${escapeHtml(params.deliveryType)}`,
-      `🛒 <b>المنتج:</b> ${escapeHtml(params.productName)}`,
-      `💰 <b>المبلغ المستحق:</b> <b>${params.total.toLocaleString()} د.ج</b>`,
-      `────────────────────────`,
-      `📞 <i>يرجى الاتصال بالزبون لتأكيد الطلبية.</i>`,
-    ].join('\n');
+      `📞 <b>الهاتف:</b> <code>${escapeHtml(params.customerPhone)}</code>`,
+    ];
+
+    if (params.customerPhone2) {
+      lines.push(`📱 <b>هاتف بديل:</b> <code>${escapeHtml(params.customerPhone2)}</code>`);
+    }
+
+    lines.push(`📍 <b>الوجهة:</b> ولاية ${escapeHtml(params.wilaya)} — بلدية ${escapeHtml(params.commune)}`);
+
+    if (params.deliveryAddress) {
+      lines.push(`🏠 <b>العنوان:</b> ${escapeHtml(params.deliveryAddress)}`);
+    }
+
+    lines.push(`🚚 <b>طريقة التوصيل:</b> ${escapeHtml(params.deliveryType)}`);
+    lines.push(`🛠️ <b>المنتج:</b> ${escapeHtml(params.productName)}${params.quantity && params.quantity > 1 ? ` (×${params.quantity})` : ''}`);
+    lines.push(`💰 <b>المبلغ المستحق:</b> <b>${params.total.toLocaleString()} د.ج</b>`);
+    lines.push(`────────────────────────`);
+    lines.push(`🔗 <b>لوحة التحكم:</b> <a href="${dashboardOrderUrl}">معاينة وإدارة الطلب في لوحة التحكم ↗️</a>`);
+    lines.push(`📞 <i>يرجى الاتصال بالزبون فوراً لتأكيد العنوان وموعد التسليم.</i>`);
+
+    const htmlText = lines.join('\n');
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -196,53 +215,42 @@ export async function submitCodOrderAction(
     let persistedToDatabase = false;
     try {
       const supabase = getSupabaseServerClient() as any;
+      const deliveryLabel =
+        validated.deliveryType === 'DOMICILE'
+          ? 'توصيل للمنزل'
+          : 'توصيل للمكتب (Stop Desk)';
+      const wilayaFull = `${validated.wilayaCode} - ${validated.wilayaName} — ${validated.communeName}`;
+
       const { data: orderData, error: orderErr } = await supabase
         .from('orders')
         .insert({
-          order_number: orderNumber,
-          customer_name: validated.customerName,
-          customer_phone: normalizedPhone,
-          customer_phone2: normalizedPhone2,
-          wilaya_code: validated.wilayaCode,
-          wilaya_name: validated.wilayaName,
-          commune_name: validated.communeName,
-          delivery_wilaya: validated.wilayaName,
-          delivery_commune: validated.communeName,
-          delivery_method: validated.deliveryType,
-          delivery_type: validated.deliveryType,
-          delivery_address: address,
-          origin_hub: 'BISKRA_07',
-          subtotal: validated.productPrice,
-          delivery_fee: validated.shippingFee,
-          total: validated.totalPayable,
-          currency: 'DZD',
-          payment_method: 'COD',
-          payment_status: 'UNPAID',
-          status: 'PENDING',
-          courier_provider: 'REDEX',
+          order_id: orderNumber,
+          store_id: 'orvastore',
+          full_name: validated.customerName,
+          phone: normalizedPhone,
+          wilaya: wilayaFull,
+          commune: validated.communeName,
+          delivery_type: deliveryLabel,
+          delivery_time: '24 - 48 H',
+          quantity: 1,
+          product_name: validated.productName,
+          product_total: `${validated.productPrice.toLocaleString()} د.ج`,
+          shipping_fee: `${validated.shippingFee.toLocaleString()} د.ج`,
+          price_num: validated.totalPayable,
+          grand_total: `${validated.totalPayable.toLocaleString()} د.ج`,
+          status: 'pending',
+          in_redex: false,
+          notes: address,
           risk_score: 0,
           risk_level: 'LOW',
-          risk_decision: 'ACCEPT',
-          metadata: {
-            packId: validated.packId,
-            productName: validated.productName,
-            source: 'storefront_1page_cod',
-            submittedAt: new Date().toISOString(),
-          },
+          risk_decision: 'ALLOW',
+          courier: 'REDEX',
         })
         .select('id')
         .single();
 
       if (!orderErr && orderData?.id) {
         persistedToDatabase = true;
-        await supabase.from('order_items').insert({
-          order_id: orderData.id,
-          pack_id: validated.packId,
-          product_name_snapshot: validated.productName,
-          unit_price: validated.productPrice,
-          quantity: 1,
-          line_total: validated.productPrice,
-        });
       } else if (orderErr) {
         console.warn('[Supabase Order Insert Warning - Falling back]:', orderErr.message);
       }
@@ -280,13 +288,16 @@ export async function submitCodOrderAction(
         orderNumber,
         customerName: validated.customerName,
         customerPhone: normalizedPhone,
+        customerPhone2: normalizedPhone2,
         wilaya: validated.wilayaName,
         commune: validated.communeName,
         deliveryType:
           validated.deliveryType === 'DOMICILE'
             ? 'توصيل لباب المنزل (Domicile)'
             : 'استلام من مكتب التوصيل (Stop-Desk Bureau)',
+        deliveryAddress: address,
         productName: validated.productName,
+        quantity: 1,
         total: validated.totalPayable,
       }),
       triggerMetaCapiPurchase({

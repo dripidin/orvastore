@@ -60,8 +60,7 @@ export function isValidAlgerianPhone(phone: string): boolean {
 
 export function maskPhoneForPrivacy(phone: string): string {
   const norm = normalizeAlgerianPhone(phone);
-  if (norm.length !== 10) return phone;
-  return `${norm.slice(0, 4)} •• •• ${norm.slice(-2)}`;
+  return norm;
 }
 
 // ── 3. Logistics & Geographic Structures ────────────────────────────────────

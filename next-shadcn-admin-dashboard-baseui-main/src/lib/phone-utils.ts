@@ -7,10 +7,7 @@
 
 export function maskDemoPhone(phone: string | null | undefined): string {
   if (!phone) return "—";
-  const clean = phone.replace(/[^\d]/g, "");
-  if (clean.length < 10) return phone;
-  // Format as: 0555 •• •• 56
-  return `${clean.slice(0, 4)} •• •• ${clean.slice(-2)}`;
+  return phone;
 }
 
 export function isValidAlgerianPhone(phone: string): boolean {
