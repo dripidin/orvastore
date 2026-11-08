@@ -22,7 +22,7 @@ export interface MetaPixelProps {
   enabled?: boolean;
 }
 
-const DEFAULT_FALLBACK_PIXEL_ID = "2340414976777036";
+const DEFAULT_FALLBACK_PIXEL_ID = "1773144400655201";
 
 export function MetaPixel({ pixelId, enabled = true }: MetaPixelProps) {
   const pathname = usePathname();

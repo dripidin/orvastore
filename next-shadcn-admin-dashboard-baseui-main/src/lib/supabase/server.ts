@@ -7,8 +7,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { DEFAULT_SUPABASE_URL, SUPABASE_PROJECT_REF } from './client';
 
-const FALLBACK_SERVICE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sbXNqa2hkZmdoeXlkb2djdnZ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMDk5NTIwMCwiZXhwIjoyMDQ2NTcxMjAwfQ.fake_service_signature_for_dev_offline';
+const FALLBACK_SERVICE_KEY = 'sb_publishable_7c9dtcV6aM5B32hwxWxPGw_JLLC7tmu';
 
 let serverInstance: SupabaseClient<Database> | null = null;
 

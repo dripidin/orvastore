@@ -77,8 +77,10 @@ export interface AdminSettingsRecord {
 
 export const fallbackSettingsStore: AdminSettingsRecord = {
   metaPixel: {
-    pixelId: process.env.META_PIXEL_ID || '',
-    capiToken: process.env.META_CAPI_TOKEN || '',
+    pixelId: process.env.META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID || '1773144400655201',
+    capiToken:
+      process.env.META_CAPI_TOKEN ||
+      'EAAaEnUkTxCkBS3B575vAs6MXwHT0AGewimZBmMO953e8UolR2RWw6ZAiGAlAhGmMJHiwUBZBCrYhkaZAOwyZB4BLe2PCDsbyjDy1BVQcUEqHBEaDjCeBpiUZAjYgJAS0QAGFlQRWdIMFwaohQHENsSKt8WK0ZAK0SwxrgBr6DuPkw0QwL3BBlaLea5QfOS0yAZDZD',
     testEventCode: process.env.META_TEST_EVENT_CODE || '',
     enabled: true,
     capiEnabled: true,
@@ -87,8 +89,8 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     sha256DeduplicationActive: true,
   },
   telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    chatId: process.env.TELEGRAM_CHAT_ID || '',
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '9206411152:AAH78sg1jD1EkkFgfu-3s0zLFQKndcd1KHA',
+    chatId: process.env.TELEGRAM_CHAT_ID || '-1003965560132',
     enabled: true,
     templates: {},
   },
