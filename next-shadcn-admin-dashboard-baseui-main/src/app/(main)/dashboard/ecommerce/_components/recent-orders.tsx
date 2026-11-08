@@ -326,17 +326,28 @@ export function RecentOrders() {
     return () => window.removeEventListener("hashchange", checkHash);
   }, []);
 
-  // Handle URL search query (e.g. ?orderId=ORVA-12345 from Telegram direct notification)
+  // Handle URL search query (e.g. ?orderId=PACK2-67904 from Telegram direct notification)
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const targetOrderId = params.get("orderId");
       if (targetOrderId && targetOrderId.trim()) {
+        const cleanTarget = targetOrderId.trim().toLowerCase();
         setSearchQuery(targetOrderId.trim());
         setActiveFilter("All");
+
+        const match = orders.find(
+          (o) =>
+            (o.id && o.id.toLowerCase() === cleanTarget) ||
+            (o.rawOrder?.order_id && String(o.rawOrder.order_id).toLowerCase() === cleanTarget) ||
+            (o.rawOrder?.id && String(o.rawOrder.id).toLowerCase() === cleanTarget)
+        );
+        if (match) {
+          setSelectedOrderForDetails(match);
+        }
       }
     }
-  }, []);
+  }, [orders]);
 
   // Multi-Criteria Filtered orders calculation
   const filteredOrders = React.useMemo(() => {
