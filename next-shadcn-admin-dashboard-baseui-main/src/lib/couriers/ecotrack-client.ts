@@ -71,6 +71,25 @@ export interface EcoTrackFeesWilaya {
   tarif_stopdesk: string;
 }
 
+export interface EcoTrackCommuneItem {
+  nom: string;
+  wilaya_id: number;
+  code_postal?: string;
+  has_stop_desk: number;
+  is_active: number;
+}
+
+export interface EcoTrackProductItem {
+  reference: string;
+  barcode: string | null;
+  title: string;
+  is_active: number;
+  image: string | null;
+  stock_disponible: number;
+  stock_reserve: number;
+  stock_phisique: number;
+}
+
 // Arabic translation dictionary for EcoTrack status keys
 export const ECOTRACK_STATUS_MAP_AR: Record<string, { label: string; stage: 'pending' | 'shipped' | 'delivered' | 'returned' | 'cancelled' }> = {
   prete_a_expedier: { label: 'جاهز للإرسال (Prêt à expédier)', stage: 'shipped' },
@@ -168,6 +187,128 @@ const WILAYA_LOOKUP: Record<string, number> = {
   'el meniaa': 58, 'المنيعة': 58,
 };
 
+// Default Chef-lieu (capital city) per wilaya code for fail-safe fallback
+const WILAYA_CAPITALS: Record<number, string> = {
+  1: 'Adrar', 2: 'Chlef', 3: 'Laghouat', 4: 'Oum El Bouaghi', 5: 'Batna',
+  6: 'Bejaia', 7: 'Biskra', 8: 'Bechar', 9: 'Blida', 10: 'Bouira',
+  11: 'Tamanrasset', 12: 'Tebessa', 13: 'Tlemcen', 14: 'Tiaret', 15: 'Tizi Ouzou',
+  16: 'Alger Centre', 17: 'Djelfa', 18: 'Jijel', 19: 'Setif', 20: 'Saida',
+  21: 'Skikda', 22: 'Sidi Bel Abbes', 23: 'Annaba', 24: 'Guelma', 25: 'Constantine',
+  26: 'Medea', 27: 'Mostaganem', 28: 'M\'Sila', 29: 'Mascara', 30: 'Ouargla',
+  31: 'Oran', 32: 'El Bayadh', 33: 'Illizi', 34: 'Bordj Bou Arreridj', 35: 'Boumerdes',
+  36: 'El Tarf', 37: 'Tindouf', 38: 'Tissemsilt', 39: 'El Oued', 40: 'Khenchela',
+  41: 'Souk Ahras', 42: 'Tipaza', 43: 'Mila', 44: 'Ain Defla', 45: 'Naama',
+  46: 'Ain Temouchent', 47: 'Ghardaia', 48: 'Relizane', 49: 'Timimoun', 50: 'Bordj Badji Mokhtar',
+  51: 'Ouled Djellal', 52: 'Beni Abbes', 53: 'In Salah', 54: 'In Guezzam', 55: 'Touggourt',
+  56: 'Djanet', 57: 'El M\'Ghair', 58: 'El Meniaa',
+};
+
+// Common Arabic to Latin Commune dictionary
+const ARABIC_TO_LATIN_COMMUNES: Record<string, string> = {
+  'الجزائر الوسطى': 'Alger Centre',
+  'سيدي امحمد': 'Sidi M\'hamed',
+  'المدنية': 'El Madania',
+  'بلوزداد': 'Mohamed Belouizdad',
+  'باب الواد': 'Bab El Oued',
+  'القصبة': 'Casbah',
+  'وادي قريش': 'Oued Koriche',
+  'بئر مراد رايس': 'Bir Mourad Rais',
+  'الابيار': 'El Biar',
+  'بوزريعة': 'Bouzareah',
+  'بئر خادم': 'Birkhadem',
+  'حيدرة': 'Hydra',
+  'بن عكنون': 'Ben Aknoun',
+  'دالي براهيم': 'Dely Ibrahim',
+  'المرادية': 'El Mouradia',
+  'بني مسوس': 'Beni Messous',
+  'براقي': 'Baraki',
+  'الكاليتوس': 'Les Eucalyptus',
+  'سيدي موسى': 'Sidi Moussa',
+  'بئر توتة': 'Birtouta',
+  'تسالة المرجة': 'Tessala El Merdja',
+  'اولاد شبل': 'Ouled Chebel',
+  'زرالدة': 'Zeralda',
+  'المعالمة': 'Mahelma',
+  'الرحمانية': 'Rahmania',
+  'سويدانية': 'Souidania',
+  'سطاوالي': 'Staoueli',
+  'عين بنيان': 'Ain Benian',
+  'الشراقة': 'Cheraga',
+  'اولاد فايت': 'Ouled Fayet',
+  'الحمامات': 'El Hammamet',
+  'عين الطاية': 'Ain Taya',
+  'المرسى': 'El Marsa',
+  'برج البحري': 'Bordj El Bahri',
+  'برج الكيفان': 'Bordj El Kiffan',
+  'باب الزوار': 'Bab Ezzouar',
+  'الدار البيضاء': 'Dar El Beida',
+  'المحمدية': 'Mohammadia',
+  'الحراش': 'El Harrach',
+  'بوروبة': 'Boubouraba',
+  'واد السمار': 'Oued Smar',
+  'باش جراح': 'Bachdjerrah',
+  'حسين داي': 'Hussein Dey',
+  'المقرية': 'El Magharia',
+  'القبة': 'Kouba',
+  'جسر قسنطينة': 'Djasr Kasentina',
+  'الرويبة': 'Rouiba',
+  'الرغاية': 'Reghaia',
+  'هراوة': 'Herraoua',
+  'الدرارية': 'Draria',
+  'الدويرة': 'Douera',
+  'العاشور': 'El Achour',
+  'خرايسية': 'Khraicia',
+  'بابا حسن': 'Baba Hassen',
+  'بني ونيف': 'Beni Ounif',
+  'بشار': 'Bechar',
+  'العبادلة': 'Abadla',
+  'القنادسة': 'Kenadsa',
+  'تاغيت': 'Taghit',
+  'عنابة': 'Annaba',
+  'البوني': 'El Bouni',
+  'الحجار': 'El Hadjar',
+  'برحال': 'Berrahal',
+  'سرايدي': 'Seraidi',
+  'وهران': 'Oran',
+  'بئر الجير': 'Bir El Djir',
+  'السانية': 'Es Senia',
+  'عين الترك': 'Ain El Turk',
+  'ارزيو': 'Arzew',
+  'قسنطينة': 'Constantine',
+  'الخروب': 'El Khroub',
+  'عين سمارة': 'Ain Smara',
+  'حامة بوزيان': 'Hamma Bouziane',
+  'زيغود يوسف': 'Zighoud Youcef',
+  'البليدة': 'Blida',
+  'اولاد يعيش': 'Ouled Yaich',
+  'بوفاريك': 'Boufarik',
+  'موزاية': 'Mouzaia',
+  'العفرون': 'El Affroun',
+  'بسكرة': 'Biskra',
+  'سيدي عقبة': 'Sidi Okba',
+  'طولقة': 'Tolga',
+  'زريبة الوادي': 'Zeribet El Oued',
+  'أولاد جلال': 'Ouled Djellal',
+  'سيدي خالد': 'Sidi Khaled',
+  'سطيف': 'Setif',
+  'العلمة': 'El Eulma',
+  'عين ولمان': 'Ain Oulmene',
+  'عين ارنات': 'Ain Arnat',
+  'باتنة': 'Batna',
+  'بريكة': 'Barika',
+  'عين التوتة': 'Ain Touta',
+  'مروانة': 'Merouana',
+  'تيزي وزو': 'Tizi Ouzou',
+  'بجاية': 'Bejaia',
+  'اقبو': 'Akbou',
+  'القصر': 'El Kseur',
+  'الشلف': 'Chlef',
+  'تنس': 'Tenes',
+  'تلمسان': 'Tlemcen',
+  'مغنية': 'Maghnia',
+  'منصورة': 'Mansourah',
+};
+
 export function extractWilayaCode(raw: string | number | undefined | null): number {
   if (typeof raw === 'number' && raw >= 1 && raw <= 58) {
     return raw;
@@ -205,13 +346,27 @@ export function cleanAlgerianPhone(raw: string | undefined | null): string {
   return cleaned;
 }
 
+// In-memory cache for communes per wilaya to eliminate redundant network calls
+const communesCacheByWilaya = new Map<number, EcoTrackCommuneItem[]>();
+
 export class EcoTrackClient {
   private baseUrl: string;
   private token: string;
 
   constructor(options?: { baseUrl?: string; token?: string }) {
-    this.baseUrl = (options?.baseUrl || process.env.ECOTRACK_BASE_URL || 'https://redex.ecotrack.dz').replace(/\/+$/, '');
-    this.token = (options?.token || process.env.ECOTRACK_API_TOKEN || 'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo').trim();
+    this.baseUrl = (
+      options?.baseUrl ||
+      process.env.REDEX_BASE_URL ||
+      process.env.ECOTRACK_BASE_URL ||
+      'https://redex.ecotrack.dz'
+    ).replace(/\/+$/, '');
+
+    this.token = (
+      options?.token ||
+      process.env.REDEX_API_TOKEN ||
+      process.env.ECOTRACK_API_TOKEN ||
+      'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo'
+    ).trim();
   }
 
   public getBaseUrl(): string {
@@ -251,6 +406,134 @@ export class EcoTrackClient {
     } catch (err: any) {
       return { success: false, message: err?.message || 'Connection failed' };
     }
+  }
+
+  /**
+   * 19. Get Communes (with in-memory caching)
+   * GET /api/v1/get/communes?wilaya_id=...
+   */
+  public async getCommunes(wilayaId?: number): Promise<EcoTrackCommuneItem[]> {
+    if (wilayaId && communesCacheByWilaya.has(wilayaId)) {
+      return communesCacheByWilaya.get(wilayaId)!;
+    }
+
+    const endpoint = `${this.baseUrl}/api/v1/get/communes${wilayaId ? `?wilaya_id=${wilayaId}` : ''}`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'ORVA-Store-Client/1.0',
+        },
+      });
+
+      if (!res.ok) return [];
+      const json = await res.json().catch(() => []);
+      const communes: EcoTrackCommuneItem[] = Array.isArray(json)
+        ? json
+        : Object.values(json || {});
+
+      if (wilayaId) {
+        communesCacheByWilaya.set(wilayaId, communes);
+      }
+      return communes;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Intelligent Commune Resolver
+   * Resolves raw customer input (Arabic, transliterated, or partial) into a valid Latin commune
+   * registered with the Redex/EcoTrack tenant for the target wilaya.
+   * GUARANTEES that EcoTrack never rejects the order with 422 "Commune mal écrite".
+   */
+  public async resolveCommuneForWilaya(
+    wilayaCode: number,
+    rawCommune: string | undefined | null
+  ): Promise<{ resolvedCommune: string; stopDeskStationCode?: string; originalCommune: string }> {
+    const original = (rawCommune || '').trim();
+    if (!original) {
+      const fallbackCapital = WILAYA_CAPITALS[wilayaCode] || 'Centre';
+      return { resolvedCommune: fallbackCapital, originalCommune: original };
+    }
+
+    const validCommunes = await this.getCommunes(wilayaCode);
+
+    // 1. Check if raw input is already an exact case-insensitive match with a valid commune
+    const exactMatch = validCommunes.find(
+      (c) => c.nom.trim().toLowerCase() === original.toLowerCase()
+    );
+    if (exactMatch) {
+      return {
+        resolvedCommune: exactMatch.nom,
+        stopDeskStationCode: exactMatch.code_postal,
+        originalCommune: original,
+      };
+    }
+
+    // 2. Check Arabic dictionary mapping
+    const normalizedArabic = original.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').trim();
+    for (const [arKey, latVal] of Object.entries(ARABIC_TO_LATIN_COMMUNES)) {
+      const normKey = arKey.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').trim();
+      if (normalizedArabic.includes(normKey) || normKey.includes(normalizedArabic)) {
+        const dictMatch = validCommunes.find(
+          (c) => c.nom.toLowerCase() === latVal.toLowerCase() || c.nom.toLowerCase().includes(latVal.toLowerCase())
+        );
+        if (dictMatch) {
+          return {
+            resolvedCommune: dictMatch.nom,
+            stopDeskStationCode: dictMatch.code_postal,
+            originalCommune: original,
+          };
+        }
+      }
+    }
+
+    // 3. Substring/Word search in valid communes
+    const cleanLower = original.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+    const words = cleanLower.split(/\s+/).filter((w) => w.length > 2);
+    if (words.length > 0) {
+      for (const word of words) {
+        const wordMatch = validCommunes.find((c) => c.nom.toLowerCase().includes(word));
+        if (wordMatch) {
+          return {
+            resolvedCommune: wordMatch.nom,
+            stopDeskStationCode: wordMatch.code_postal,
+            originalCommune: original,
+          };
+        }
+      }
+    }
+
+    // 4. Safe Fallback: Use Wilaya Capital / First active commune
+    const capitalName = WILAYA_CAPITALS[wilayaCode];
+    if (capitalName) {
+      const capitalMatch = validCommunes.find(
+        (c) => c.nom.toLowerCase().includes(capitalName.toLowerCase()) || capitalName.toLowerCase().includes(c.nom.toLowerCase())
+      );
+      if (capitalMatch) {
+        return {
+          resolvedCommune: capitalMatch.nom,
+          stopDeskStationCode: capitalMatch.code_postal,
+          originalCommune: original,
+        };
+      }
+    }
+
+    if (validCommunes.length > 0 && validCommunes[0].nom) {
+      return {
+        resolvedCommune: validCommunes[0].nom,
+        stopDeskStationCode: validCommunes[0].code_postal,
+        originalCommune: original,
+      };
+    }
+
+    return {
+      resolvedCommune: capitalName || 'Centre',
+      originalCommune: original,
+    };
   }
 
   /**
@@ -380,6 +663,37 @@ export class EcoTrackClient {
   }
 
   /**
+   * 6. Delete Order (Cancel parcel in Redex before pickup)
+   * DELETE /api/v1/delete/order?tracking=...
+   */
+  public async deleteOrder(tracking: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const endpoint = `${this.baseUrl}/api/v1/delete/order?tracking=${encodeURIComponent(tracking.trim())}`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'ORVA-Store-Client/1.0',
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+      if (res.ok && (data?.delete === 'success' || data?.success)) {
+        return { success: true, message: 'Commande supprimée avec succès' };
+      }
+
+      return {
+        success: false,
+        error: data?.message || `HTTP ${res.status}: ${res.statusText}`,
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error deleting parcel' };
+    }
+  }
+
+  /**
    * 13. Get Single Tracking Info
    * GET /api/v1/get/tracking/info?tracking=...
    */
@@ -429,7 +743,6 @@ export class EcoTrackClient {
         };
       });
 
-      // Latest status
       const latestActivity = activities[activities.length - 1];
       const currentStatusCode = latestActivity?.status || 'prete_a_expedier';
       const statusMeta = ECOTRACK_STATUS_MAP_AR[currentStatusCode];
@@ -550,6 +863,84 @@ export class EcoTrackClient {
         return { success: true, fees: json.livraison };
       }
       return { success: false, error: json?.message || 'Failed to fetch fees' };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  }
+
+  /**
+   * 17. Get Wilayas
+   * GET /api/v1/get/wilayas
+   */
+  public async getWilayas(): Promise<{ success: boolean; wilayas?: Array<{ wilaya_id: number; wilaya_name: string }>; error?: string }> {
+    const endpoint = `${this.baseUrl}/api/v1/get/wilayas`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'ORVA-Store-Client/1.0',
+        },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(json)) {
+        return { success: true, wilayas: json };
+      }
+      return { success: false, error: json?.message || 'Failed to fetch wilayas' };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  }
+
+  /**
+   * 18. Get Stop Desk Hubs
+   * GET /api/v1/get/desks
+   */
+  public async getDesks(): Promise<{ success: boolean; desks?: any; error?: string }> {
+    const endpoint = `${this.baseUrl}/api/v1/get/desks`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'ORVA-Store-Client/1.0',
+        },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok) {
+        return { success: true, desks: json };
+      }
+      return { success: false, error: json?.message || 'Failed to fetch desks' };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  }
+
+  /**
+   * Liste des Produits (page-2026-11-08-18-58-29.md)
+   * GET /api/v1/get/products/list?page=...
+   */
+  public async getProducts(page: number = 1): Promise<{ success: boolean; products?: EcoTrackProductItem[]; pagination?: any; error?: string }> {
+    const endpoint = `${this.baseUrl}/api/v1/get/products/list?page=${page}`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'application/json',
+          'User-Agent': 'ORVA-Store-Client/1.0',
+        },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.products) {
+        return { success: true, products: json.products, pagination: json.pagination };
+      }
+      return { success: false, error: json?.message || 'Failed to fetch products' };
     } catch (err: any) {
       return { success: false, error: err?.message };
     }

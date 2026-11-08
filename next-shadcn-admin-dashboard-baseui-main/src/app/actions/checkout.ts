@@ -84,26 +84,22 @@ async function triggerTelegramAlert(params: {
   total: number;
 }) {
   try {
-    let token = '';
-    let chatId = '';
+    let token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    let chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
     let enabled = true;
 
-    try {
-      const settings = await getAdminSettingsAction();
-      if (settings?.telegram) {
-        token = (settings.telegram.botToken || '').trim();
-        chatId = (settings.telegram.chatId || '').trim();
-        enabled = settings.telegram.enabled !== false;
+    // Only query database settings if environment variables are missing
+    if (!token || !chatId) {
+      try {
+        const settings = await getAdminSettingsAction();
+        if (settings?.telegram) {
+          token = token || (settings.telegram.botToken || '').trim();
+          chatId = chatId || (settings.telegram.chatId || '').trim();
+          enabled = settings.telegram.enabled !== false;
+        }
+      } catch (settingsErr) {
+        console.warn('[Telegram Settings Read Error]:', settingsErr);
       }
-    } catch (settingsErr) {
-      console.warn('[Telegram Settings Read Error]:', settingsErr);
-    }
-
-    if (!token) {
-      token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-    }
-    if (!chatId) {
-      chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
     }
 
     if (!enabled || !token || !chatId) return;
@@ -365,8 +361,8 @@ export async function submitCodOrderAction(
       });
     }
 
-    // 4. Non-Blocking External Alerts (Telegram & CAPI)
-    void Promise.allSettled([
+    // 4. Reliable Fast External Alerts (Telegram & CAPI)
+    await Promise.allSettled([
       triggerTelegramAlert({
         orderNumber,
         customerName: validated.customerName,

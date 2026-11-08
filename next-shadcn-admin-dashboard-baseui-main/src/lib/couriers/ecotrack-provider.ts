@@ -39,17 +39,25 @@ export class RedexCourierProvider implements CourierProvider {
     const wilayaCode = request.wilayaCode || extractWilayaCode(request.wilayaName);
     const stopDeskFlag = request.deliveryType === 'STOP_DESK' ? 1 : 0;
 
+    // Intelligent Commune Resolver
+    const resolved = await client.resolveCommuneForWilaya(wilayaCode, request.communeName);
+    const finalCommune = resolved.resolvedCommune;
+    const finalStopDeskCode = request.stopDeskId || resolved.stopDeskStationCode || undefined;
+    const finalAddress = request.communeName && request.communeName !== finalCommune
+      ? `${request.communeName} — ${request.address}`
+      : request.address;
+
     const createResult = await client.createOrder({
       reference: request.orderNumber,
       nom_client: request.customerName,
       telephone: request.customerPhone,
       telephone_2: request.customerPhone2,
-      adresse: request.address,
-      commune: request.communeName,
+      adresse: finalAddress,
+      commune: finalCommune,
       code_wilaya: wilayaCode,
       montant: request.amountToCollect,
       stop_desk: stopDeskFlag,
-      code_postal: request.stopDeskId,
+      code_postal: finalStopDeskCode,
       produit: request.productDescription,
       type: 1,
       boutique: 'ORVA Store',
@@ -104,3 +112,4 @@ export class RedexCourierProvider implements CourierProvider {
     };
   }
 }
+

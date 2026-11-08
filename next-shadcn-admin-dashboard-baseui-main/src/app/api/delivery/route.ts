@@ -25,6 +25,75 @@ function formatWilayaLabel(code?: number, name?: string): string {
   return name;
 }
 
+/**
+ * Common order deletion helper:
+ * 1. Cancels parcel on Redex (if it has a tracking code)
+ * 2. Removes order from Supabase
+ * 3. Removes order from persistent fallback store
+ */
+async function executeOrderDeletion(orderIdOrTracking: string) {
+  const target = String(orderIdOrTracking || '').trim();
+  if (!target) return { success: false, error: 'Order ID or Tracking code is required' };
+
+  let trackingToDelete: string | null = null;
+  const supabase = getSupabaseServerClient() as any;
+
+  // 1. Find tracking if target is an order ID
+  try {
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('redex_tracking_code, tracking_number')
+      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`)
+      .maybeSingle();
+
+    if (orderRow) {
+      trackingToDelete = orderRow.redex_tracking_code || orderRow.tracking_number;
+    }
+  } catch (findErr) {
+    console.warn('[API /api/delivery] Deletion search warning:', findErr);
+  }
+
+  if (!trackingToDelete && target.startsWith('EC')) {
+    trackingToDelete = target;
+  }
+
+  // 2. Cancel/Delete on Redex if tracking is present
+  if (trackingToDelete) {
+    try {
+      const ecotrack = getEcoTrackClient();
+      await ecotrack.deleteOrder(trackingToDelete);
+    } catch (courierErr) {
+      console.warn('[API /api/delivery] Courier deletion attempt warning:', courierErr);
+    }
+  }
+
+  // 3. Delete from Supabase
+  try {
+    await supabase
+      .from('orders')
+      .delete()
+      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target},redex_tracking_code.eq.${target},tracking_number.eq.${target}`);
+  } catch (dbErr) {
+    console.warn('[API /api/delivery] Supabase delete warning:', dbErr);
+  }
+
+  // 4. Delete from fallback store
+  const allStored = getStoredFallbackOrders();
+  const filtered = allStored.filter(
+    (fb) =>
+      fb.id !== target &&
+      fb.orderNumber !== target &&
+      (fb as any).redex_tracking_code !== target &&
+      (fb as any).trackingNumber !== target
+  );
+  if (filtered.length !== allStored.length) {
+    saveAllFallbackOrders(filtered);
+  }
+
+  return { success: true, message: `تم حذف الطلبية #${target} بنجاح من قاعدة البيانات ومنصة التوصيل.` };
+}
+
+// ── GET HANDLER ─────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action') || 'get_all_orders';
@@ -181,7 +250,44 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   }
 
-  // 5. Fetch all orders (Supabase + Fallback Store + Mock)
+  // 5. Platform Data: Get Communes (page-2026-11-08-18-58-29.md)
+  if (action === 'get_communes') {
+    const wilayaId = searchParams.get('wilaya_id') ? parseInt(searchParams.get('wilaya_id')!, 10) : undefined;
+    const ecotrack = getEcoTrackClient();
+    const communes = await ecotrack.getCommunes(wilayaId);
+    return NextResponse.json({ success: true, data: communes, total: communes.length });
+  }
+
+  // 6. Platform Data: Get Fees (Tarifs des prestations)
+  if (action === 'get_fees') {
+    const ecotrack = getEcoTrackClient();
+    const feesResult = await ecotrack.getFees();
+    return NextResponse.json(feesResult);
+  }
+
+  // 7. Platform Data: Get Desks (Bureaux Stop Desk)
+  if (action === 'get_desks') {
+    const ecotrack = getEcoTrackClient();
+    const desksResult = await ecotrack.getDesks();
+    return NextResponse.json(desksResult);
+  }
+
+  // 8. Platform Data: Get Wilayas
+  if (action === 'get_wilayas') {
+    const ecotrack = getEcoTrackClient();
+    const wilayasResult = await ecotrack.getWilayas();
+    return NextResponse.json(wilayasResult);
+  }
+
+  // 9. Platform Data: Get Products List (Produits & Stock)
+  if (action === 'get_products') {
+    const page = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
+    const ecotrack = getEcoTrackClient();
+    const productsResult = await ecotrack.getProducts(page);
+    return NextResponse.json(productsResult);
+  }
+
+  // 10. Fetch all orders (Supabase + Fallback Store + Mock)
   if (action === 'get_all_orders') {
     const combinedOrders: any[] = [];
     const seenIds = new Set<string>();
@@ -299,6 +405,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
 }
 
+// ── POST HANDLER ────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
@@ -431,8 +538,8 @@ export async function POST(request: NextRequest) {
       let clientPhone2 = body.phone2 || body.customerPhone2 || '';
       let wilayaName = body.wilaya || body.wilayaName || '';
       let wilayaCode = body.wilayaCode;
-      let communeName = body.commune || body.communeName || '';
-      let address = body.address || body.deliveryAddress || communeName || 'Centre Ville';
+      let rawCommune = body.commune || body.communeName || '';
+      let address = body.address || body.deliveryAddress || rawCommune || 'Centre Ville';
       let deliveryType = body.deliveryType || 'home';
       let stopDeskFlag = deliveryType === 'desk' || deliveryType === 'STOP_DESK' || String(deliveryType).includes('مكتب') ? 1 : 0;
       let stopDeskCode = body.stopDeskId || body.code_postal || '';
@@ -458,8 +565,8 @@ export async function POST(request: NextRequest) {
             clientPhone2 = clientPhone2 || existingRow.phone2 || '';
             wilayaName = wilayaName || existingRow.wilaya || existingRow.wilaya_name || '';
             wilayaCode = wilayaCode || existingRow.wilaya_code;
-            communeName = communeName || existingRow.commune || existingRow.commune_name || '';
-            address = address || existingRow.address || communeName || 'Centre Ville';
+            rawCommune = rawCommune || existingRow.commune || existingRow.commune_name || '';
+            address = address || existingRow.address || rawCommune || 'Centre Ville';
             if (existingRow.delivery_type) {
               stopDeskFlag = existingRow.delivery_type.includes('مكتب') || existingRow.delivery_type === 'STOP_DESK' ? 1 : 0;
             }
@@ -481,21 +588,35 @@ export async function POST(request: NextRequest) {
         token: body.token,
       });
 
+      // Intelligent Commune Resolver: Resolves Arabic / arbitrary communes to valid Latin communes registered in Redex
+      const resolved = await ecotrack.resolveCommuneForWilaya(finalWilayaCode, rawCommune);
+      const finalCommune = resolved.resolvedCommune;
+      const finalStopDeskCode = stopDeskCode || resolved.stopDeskStationCode || undefined;
+
+      // Ensure customer's original address information is retained if commune was translated
+      const finalAddress = rawCommune && rawCommune !== finalCommune
+        ? `${rawCommune} — ${address}`
+        : address;
+
+      const finalNotes = rawCommune && rawCommune !== finalCommune
+        ? (notes ? `${notes} (بلدية: ${rawCommune})` : `بلدية: ${rawCommune}`)
+        : notes;
+
       // 1. Create order in Redex
       const createResult = await ecotrack.createOrder({
         reference,
         nom_client: clientName,
         telephone: cleanPhone,
         telephone_2: clientPhone2 ? cleanAlgerianPhone(clientPhone2) : undefined,
-        adresse: address,
-        commune: communeName || 'Centre Ville',
+        adresse: finalAddress,
+        commune: finalCommune,
         code_wilaya: finalWilayaCode,
         montant: Number(codAmount),
         type: 1, // Livraison
         stop_desk: stopDeskFlag,
-        code_postal: stopDeskCode || undefined,
+        code_postal: finalStopDeskCode,
         produit: productName,
-        remarque: notes,
+        remarque: finalNotes,
         boutique: 'ORVA Store',
       });
 
@@ -554,8 +675,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Support legacy POST { action: 'delete' }
     if (action === 'delete') {
-      return NextResponse.json({ success: true, message: 'Order archived/deleted' });
+      const orderId = body.orderId || body.orderNumber || body.id || body.tracking;
+      const result = await executeOrderDeletion(orderId);
+      return NextResponse.json(result);
     }
 
     return NextResponse.json({ success: false, error: 'Unsupported action' }, { status: 400 });
@@ -564,5 +688,23 @@ export async function POST(request: NextRequest) {
       { success: false, error: err?.message || 'Server error occurred' },
       { status: 500 }
     );
+  }
+}
+
+// ── DELETE HANDLER ──────────────────────────────────────────────────────────
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const body = await request.json().catch(() => ({}));
+    const orderId = searchParams.get('orderId') || searchParams.get('id') || searchParams.get('tracking') || body.orderId || body.id || body.tracking;
+
+    if (!orderId) {
+      return NextResponse.json({ success: false, error: 'معرّف الطلبية (orderId) مطلوب للحذف' }, { status: 400 });
+    }
+
+    const result = await executeOrderDeletion(orderId);
+    return NextResponse.json(result);
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err?.message || 'Delete error occurred' }, { status: 500 });
   }
 }
