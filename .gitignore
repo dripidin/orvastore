@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Next.js Build Outputs
+.next/
+**/.next/
+out/
+**/out/
+build/
+**/build/
+
+# External reference archives/templates
+codflow-main/
+storefront-main/
+CourierDZ-main/
+
+# Internal agent logs and scratch
+.agents/
+scratch/
+**/*.tsbuildinfo
+
+# Environment & Sensitive configs
+.env*.local
+*.pem
+*.key
+
+# Logs & System artifacts
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
