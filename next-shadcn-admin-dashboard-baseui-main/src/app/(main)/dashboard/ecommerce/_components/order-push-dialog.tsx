@@ -175,6 +175,11 @@ function OrderPushDialogForm({
       const wilayaCode = wilayaMatch ? parseInt(wilayaMatch[1], 10) : undefined;
       const courierToken = template.credentials[selectedCourier.id]?.token;
 
+      const parsedTotal = typeof order.total === "string" ? parseInt(order.total.replace(/[^\d]/g, ""), 10) : undefined;
+      const calculatedCod = freeShipping
+        ? (typeof order.priceNum === "number" ? order.priceNum : parsedTotal)
+        : (parsedTotal || (typeof order.priceNum === "number" ? order.priceNum + 500 : undefined));
+
       const result = await repo.pushOrder({
         orderId: order.id,
         courierId: selectedCourier.id,
@@ -182,7 +187,7 @@ function OrderPushDialogForm({
         deliveryType,
         freeShipping,
         notes: notes.trim(),
-        codAmountDzd: typeof order.priceNum === "number" ? order.priceNum : undefined,
+        codAmountDzd: calculatedCod,
         fullName: order.customer,
         phone: order.phone,
         wilaya: order.wilaya,

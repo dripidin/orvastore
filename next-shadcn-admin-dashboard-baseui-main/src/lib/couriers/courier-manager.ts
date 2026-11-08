@@ -8,13 +8,15 @@ import {
 import { MockCourierProvider } from './mock-provider';
 import { YalidineCourierProvider } from './yalidine-provider';
 import { ZrExpressCourierProvider } from './zrexpress-provider';
+import { RedexCourierProvider } from './ecotrack-provider';
 
 export class CourierProviderManager {
   private providers: Map<string, CourierProvider> = new Map();
   private credentialsMap: Map<string, Record<string, string>> = new Map();
-  private activeProviderId = 'mock';
+  private activeProviderId = 'redex';
 
   constructor() {
+    this.registerProvider(new RedexCourierProvider());
     this.registerProvider(new MockCourierProvider());
     this.registerProvider(new YalidineCourierProvider());
     this.registerProvider(new ZrExpressCourierProvider());

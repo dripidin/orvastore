@@ -213,6 +213,7 @@ export function RecentOrders() {
   const [pendingStatusById, setPendingStatusById] = React.useState<Record<string, boolean>>({});
   const pendingStatusIds = React.useRef(new Set<string>());
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
+  const [isSyncingRedex, setIsSyncingRedex] = React.useState(false);
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "date", desc: true }]);
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
@@ -459,6 +460,36 @@ export function RecentOrders() {
     toast.add({ title: "تم تحديث الطلبية", description: "تم تأكيد التعديل من خدمة الإدارة.", type: "success" });
   }, []);
 
+  const handleSyncRedexTracking = React.useCallback(async () => {
+    setIsSyncingRedex(true);
+    try {
+      const res = await fetch("/api/delivery?action=sync_all_active");
+      const json = await res.json();
+      if (json.success) {
+        toast.add({
+          title: "تمت مزامنة التتبع مع Redex",
+          description: json.message || `تم فحص ${json.checkedCount || 0} شحنة وتحديث ${json.updatedCount || 0} طلب.`,
+          type: "success",
+        });
+        await fetchOrders();
+      } else {
+        toast.add({
+          title: "فشل مزامنة التتبع",
+          description: json.error || "تعذر الاتصال بخادم Redex",
+          type: "error",
+        });
+      }
+    } catch (err: any) {
+      toast.add({
+        title: "خطأ في المزامنة",
+        description: err?.message || "تحقق من اتصال الإنترنت",
+        type: "error",
+      });
+    } finally {
+      setIsSyncingRedex(false);
+    }
+  }, [fetchOrders]);
+
   // Direct Status Update Handler
   const handleUpdateStatus = React.useCallback(async (orderId: string, newStatus: string) => {
     if (pendingStatusIds.current.has(orderId)) return;
@@ -625,6 +656,19 @@ export function RecentOrders() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Sync with Redex Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSyncRedexTracking}
+              disabled={isSyncingRedex || isLoading}
+              className="gap-1.5 text-xs h-8 font-medium text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+              title="مزامنة وتحديث حالات التتبع لكل الشحنات النشطة مباشرة من منصة Redex"
+            >
+              <Truck className={`size-3.5 ${isSyncingRedex ? "animate-spin" : ""}`} />
+              <span>مزامنة التتبع مع Redex</span>
+            </Button>
+
             {/* Export to Excel CSV Button */}
             <Button
               size="sm"
@@ -976,6 +1020,10 @@ export function RecentOrders() {
         onOpenSwitchDialog={(order) => {
           setSelectedOrderForSwitch(order);
           setSwitchDialogOpen(true);
+        }}
+        onOpenPushDialog={(order) => {
+          setSelectedOrderForPush(order);
+          setPushDialogOpen(true);
         }}
         onUpdateStatus={handleUpdateStatus}
       />

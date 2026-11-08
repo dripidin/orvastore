@@ -12,6 +12,7 @@ import {
   Eye,
   MoreHorizontal,
   Phone,
+  Printer,
   RefreshCw,
   RotateCcw,
   ShoppingBag,
@@ -429,6 +430,18 @@ export function createRecentOrdersColumns(
                       <div className="flex items-center gap-2">
                         <Truck className="size-3.5" />
                         <span>إرسال لشركة التوصيل (Push Order)</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+
+                  {row.original.redex_tracking_code && (
+                    <DropdownMenuItem
+                      onClick={() => window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(row.original.redex_tracking_code!)}`, '_blank')}
+                      className="cursor-pointer font-semibold text-purple-600 dark:text-purple-400 flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Printer className="size-3.5" />
+                        <span>طباعة بوليصة الشحن (PDF)</span>
                       </div>
                     </DropdownMenuItem>
                   )}

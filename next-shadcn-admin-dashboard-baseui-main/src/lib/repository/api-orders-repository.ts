@@ -109,14 +109,10 @@ export class ApiOrdersRepository implements IOrdersRepository {
   }
 
   async pushOrder(payload: PushOrderPayload): Promise<PushOrderResult> {
-    const mockLocal =
-      typeof window !== "undefined" &&
-      /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-
     const res = await this.requestJson<any>("/api/delivery?action=create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, mock: mockLocal ? true : undefined }),
+      body: JSON.stringify(payload),
     });
 
     let updated: OrvaOrder | null = null;

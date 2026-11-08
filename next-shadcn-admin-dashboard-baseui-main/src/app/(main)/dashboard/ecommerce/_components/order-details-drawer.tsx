@@ -10,10 +10,12 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  FileDown,
   History,
   MapPin,
   Package,
   Phone,
+  Printer,
   RefreshCw,
   ShieldCheck,
   Trash2,
@@ -49,6 +51,7 @@ interface OrderDetailsDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenSwitchDialog?: (order: OrderRow) => void;
+  onOpenPushDialog?: (order: OrderRow) => void;
   onUpdateStatus?: (orderId: string, newStatus: string) => void;
   onDeleteOrder?: (orderId: string) => void;
 }
@@ -59,7 +62,7 @@ function formatDate(dateStr?: string) {
     const d = typeof dateStr === "string" ? parseISO(dateStr) : new Date(dateStr);
     if (isNaN(d.getTime())) return String(dateStr);
     return format(d, "dd MMMM yyyy — HH:mm:ss");
-  } catch (e) {
+  } catch {
     return String(dateStr);
   }
 }
@@ -70,9 +73,9 @@ const FIELD_LABELS: Record<string, string> = {
   wilaya: "الولاية (Wilaya)",
   commune: "البلدية (Commune)",
   delivery_type: "نوع التوصيل (Mode de livraison)",
-  shipping_fee: "رسوم التوصيل (Frais de livraison)",
-  grand_total: "إجمالي التحصيل (Total à encaisser COD)",
-  address: "العنوان",
+  address: "العنوان الدقيق (Adresse)",
+  price_num: "سعر المنتج (Prix Produit)",
+  total: "المبلغ الإجمالي (Total COD)",
 };
 
 export function OrderDetailsDrawer({
@@ -80,176 +83,200 @@ export function OrderDetailsDrawer({
   open,
   onOpenChange,
   onOpenSwitchDialog,
+  onOpenPushDialog,
   onUpdateStatus,
   onDeleteOrder,
 }: OrderDetailsDrawerProps) {
   const [copiedId, setCopiedId] = React.useState(false);
-  const [updatingStatus, setUpdatingStatus] = React.useState(false);
+  const [copiedTracking, setCopiedTracking] = React.useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
+
+  // Real-time Redex Tracking State
+  const [trackingLoading, setTrackingLoading] = React.useState(false);
+  const [trackingData, setTrackingData] = React.useState<any>(null);
+
+  const trackingCode = order?.redex_tracking_code || null;
+
+  const fetchTracking = React.useCallback(async (code: string) => {
+    if (!code) return;
+    setTrackingLoading(true);
+    try {
+      const res = await fetch(`/api/delivery?action=track&tracking=${encodeURIComponent(code)}`);
+      const json = await res.json();
+      if (json.success) {
+        setTrackingData(json);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch tracking info:", err);
+    } finally {
+      setTrackingLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (open && trackingCode) {
+      fetchTracking(trackingCode);
+    } else {
+      setTrackingData(null);
+    }
+  }, [open, trackingCode, fetchTracking]);
 
   if (!order) return null;
 
-  const handleCopyOrderId = async () => {
+  const isTerminal = order.status === "cancelled" || order.status === "deleted";
+
+  const handleCopyId = async () => {
     try {
       await navigator.clipboard.writeText(order.id);
       setCopiedId(true);
-      toast.add({ title: "تم نسخ رقم الطلب بنجاح", type: "success" });
+      toast.add({
+        title: "تم نسخ المعرّف",
+        description: `معرّف الطلبية #${order.id} منسوخ في الحافظة.`,
+        type: "success",
+      });
       setTimeout(() => setCopiedId(false), 2000);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      toast.add({
+        title: "تعذر النسخ",
+        description: "يرجى منح الإذن للمتصفح للوصول للحافظة.",
+        type: "error",
+      });
     }
   };
 
-  const isTerminal = ["delivered", "reconciled"].includes(
-    (order.status || "").toLowerCase()
-  );
+  const handleCopyTracking = async () => {
+    if (!trackingCode) return;
+    try {
+      await navigator.clipboard.writeText(trackingCode);
+      setCopiedTracking(true);
+      toast.add({
+        title: "تم نسخ كود التتبع",
+        description: `كود التتبع ${trackingCode} منسوخ في الحافظة.`,
+        type: "success",
+      });
+      setTimeout(() => setCopiedTracking(false), 2000);
+    } catch {
+      toast.add({
+        title: "تعذر النسخ",
+        description: "يرجى منح الإذن للمتصفح للوصول للحافظة.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleStatusSelect = async (newStatus: string) => {
+    if (!onUpdateStatus || isUpdatingStatus) return;
+    setIsUpdatingStatus(true);
+    try {
+      await onUpdateStatus(order.id, newStatus);
+      toast.add({
+        title: "تم تحديث الحالة",
+        description: `تم تغيير حالة الطلبية إلى "${newStatus}".`,
+        type: "success",
+      });
+    } catch {
+      toast.add({
+        title: "خطأ في التحديث",
+        description: "تعذر تحديث حالة الطلبية، يرجى المحاولة لاحقاً.",
+        type: "error",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-6" dir="rtl">
-        <DialogHeader className="border-b pb-4 text-right">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto text-right" dir="ltr">
+        <DialogHeader className="text-right border-b pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
-                <Package className="size-6" />
-              </div>
-              <div>
-                <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                  <span>تفاصيل الطلبية:</span>
-                  <span className="font-mono text-primary text-lg">{order.id}</span>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={handleCopyOrderId}
-                    title="نسخ رقم الطلب"
-                  >
-                    {copiedId ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
-                  </Button>
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                  <Calendar className="size-3.5" />
-                  <span>تاريخ الإنشاء: {formatDate(order.date)}</span>
-                </DialogDescription>
-              </div>
+            <div className="flex items-center gap-2">
+              <Package className="size-5 text-primary" />
+              <DialogTitle className="text-lg font-bold">
+                تفاصيل الطلبية: <span className="font-mono text-primary">{order.id}</span>
+              </DialogTitle>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={handleCopyId}
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                title="نسخ معرّف الطلبية"
+              >
+                {copiedId ? <Check className="size-3.5 text-green-600" /> : <Copy className="size-3.5" />}
+              </Button>
             </div>
 
-            {/* Badges & Status Updater */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Operational Status */}
-              <Badge
-                variant="outline"
-                className={`font-semibold px-2.5 py-1 ${
-                  order.status === "delivered"
-                    ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
-                    : order.status === "shipped"
-                    ? "border-purple-500/40 bg-purple-500/10 text-purple-700 dark:text-purple-300"
-                    : order.status === "confirmed"
-                    ? "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300"
-                    : order.status === "returned"
-                    ? "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300"
-                    : order.status === "cancelled"
-                    ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300"
-                    : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                }`}
-              >
-                <span className="size-1.5 rounded-full bg-current ml-1.5" />
-                الحالة التشغيلية: {order.status}
-              </Badge>
-
-              {/* Conversion Switch Status */}
-              {order.isSwitched ? (
-                <Badge
-                  variant="outline"
-                  className="border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 font-semibold px-2.5 py-1"
+            <div className="flex items-center gap-2">
+              {/* Operational Status Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">الحالة التشغيلية:</span>
+                <Select
+                  value={order.status.toLowerCase()}
+                  onValueChange={(val) => {
+                    if (val) void handleStatusSelect(val);
+                  }}
+                  disabled={isUpdatingStatus || !onUpdateStatus}
                 >
-                  <RefreshCw className="size-3 ml-1" />
-                  محوّل ({order.conversionCount} عملية تحويل)
+                  <SelectTrigger className="h-7 text-xs font-semibold bg-background w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending" className="text-xs">معلقة (Pending)</SelectItem>
+                    <SelectItem value="confirmed" className="text-xs">مؤكدة (Confirmed)</SelectItem>
+                    <SelectItem value="shipped" className="text-xs">مشحونة (Shipped)</SelectItem>
+                    <SelectItem value="delivered" className="text-xs">مسلّمة (Delivered)</SelectItem>
+                    <SelectItem value="returned" className="text-xs">مرتجعة (Returned)</SelectItem>
+                    <SelectItem value="cancelled" className="text-xs">ملغاة (Cancelled)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {order.isSwitched ? (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold text-xs gap-1">
+                  <AlertTriangle className="size-3" />
+                  <span>محوّلة (Rerouted)</span>
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-muted-foreground px-2 py-0.5 text-xs">
+                <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium text-xs">
                   أصلي (لم يحوّل)
                 </Badge>
               )}
-
-              {/* Status Updater */}
-              {onUpdateStatus && (
-                <div className="flex items-center gap-1 mr-1">
-                  <Select
-                    value={order.status}
-                    disabled={updatingStatus}
-                    onValueChange={async (newSt) => {
-                      if (!newSt) return;
-                      setUpdatingStatus(true);
-                      try {
-                        await onUpdateStatus(order.id, newSt);
-                      } finally {
-                        setUpdatingStatus(false);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-7 text-xs font-semibold w-40 bg-background">
-                      <SelectValue placeholder="تغيير الحالة..." />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      <SelectItem value="pending" className="text-xs">قيد الانتظار (Pending)</SelectItem>
-                      <SelectItem value="confirmed" className="text-xs">مؤكدة (Confirmed)</SelectItem>
-                      <SelectItem value="shipped" className="text-xs">مشحونة (Shipped)</SelectItem>
-                      <SelectItem value="delivered" className="text-xs">مسلّمة (Delivered)</SelectItem>
-                      <SelectItem value="returned" className="text-xs">مرتجعة / رفض (Returned)</SelectItem>
-                      <SelectItem value="cancelled" className="text-xs">ملغاة (Cancelled)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
           </div>
+
+          <DialogDescription className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+            <Calendar className="size-3.5" />
+            <span>تاريخ الإنشاء: {formatDate(order.date)}</span>
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-2">
-          {/* Section 1: Current Active Order Data */}
-          <div>
-            <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+        <div className="space-y-6 py-4">
+          {/* Section 1: Customer & Order Overview */}
+          <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
               <User className="size-4 text-primary" />
               <span>البيانات الحالية للطلب والعميل:</span>
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border bg-muted/30 p-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="space-y-1">
                 <span className="text-muted-foreground block text-[11px]">الاسم الكامل:</span>
-                <span className="font-semibold text-foreground text-sm">{order.customer || "—"}</span>
+                <span className="font-semibold text-foreground">{order.customer}</span>
               </div>
 
               <div className="space-y-1">
                 <span className="text-muted-foreground block text-[11px]">رقم الهاتف:</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <a
-                    href={order.phone ? `tel:${order.phone}` : undefined}
-                    className="font-mono font-semibold text-primary hover:underline text-sm"
-                    dir="ltr"
-                  >
-                    {order.phone || "—"}
-                  </a>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 text-muted-foreground hover:text-foreground cursor-pointer"
-                    title="نسخ رقم الهاتف"
-                    onClick={() => {
-                      if (order.phone) {
-                        navigator.clipboard.writeText(order.phone);
-                        toast.add({ title: "تم نسخ رقم الهاتف", type: "success" });
-                      }
-                    }}
-                  >
-                    <Copy className="size-3" />
-                  </Button>
-                </div>
+                <span className="font-mono text-foreground font-medium" dir="ltr">
+                  {order.phone || "—"}
+                </span>
               </div>
 
               <div className="space-y-1">
                 <span className="text-muted-foreground block text-[11px]">الولاية والبلدية:</span>
-                <span className="font-medium text-foreground">
-                  {order.wilaya}{order.commune && !order.wilaya.includes(order.commune) && order.commune !== "—" ? ` — ${order.commune}` : ""}
-                </span>
+                <div className="flex items-center gap-1 text-foreground">
+                  <MapPin className="size-3.5 text-muted-foreground shrink-0" />
+                  <span>{order.wilaya} — {order.commune}</span>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -271,27 +298,145 @@ export function OrderDetailsDrawer({
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              {order.in_redex && (
-                <div className="space-y-1 col-span-full border-t pt-2 mt-1">
-                  <span className="text-muted-foreground block text-[11px]">حالة الشحن / شركة التوصيل:</span>
-                  <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium">
-                    <Truck className="size-3.5" />
-                    <span>مرسل إلى شركة التوصيل</span>
-                    {order.redex_tracking_code && (
-                      <span className="font-mono text-xs bg-purple-500/10 px-2 py-0.5 rounded">
-                        كود التتبع: {order.redex_tracking_code}
-                      </span>
-                    )}
-                  </div>
+          {/* Section 2: Redex EcoTrack Live Courier Logistics Card */}
+          <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/20 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Truck className="size-4 text-purple-700 dark:text-purple-300" />
+                <span className="text-sm font-bold text-purple-900 dark:text-purple-100">
+                  شركة التوصيل: Redex Express (EcoTrack Platform)
+                </span>
+              </div>
+
+              {trackingCode ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => fetchTracking(trackingCode)}
+                    disabled={trackingLoading}
+                    className="h-7 text-xs gap-1 bg-background border-purple-300 dark:border-purple-800"
+                    title="تحديث التتبع من Redex الآن"
+                  >
+                    <RefreshCw className={`size-3 text-purple-600 ${trackingLoading ? "animate-spin" : ""}`} />
+                    <span>تحديث التتبع</span>
+                  </Button>
+
+                  <Button
+                    size="xs"
+                    className="h-7 text-xs gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-medium"
+                    onClick={() => {
+                      window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`, "_blank");
+                    }}
+                    title="طباعة وتحميل بوليصة الشحن الرسمية PDF"
+                  >
+                    <Printer className="size-3.5" />
+                    <span>طباعة البوليصة (PDF)</span>
+                  </Button>
                 </div>
+              ) : (
+                !isTerminal && onOpenPushDialog && (
+                  <Button
+                    size="xs"
+                    className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onOpenPushDialog(order);
+                    }}
+                  >
+                    <Truck className="size-3.5" />
+                    <span>إرسال لـ Redex الآن</span>
+                  </Button>
+                )
               )}
             </div>
+
+            {trackingCode ? (
+              <div className="space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-background/80 rounded-lg p-2.5 border">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[11px]">رقم التتبع:</span>
+                    <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
+                      {trackingCode}
+                    </span>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={handleCopyTracking}
+                      className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                      title="نسخ كود التتبع"
+                    >
+                      {copiedTracking ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-[11px]">الحالة اللوجستية:</span>
+                    <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold border-purple-500/30">
+                      {trackingData?.statusAr || "قيد المعالجة لدى الناقل"}
+                    </Badge>
+                  </div>
+
+                  {trackingData?.currentStation && (
+                    <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+                      <span>المحطة الحالية:</span>
+                      <span className="font-semibold text-foreground">{trackingData.currentStation}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tracking Activity Events Timeline */}
+                <div className="space-y-2 pt-1">
+                  <span className="text-[11px] font-bold text-muted-foreground block">
+                    مسار الرحلة والأحداث المسجلة لدى Redex:
+                  </span>
+
+                  {trackingLoading ? (
+                    <div className="py-4 text-center text-muted-foreground flex items-center justify-center gap-2">
+                      <RefreshCw className="size-3.5 animate-spin text-purple-600" />
+                      <span>جارٍ جلب مسار الشحنة من خادم Redex...</span>
+                    </div>
+                  ) : trackingData?.activity && trackingData.activity.length > 0 ? (
+                    <div className="relative border-r border-purple-500/30 pr-3 space-y-2 mr-1">
+                      {trackingData.activity.map((act: any, i: number) => (
+                        <div key={i} className="relative text-[11px]">
+                          <div className="absolute -right-[16px] top-1.5 size-2 rounded-full bg-purple-600 ring-2 ring-purple-200 dark:ring-purple-900" />
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <span className="font-semibold text-foreground">{act.statusAr || act.status}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {act.date} {act.time}
+                            </span>
+                          </div>
+                          {(act.station || act.details || act.scanLocation) && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {act.station && `المحطة: ${act.station} `}
+                              {act.scanLocation && `(${act.scanLocation}) `}
+                              {act.details && `— ${act.details}`}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-3 text-center text-[11px] text-muted-foreground bg-background/50">
+                      تم تسجيل الطلب لدى Redex. ستظهر تحديثات مراكز الفرز والتوزيع هنا فور مسح الطرد من طرف الموزع.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                لم يتم إرسال هذه الطلبية إلى شركة التوصيل بعد. يمكنك إرسالها واعتمادها مباشرة بنقرة واحدة عبر الزر أعلاه.
+              </div>
+            )}
           </div>
 
           <Separator />
 
-          {/* Section 2: Hierarchical Timeline of Conversions (Tree View) */}
+          {/* Section 3: Hierarchical Timeline of Conversions (Tree View) */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -333,33 +478,24 @@ export function OrderDetailsDrawer({
                             </span>
                           </div>
 
-                          <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-                            <ShieldCheck className="size-3 text-primary" />
-                            <span>المسؤول:</span>
-                            <span className="font-medium text-foreground">{conv.operator || "Admin"}</span>
+                          <div className="flex items-center gap-2 text-muted-foreground text-[11px]">
+                            <User className="size-3 text-primary" />
+                            <span>المشرف: <strong className="text-foreground">{conv.operator || "Admin"}</strong></span>
                           </div>
                         </div>
 
-                        {/* Audit Reason */}
-                        <div className="bg-muted/40 p-2.5 rounded-lg">
-                          <span className="text-muted-foreground block text-[11px] mb-0.5">سبب التحويل:</span>
-                          <p className="font-medium text-foreground text-xs">{conv.reason || "تعديل بيانات الطلب"}</p>
-                        </div>
-
-                        {/* Shipped Override notice if applied */}
-                        {conv.override_applied && (
-                          <div className="flex items-center gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px]">
-                            <AlertTriangle className="size-3.5 shrink-0" />
-                            <span>تم تطبيق تجاوز الشحن (Operator Override): تم تأكيد التحديث اليدوي مع الموزع.</span>
+                        {/* Reason / Note */}
+                        {conv.reason && (
+                          <div className="text-muted-foreground bg-muted/30 p-2 rounded-md">
+                            <span className="font-medium text-foreground">سبب التحويل: </span>
+                            {conv.reason}
                           </div>
                         )}
 
-                        {/* Diffs: Only Changed Fields */}
+                        {/* Hierarchical Diff Tree */}
                         {conv.diff && Object.keys(conv.diff).length > 0 && (
-                          <div>
-                            <span className="text-muted-foreground block text-[11px] mb-1.5 font-semibold">
-                              الحقول التي تغيّرت في هذه العملية (Field Diffs):
-                            </span>
+                          <div className="space-y-1.5">
+                            <span className="text-muted-foreground font-medium block text-[11px]">التعديلات المطبقة:</span>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {Object.entries(conv.diff).map(([fieldName, diffObj]) => {
                                 const label = FIELD_LABELS[fieldName] || fieldName;
@@ -373,7 +509,7 @@ export function OrderDetailsDrawer({
                                         {String(diffObj.from || "فارغ")}
                                       </span>
                                       <span className="text-muted-foreground">←</span>
-                                      <span className="font-semibold text-green-700 dark:text-green-300 bg-green-500/10 px-1.5 py-0.5 rounded">
+                                      <span className="text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded">
                                         {String(diffObj.to || "فارغ")}
                                       </span>
                                     </div>
