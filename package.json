@@ -8,5 +8,8 @@
     "build": "npm --prefix next-shadcn-admin-dashboard-baseui-main run build",
     "test:e2e": "npm --prefix next-shadcn-admin-dashboard-baseui-main run test:e2e",
     "tsc": "npm --prefix next-shadcn-admin-dashboard-baseui-main run tsc"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
   }
 }
