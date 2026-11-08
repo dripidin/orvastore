@@ -62,8 +62,10 @@ export type { AdminSettingsRecord };
 const fallbackRedexStore: RedexSettingsRecord = {
   enabled: true,
   baseUrl: process.env.REDEX_BASE_URL || 'https://redex.ecotrack.dz',
-  apiToken: process.env.REDEX_API_TOKEN || '',
-  updatedAt: null,
+  apiToken:
+    process.env.REDEX_API_TOKEN ||
+    'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo',
+  updatedAt: new Date().toISOString(),
 };
 
 (fallbackSettingsStore as any).redex = fallbackRedexStore;
