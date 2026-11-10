@@ -3,7 +3,7 @@ export const orderFilters = [
   "Pending",
   "Confirmed",
   "Pushed to Redex",
-  "Redex Station",
+  // "Redex Station", // merged with Shipped
   "Shipped",
   "Delivered",
   "Returned",

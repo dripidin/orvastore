@@ -41,8 +41,9 @@ import type { OrderRow } from "./schema";
 const allowedStatusTransitions: Record<string, string[]> = {
   pending: ["confirmed", "cancelled"],
   confirmed: ["cancelled", "pending"],
-  pushed: ["cancelled"],
-  redex_station: ["cancelled"],
+  pushed: ["cancelled", "delivered", "returned"],
+  redex_station: ["cancelled", "delivered", "returned"],
+  shipped: ["cancelled", "delivered", "returned"],
   cancelled: ["pending"],
   returned: ["pending"],
 };

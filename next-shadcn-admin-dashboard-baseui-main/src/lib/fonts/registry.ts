@@ -1,24 +1,17 @@
-import {
-  DM_Sans,
-  Figtree,
-  Geist,
-  Geist_Mono,
-  Inter,
-  JetBrains_Mono,
-  Lora,
-  Noto_Sans,
-  Noto_Serif,
-  Nunito_Sans,
-  Outfit,
-  Playfair_Display,
-  Public_Sans,
-  Raleway,
-  Roboto,
-  Roboto_Slab,
-} from "next/font/google";
+import { Geist } from "next/font/google";
 import localFont from "next/font/local";
 
-import { GeistPixelSquare } from "geist/font/pixel";
+export const thmanyahSans = localFont({
+  src: [
+    { path: "./thmanyah/thmanyahsans-Light.woff2", weight: "300", style: "normal" },
+    { path: "./thmanyah/thmanyahsans-Regular.woff2", weight: "400", style: "normal" },
+    { path: "./thmanyah/thmanyahsans-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./thmanyah/thmanyahsans-Bold.woff2", weight: "700", style: "normal" },
+    { path: "./thmanyah/thmanyahsans-Black.woff2", weight: "900", style: "normal" },
+  ],
+  variable: "--font-thmanyah",
+  display: "swap",
+});
 
 export const tajawal = localFont({
   src: [
@@ -34,169 +27,24 @@ export const tajawal = localFont({
   display: "swap",
 });
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-});
-
-const notoSans = Noto_Sans({
-  subsets: ["latin"],
-  variable: "--font-noto-sans",
-});
-
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-roboto",
-});
-
-const geist = Geist({
+export const geist = Geist({
   subsets: ["latin"],
   variable: "--font-geist",
-});
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-});
-
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-dm-sans",
-});
-
-const nunitoSans = Nunito_Sans({
-  subsets: ["latin"],
-  variable: "--font-nunito-sans",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  variable: "--font-figtree",
-});
-
-const raleway = Raleway({
-  subsets: ["latin"],
-  variable: "--font-raleway",
-});
-
-const publicSans = Public_Sans({
-  subsets: ["latin"],
-  variable: "--font-public-sans",
-});
-
-const jetBrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-});
-
-const notoSerif = Noto_Serif({
-  subsets: ["latin"],
-  variable: "--font-noto-serif",
-});
-
-const robotoSlab = Roboto_Slab({
-  subsets: ["latin"],
-  variable: "--font-roboto-slab",
-});
-
-// Safe local/CSS definition for Merriweather to avoid Turbopack Google Font query parsing bug
-const merriweather = {
-  variable: "--font-merriweather",
-  className: "font-merriweather",
-};
-
-const lora = Lora({
-  subsets: ["latin"],
-  variable: "--font-lora",
-});
-
-const playfairDisplay = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-playfair-display",
+  display: "swap",
 });
 
 export const fontRegistry = {
+  thmanyah: {
+    label: "Thmanyah Sans (عربي)",
+    font: thmanyahSans,
+  },
+  geist: {
+    label: "Geist (Latin)",
+    font: geist,
+  },
   tajawal: {
     label: "Tajawal (عربي)",
     font: tajawal,
-  },
-  geist: {
-    label: "Geist",
-    font: geist,
-  },
-  inter: {
-    label: "Inter",
-    font: inter,
-  },
-  notoSans: {
-    label: "Noto Sans",
-    font: notoSans,
-  },
-  nunitoSans: {
-    label: "Nunito Sans",
-    font: nunitoSans,
-  },
-  figtree: {
-    label: "Figtree",
-    font: figtree,
-  },
-  roboto: {
-    label: "Roboto",
-    font: roboto,
-  },
-  raleway: {
-    label: "Raleway",
-    font: raleway,
-  },
-  dmSans: {
-    label: "DM Sans",
-    font: dmSans,
-  },
-  publicSans: {
-    label: "Public Sans",
-    font: publicSans,
-  },
-  outfit: {
-    label: "Outfit",
-    font: outfit,
-  },
-  geistMono: {
-    label: "Geist Mono",
-    font: geistMono,
-  },
-  geistPixelSquare: {
-    label: "Geist Pixel Square",
-    font: GeistPixelSquare,
-  },
-  jetBrainsMono: {
-    label: "JetBrains Mono",
-    font: jetBrainsMono,
-  },
-  notoSerif: {
-    label: "Noto Serif",
-    font: notoSerif,
-  },
-  robotoSlab: {
-    label: "Roboto Slab",
-    font: robotoSlab,
-  },
-  merriweather: {
-    label: "Merriweather",
-    font: merriweather,
-  },
-  lora: {
-    label: "Lora",
-    font: lora,
-  },
-  playfairDisplay: {
-    label: "Playfair Display",
-    font: playfairDisplay,
   },
 } as const;
 

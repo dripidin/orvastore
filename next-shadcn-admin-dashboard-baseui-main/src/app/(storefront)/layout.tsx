@@ -32,7 +32,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
       lang="ar"
       className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans antialiased flex flex-col selection:bg-amber-200 selection:text-amber-950"
       style={{
-        fontFamily: "var(--font-tajawal), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+        fontFamily: "var(--font-thmanyah), var(--font-geist), var(--font-tajawal), system-ui, -apple-system, 'Segoe UI', sans-serif",
       }}
     >
       <MetaPixel pixelId={pixelId} enabled={enabled} />
