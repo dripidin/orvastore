@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -38,6 +38,8 @@ interface RawCommune {
   wilaya_name_ar: string;
   postal_code?: string;
 }
+
+import { CheckoutKeyLifecycle } from "@/lib/idempotency-lifecycle";
 
 const communesData = communesRawData as RawCommune[];
 
@@ -82,6 +84,18 @@ export function EmbeddedCodOrderForm({
   const [deliveryType, setDeliveryType] = useState<"DOMICILE" | "STOP_DESK">("DOMICILE");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [honeypot, setHoneypot] = useState("");
+  const keyLifecycleRef = useRef<CheckoutKeyLifecycle | null>(null);
+  const getKeyLifecycle = () => {
+    if (!keyLifecycleRef.current) {
+      keyLifecycleRef.current = new CheckoutKeyLifecycle();
+    }
+    return keyLifecycleRef.current;
+  };
+  const [formIdempotencyKey, setFormIdempotencyKey] = useState<string>(() => getKeyLifecycle().getOrCreateKey());
+
+  useEffect(() => {
+    setFormIdempotencyKey(getKeyLifecycle().getOrCreateKey());
+  }, []);
 
   // Validation & Server feedback
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -182,6 +196,11 @@ export function EmbeddedCodOrderForm({
       return;
     }
 
+    const activeIdempotencyKey = getKeyLifecycle().getOrCreateKey();
+    if (activeIdempotencyKey !== formIdempotencyKey) {
+      setFormIdempotencyKey(activeIdempotencyKey);
+    }
+
     const submission: CodOrderSubmission = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
@@ -197,12 +216,17 @@ export function EmbeddedCodOrderForm({
       shippingFee,
       totalPayable,
       honeypot: honeypot.trim() || undefined,
+      idempotencyKey: activeIdempotencyKey,
     };
 
     startTransition(async () => {
       try {
         const result = await submitCodOrderAction(submission);
         if (result.success && result.redirectUrl) {
+          // Key lifecycle: clear used session key and rotate to a fresh key upon successful completion
+          const nextKey = getKeyLifecycle().rotateKeyOnSuccess();
+          setFormIdempotencyKey(nextKey);
+
           if (typeof window !== "undefined") {
             try {
               const bc = new BroadcastChannel("orva_orders_channel");

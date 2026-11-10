@@ -17,6 +17,7 @@ import {
   saveFallbackOrder,
   generateOrderNumber,
 } from '@/lib/orders-store';
+import { computeCanonicalPayloadHash } from '@/lib/payload-hash';
 
 export type { FallbackOrderRecord };
 
@@ -186,7 +187,7 @@ async function triggerTelegramAlert(params: {
         text: htmlText,
         parse_mode: 'HTML',
       }),
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(2500),
     });
 
     const data = await res.json().catch(() => null);
@@ -249,11 +250,18 @@ async function triggerMetaCapiPurchase(params: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(2500),
     });
   } catch (err) {
     console.warn('[Meta CAPI Error]:', err);
   }
 }
+
+// ── In-Flight Concurrency Mutex ─────────────────────────────────────────────
+const inFlightSubmissions = new Map<
+  string,
+  { payloadHash: string; promise: Promise<CodOrderResult> }
+>();
 
 // ── Master Server Action: submitCodOrderAction ──────────────────────────────
 
@@ -278,9 +286,56 @@ export async function submitCodOrderAction(
     }
 
     const validated = parseResult.data;
+    const key = validated.idempotencyKey;
+    const payloadHash = computeCanonicalPayloadHash(validated);
+    const useInMemoryCoalescing = process.env.ORVA_DISABLE_IN_MEMORY_DEDUP !== '1';
+
+    // Concurrent request deduplication (within single instance):
+    // Verify payloadHash before coalescing so concurrent tampering is rejected with 409 PayloadMismatch
+    if (key && useInMemoryCoalescing && inFlightSubmissions.has(key)) {
+      const inFlight = inFlightSubmissions.get(key)!;
+      if (inFlight.payloadHash !== payloadHash) {
+        console.warn(
+          `[Checkout In-Flight Collision]: Key "${key}" is currently in-flight with a different payload (${inFlight.payloadHash} vs ${payloadHash}). Rejecting with 409 PayloadMismatch.`
+        );
+        return {
+          success: false,
+          error: "Conflit de requête d'idempotence (PayloadMismatch): cette clé a déjà été utilisée pour une commande différente.",
+        };
+      }
+      console.info(`[Checkout In-Flight Deduplication]: Awaiting in-flight execution for key "${key}"`);
+      return await inFlight.promise;
+    }
+
+    const executionPromise = executeCodOrderSubmission(validated, payloadHash);
+    if (key && useInMemoryCoalescing) {
+      inFlightSubmissions.set(key, { payloadHash, promise: executionPromise });
+    }
+
+    try {
+      return await executionPromise;
+    } finally {
+      if (key && useInMemoryCoalescing) {
+        inFlightSubmissions.delete(key);
+      }
+    }
+  } catch (err: any) {
+    console.error('[submitCodOrderAction Global Catch]:', err);
+    return {
+      success: false,
+      error: err?.message || 'Une erreur inattendue est survenue.',
+    };
+  }
+}
+
+async function executeCodOrderSubmission(
+  validated: CodOrderSubmission & { idempotencyKey: string },
+  payloadHash: string
+): Promise<CodOrderResult> {
+  try {
     const cleanPack = (validated.packId || '').toUpperCase().trim();
-    const random5Digits = Math.floor(10000 + Math.random() * 90000).toString();
-    const orderNumber = cleanPack ? `${cleanPack}-${random5Digits}` : generateOrderNumber();
+    const random6Digits = Math.floor(100000 + Math.random() * 900000).toString();
+    const orderNumber = cleanPack ? `${cleanPack}-${random6Digits}` : generateOrderNumber();
     const normalizedPhone = normalizeAlgerianPhone(validated.customerPhone);
     const normalizedPhone2 = validated.customerPhone2
       ? normalizeAlgerianPhone(validated.customerPhone2)
@@ -290,10 +345,94 @@ export async function submitCodOrderAction(
         ? (validated.deliveryAddress?.trim() ?? '')
         : 'Bureau Stop-Desk';
 
-    // 2. Database Persistence via Supabase Server Client
-    let persistedToDatabase = false;
+    const supabase = getSupabaseServerClient() as any;
+
+    // 2. Atomic Idempotency Check (Prevent duplicate orders via unique idempotencyKey & payloadHash)
+    let existingOrder: any = null;
     try {
-      const supabase = getSupabaseServerClient() as any;
+      if (supabase && validated.idempotencyKey) {
+        const { data: foundOrder, error: dedupErr } = await supabase
+          .from('orders')
+          .select('id, order_id, payload_hash, created_at')
+          .eq('idempotency_key', validated.idempotencyKey)
+          .maybeSingle();
+
+        if (dedupErr) {
+          // Explicit handling of deduplication query failures:
+          // Log error clearly; the database unique constraint remains the authoritative guard.
+          console.error(
+            `[Checkout Deduplication Query Error]: Lookup failed for key "${validated.idempotencyKey}":`,
+            dedupErr.message
+          );
+        } else if (foundOrder) {
+          existingOrder = foundOrder;
+        }
+      }
+    } catch (dedupException: any) {
+      console.error(
+        `[Checkout Deduplication Query Exception]: Exception during idempotency lookup:`,
+        dedupException?.message
+      );
+    }
+
+    // Check fallback store as resilience tier (covers local dev and pre-migration environments)
+    if (!existingOrder && validated.idempotencyKey) {
+      const fallbackOrders = getStoredFallbackOrders();
+      const matchedFallback = fallbackOrders.find(
+        (f) => f.idempotencyKey === validated.idempotencyKey
+      );
+      if (matchedFallback) {
+        existingOrder = {
+          id: matchedFallback.id,
+          order_id: matchedFallback.orderNumber,
+          payload_hash: matchedFallback.payloadHash,
+          created_at: matchedFallback.createdAt,
+        };
+      }
+    }
+
+    // Safe behavior when the same key is retried:
+    // Verify payload hash integrity to reject collisions (409 PayloadMismatch)
+    if (existingOrder?.order_id) {
+      if (existingOrder.payload_hash && existingOrder.payload_hash !== payloadHash) {
+        console.warn(
+          `[Checkout Idempotency Collision]: Key "${validated.idempotencyKey}" already used with different payload (${existingOrder.payload_hash} vs ${payloadHash}). Rejecting with 409 PayloadMismatch.`
+        );
+        return {
+          success: false,
+          error: "Conflit de requête d'idempotence (PayloadMismatch): cette clé a déjà été utilisée pour une commande différente.",
+        };
+      }
+
+      console.info(
+        `[Checkout Idempotency]: Duplicate submission caught by key "${validated.idempotencyKey}". Reusing order #${existingOrder.order_id}`
+      );
+      const searchParams = new URLSearchParams({
+        orderNumber: existingOrder.order_id,
+        pack: validated.packId,
+        total: validated.totalPayable.toString(),
+        subtotal: validated.productPrice.toString(),
+        shipping: validated.shippingFee.toString(),
+        name: validated.customerName,
+        phone: normalizedPhone,
+        wilaya: validated.wilayaName,
+        commune: validated.communeName,
+        deliveryType: validated.deliveryType,
+      });
+
+      return {
+        success: true,
+        orderNumber: existingOrder.order_id,
+        redirectUrl: `/checkout/confirmation?${searchParams.toString()}`,
+      };
+    }
+
+    // 3. Database Persistence via Supabase Server Client
+    let persistedToDatabase = false;
+    let persistenceErrorMessage: string | null = null;
+    let finalOrderNumber = orderNumber;
+
+    try {
       const deliveryLabel =
         validated.deliveryType === 'DOMICILE'
           ? 'توصيل للمنزل'
@@ -304,15 +443,33 @@ export async function submitCodOrderAction(
         .from('orders')
         .insert({
           order_id: orderNumber,
+          order_number: orderNumber,
+          idempotency_key: validated.idempotencyKey,
+          payload_hash: payloadHash,
           store_id: 'orvastore',
           full_name: validated.customerName,
+          customer_name: validated.customerName,
           phone: normalizedPhone,
+          customer_phone: normalizedPhone,
           wilaya: wilayaFull,
+          delivery_wilaya: wilayaFull,
+          wilaya_code: validated.wilayaCode,
+          wilaya_name: validated.wilayaName,
           commune: validated.communeName,
+          commune_name: validated.communeName,
+          delivery_commune: validated.communeName,
+          delivery_address: address,
           delivery_type: deliveryLabel,
+          delivery_method: validated.deliveryType,
           delivery_time: '24 - 48 H',
           quantity: 1,
           product_name: validated.productName,
+          product_title: validated.productName,
+          pack_id: validated.packId,
+          subtotal: validated.productPrice,
+          delivery_fee: validated.shippingFee,
+          total: validated.totalPayable,
+          total_payable: validated.totalPayable,
           product_total: `${validated.productPrice.toLocaleString()} د.ج`,
           shipping_fee: `${validated.shippingFee.toLocaleString()} د.ج`,
           price_num: validated.totalPayable,
@@ -325,46 +482,251 @@ export async function submitCodOrderAction(
           risk_decision: 'ALLOW',
           courier: 'REDEX',
         })
-        .select('id')
+        .select('id, order_id')
         .single();
 
       if (!orderErr && orderData?.id) {
         persistedToDatabase = true;
+
+        // Persist order item snapshot into order_items table (Requirement R4)
+        try {
+          let productId: string | null = null;
+          try {
+            const { data: productRow } = await (supabase as any)
+              .from('products')
+              .select('id')
+              .eq('slug', validated.packId.toLowerCase())
+              .maybeSingle();
+            if (productRow?.id) {
+              productId = productRow.id;
+            }
+          } catch {
+            // Non-fatal if product lookup fails
+          }
+
+          const rawPack = (validated.packId || '').toUpperCase().trim();
+          const validPack = (['PACK1', 'PACK2', 'PACK3'].includes(rawPack))
+            ? (rawPack as 'PACK1' | 'PACK2' | 'PACK3')
+            : null;
+
+          const orderItemsTable = (supabase as any).from?.('order_items');
+          if (typeof orderItemsTable?.insert === 'function') {
+            const { error: itemErr } = await orderItemsTable.insert({
+              order_id: orderNumber,
+              product_id: productId,
+              variant_id: null,
+              pack_id: validPack,
+              product_name: validated.productName,
+              product_name_snapshot: validated.productName,
+              variant_label_snapshot: validated.packId,
+              unit_price: validated.productPrice,
+              quantity: 1,
+              line_total: validated.productPrice,
+            });
+
+            if (itemErr) {
+              console.warn('[Checkout Order Item Insert Warning]:', itemErr.message || itemErr);
+            }
+          }
+        } catch (itemCatchErr: any) {
+          console.warn('[Checkout Order Item Insert Exception]:', itemCatchErr?.message || itemCatchErr);
+        }
       } else if (orderErr) {
-        console.warn('[Supabase Order Insert Warning - Falling back]:', orderErr.message);
+        // Pre-migration schema fallback: if idempotency_key or payload_hash column does not exist yet in DB
+        const isPreMigrationMissingColumn =
+          orderErr.code === 'PGRST204' ||
+          orderErr.message?.includes("'idempotency_key' column") ||
+          orderErr.message?.includes("'payload_hash' column") ||
+          orderErr.message?.includes("column orders.idempotency_key") ||
+          orderErr.message?.includes("column orders.payload_hash");
+
+        if (isPreMigrationMissingColumn) {
+          console.warn('[Pre-Migration Notice]: idempotency_key/payload_hash column not in DB yet. Retrying insert without them.');
+          const { data: legacyData, error: legacyErr } = await supabase
+            .from('orders')
+            .insert({
+              order_id: orderNumber,
+              store_id: 'orvastore',
+              full_name: validated.customerName,
+              phone: normalizedPhone,
+              wilaya: wilayaFull,
+              commune: validated.communeName,
+              delivery_type: deliveryLabel,
+              delivery_time: '24 - 48 H',
+              quantity: 1,
+              product_name: validated.productName,
+              product_total: `${validated.productPrice.toLocaleString()} د.ج`,
+              shipping_fee: `${validated.shippingFee.toLocaleString()} د.ج`,
+              price_num: validated.totalPayable,
+              grand_total: `${validated.totalPayable.toLocaleString()} د.ج`,
+              status: 'pending',
+              in_redex: false,
+              notes: address,
+              risk_score: 0,
+              risk_level: 'LOW',
+              risk_decision: 'ALLOW',
+              courier: 'REDEX',
+            })
+            .select('id, order_id')
+            .single();
+
+          if (!legacyErr && legacyData?.id) {
+            persistedToDatabase = true;
+            try {
+              const rawPack = (validated.packId || '').toUpperCase().trim();
+              const validPack = (['PACK1', 'PACK2', 'PACK3'].includes(rawPack))
+                ? (rawPack as 'PACK1' | 'PACK2' | 'PACK3')
+                : null;
+              const orderItemsTable = (supabase as any).from?.('order_items');
+              if (typeof orderItemsTable?.insert === 'function') {
+                await orderItemsTable.insert({
+                  order_id: orderNumber,
+                  product_id: null,
+                  variant_id: null,
+                  pack_id: validPack,
+                  product_name: validated.productName,
+                  product_name_snapshot: validated.productName,
+                  variant_label_snapshot: validated.packId,
+                  unit_price: validated.productPrice,
+                  quantity: 1,
+                  line_total: validated.productPrice,
+                });
+              }
+            } catch {}
+            // Record in fallback store with idempotencyKey and payloadHash for consistent pre-migration replay
+            saveFallbackOrder({
+              id: legacyData.id,
+              orderNumber,
+              customerName: validated.customerName,
+              customerPhone: normalizedPhone,
+              customerPhone2: normalizedPhone2,
+              wilayaCode: validated.wilayaCode,
+              wilayaName: validated.wilayaName,
+              communeName: validated.communeName,
+              deliveryType: validated.deliveryType,
+              deliveryAddress: address,
+              packId: validated.packId,
+              productName: validated.productName,
+              productPrice: validated.productPrice,
+              shippingFee: validated.shippingFee,
+              totalPayable: validated.totalPayable,
+              status: 'PENDING',
+              originHub: 'BISKRA_07',
+              createdAt: new Date().toISOString(),
+              idempotencyKey: validated.idempotencyKey,
+              payloadHash,
+            });
+          } else if (legacyErr) {
+            persistenceErrorMessage = legacyErr.message;
+            console.error('[Supabase Legacy Order Insert Error]:', legacyErr.message);
+          }
+        } else {
+          // Atomic race resolution: if concurrent requests with same key bypassed preflight select
+          const isUniqueViolation =
+            orderErr.code === '23505' ||
+            orderErr.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+            orderErr.message?.includes('duplicate key') ||
+            orderErr.message?.includes('unique constraint') ||
+            orderErr.message?.includes('UNIQUE constraint failed') ||
+            orderErr.message?.includes('orders_idempotency_key_key');
+
+          if (isUniqueViolation && validated.idempotencyKey) {
+            console.info(
+              `[Checkout Concurrent Race]: Unique constraint caught concurrent insert for key "${validated.idempotencyKey}". Fetching persisted order.`
+            );
+            const { data: racedOrder } = await supabase
+              .from('orders')
+              .select('id, order_id, payload_hash')
+              .eq('idempotency_key', validated.idempotencyKey)
+              .maybeSingle();
+
+            if (racedOrder?.order_id) {
+              if (racedOrder.payload_hash && racedOrder.payload_hash !== payloadHash) {
+                console.warn(
+                  `[Checkout Concurrent Collision]: Raced key "${validated.idempotencyKey}" has different payload hash. Rejecting with PayloadMismatch.`
+                );
+                return {
+                  success: false,
+                  error: "Conflit de requête d'idempotence (PayloadMismatch): cette clé a déjà été utilisée pour une commande différente.",
+                };
+              }
+              const racedSearchParams = new URLSearchParams({
+                orderNumber: racedOrder.order_id,
+                pack: validated.packId,
+                total: validated.totalPayable.toString(),
+                subtotal: validated.productPrice.toString(),
+                shipping: validated.shippingFee.toString(),
+                name: validated.customerName,
+                phone: normalizedPhone,
+                wilaya: validated.wilayaName,
+                commune: validated.communeName,
+                deliveryType: validated.deliveryType,
+              });
+              return {
+                success: true,
+                orderNumber: racedOrder.order_id,
+                redirectUrl: `/checkout/confirmation?${racedSearchParams.toString()}`,
+              };
+            } else {
+              persistenceErrorMessage = orderErr.message;
+              console.error('[Supabase Order Insert Error]:', orderErr.message);
+            }
+          } else {
+            persistenceErrorMessage = orderErr.message;
+            console.error('[Supabase Order Insert Error]:', orderErr.message);
+          }
+        }
       }
     } catch (dbErr: any) {
-      console.warn('[Supabase Order Exception - Falling back to Memory]:', dbErr?.message);
+      persistenceErrorMessage = dbErr?.message || 'Database exception';
+      console.error('[Supabase Order Exception]:', dbErr?.message);
     }
 
-    // 3. Fallback Persistent Disk & Memory Storage if database is unreachable / offline
+    // 4. Fallback Handling and False-Success Elimination
     if (!persistedToDatabase) {
-      saveFallbackOrder({
-        id: `fallback-${crypto.randomUUID()}`,
-        orderNumber,
-        customerName: validated.customerName,
-        customerPhone: normalizedPhone,
-        customerPhone2: normalizedPhone2,
-        wilayaCode: validated.wilayaCode,
-        wilayaName: validated.wilayaName,
-        communeName: validated.communeName,
-        deliveryType: validated.deliveryType,
-        deliveryAddress: address,
-        packId: validated.packId,
-        productName: validated.productName,
-        productPrice: validated.productPrice,
-        shippingFee: validated.shippingFee,
-        totalPayable: validated.totalPayable,
-        status: 'PENDING',
-        originHub: 'BISKRA_07',
-        createdAt: new Date().toISOString(),
-      });
+      const isLocalDevNoDb =
+        process.env.NODE_ENV !== 'production' &&
+        !process.env.SUPABASE_URL &&
+        !process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+      if (isLocalDevNoDb) {
+        saveFallbackOrder({
+          id: `fallback-${crypto.randomUUID()}`,
+          orderNumber,
+          customerName: validated.customerName,
+          customerPhone: normalizedPhone,
+          customerPhone2: normalizedPhone2,
+          wilayaCode: validated.wilayaCode,
+          wilayaName: validated.wilayaName,
+          communeName: validated.communeName,
+          deliveryType: validated.deliveryType,
+          deliveryAddress: address,
+          packId: validated.packId,
+          productName: validated.productName,
+          productPrice: validated.productPrice,
+          shippingFee: validated.shippingFee,
+          totalPayable: validated.totalPayable,
+          status: 'PENDING',
+          originHub: 'BISKRA_07',
+          createdAt: new Date().toISOString(),
+          idempotencyKey: validated.idempotencyKey,
+          payloadHash,
+        });
+      } else {
+        console.error(
+          `[CRITICAL CHECKOUT PERSISTENCE FAILURE]: Order #${orderNumber} for ${validated.customerName} (${normalizedPhone}) could not be saved to Supabase: ${persistenceErrorMessage}`
+        );
+        return {
+          success: false,
+          error: 'تعذر تأكيد طلبكم في النظام حالياً بسبب خطأ في حفظ البيانات. يرجى المحاولة مرة أخرى أو التواصل مع خدمة العملاء.',
+        };
+      }
     }
 
-    // 4. Reliable Fast External Alerts (Telegram & CAPI)
-    await Promise.allSettled([
+    // 4. Reliable Fast External Alerts (Telegram & CAPI) with explicit failure logging
+    const alertResults = await Promise.allSettled([
       triggerTelegramAlert({
-        orderNumber,
+        orderNumber: finalOrderNumber,
         customerName: validated.customerName,
         customerPhone: normalizedPhone,
         customerPhone2: normalizedPhone2,
@@ -383,7 +745,7 @@ export async function submitCodOrderAction(
         total: validated.totalPayable,
       }),
       triggerMetaCapiPurchase({
-        orderNumber,
+        orderNumber: finalOrderNumber,
         customerName: validated.customerName,
         customerPhone: normalizedPhone,
         productName: validated.productName,
@@ -392,9 +754,16 @@ export async function submitCodOrderAction(
       }),
     ]);
 
+    if (alertResults[0].status === 'rejected') {
+      console.warn('[Telegram Alert Failed Non-Blocking]:', alertResults[0].reason);
+    }
+    if (alertResults[1].status === 'rejected') {
+      console.warn('[Meta CAPI Dispatch Failed Non-Blocking]:', alertResults[1].reason);
+    }
+
     // 5. Success Redirect URL Formulation
     const searchParams = new URLSearchParams({
-      orderNumber,
+      orderNumber: finalOrderNumber,
       pack: validated.packId,
       total: validated.totalPayable.toString(),
       subtotal: validated.productPrice.toString(),
@@ -408,7 +777,7 @@ export async function submitCodOrderAction(
 
     return {
       success: true,
-      orderNumber,
+      orderNumber: finalOrderNumber,
       redirectUrl: `/checkout/confirmation?${searchParams.toString()}`,
     };
   } catch (err: any) {

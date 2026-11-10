@@ -292,6 +292,7 @@ export default function ProductPageDesigner() {
               variant="outline"
               size="sm"
               className="text-xs gap-1"
+              nativeButton={false}
               render={
                 <a
                   href={

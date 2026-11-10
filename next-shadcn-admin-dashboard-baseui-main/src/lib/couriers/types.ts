@@ -39,6 +39,13 @@ export interface CourierTrackingStatus {
   updatedAt?: string;
 }
 
+export interface CourierValidationResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  rawResponse?: unknown;
+}
+
 export interface CourierProvider {
   readonly id: string;
   readonly name: string;
@@ -47,6 +54,11 @@ export interface CourierProvider {
   testConnection(credentials?: Record<string, string>): Promise<CourierConnectionResult>;
   createParcel(request: CourierParcelRequest, credentials?: Record<string, string>): Promise<CourierParcelResponse>;
   getTrackingStatus(trackingCode: string, credentials?: Record<string, string>): Promise<CourierTrackingStatus>;
+  validateParcel?(
+    trackingCode: string,
+    askCollection?: number,
+    credentials?: Record<string, string>
+  ): Promise<CourierValidationResult>;
 }
 
 // Backwards-compatible alias for test harness & interfaces

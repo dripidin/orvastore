@@ -366,7 +366,7 @@ export class EcoTrackClient {
       options?.token ||
       process.env.REDEX_API_TOKEN ||
       process.env.ECOTRACK_API_TOKEN ||
-      'fWBTGhUI0bSRFpFusadK1tnqV1RvZ489L9TRUICsWGb49xEFylVM8rbxFZvo'
+      ''
     ).trim();
   }
 

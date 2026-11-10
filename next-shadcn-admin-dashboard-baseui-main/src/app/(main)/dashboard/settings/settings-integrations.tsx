@@ -154,7 +154,7 @@ export function SettingsIntegrations() {
 
   // Telegram Form State (Telegram Bot Order Alerts as sole alert)
   const [tgEnabled, setTgEnabled] = React.useState<boolean>(true);
-  const [tgChatId, setTgChatId] = React.useState<string>("-1003965560132");
+  const [tgChatId, setTgChatId] = React.useState<string>("");
   const [tgBotToken, setTgBotToken] = React.useState<string>("");
   const [tgSaving, setTgSaving] = React.useState<boolean>(false);
   const [tgTesting, setTgTesting] = React.useState<boolean>(false);

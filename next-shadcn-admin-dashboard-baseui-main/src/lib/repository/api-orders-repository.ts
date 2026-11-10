@@ -6,6 +6,7 @@ import type {
   OrvaOrder,
   PushOrderPayload,
   PushOrderResult,
+  ValidateOrderResult,
   RepositoryMode,
   SwitchOrderPayload,
   SwitchOrderResult,
@@ -31,8 +32,21 @@ export class ApiOrdersRepository implements IOrdersRepository {
   }
 
   private async requestJson<T>(input: RequestInfo | URL, init: RequestInit = {}): Promise<T> {
+    const headers = new Headers(init.headers);
+    if (typeof window !== "undefined" && !headers.has("Authorization")) {
+      try {
+        const token = window.localStorage.getItem("orva_admin_token");
+        if (token) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+      } catch {
+        // Ignore storage access errors
+      }
+    }
+
     const response = await fetch(input, {
       ...init,
+      headers,
       cache: "no-store",
       credentials: "same-origin",
     });
@@ -63,8 +77,7 @@ export class ApiOrdersRepository implements IOrdersRepository {
     actor?: string
   ): Promise<OrvaOrder> {
     const norm = String(status).toLowerCase();
-    const action = norm === "cancelled" ? "cancel_order" : "update_status";
-    await this.requestJson(`/api/delivery?action=${action}`, {
+    await this.requestJson(`/api/delivery?action=update_status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: norm, actor }),
@@ -117,13 +130,26 @@ export class ApiOrdersRepository implements IOrdersRepository {
       body: JSON.stringify(payload),
     });
 
+    const tracking = res.trackingCode || res.trackingNumber || res.data?.tracking_code || res.data?.trackingCode || "";
+
+    let sentToStation = false;
+    let stationError: string | undefined;
+    if (payload.sendToStation && tracking) {
+      try {
+        const validation = await this.validateOrder(tracking, 0);
+        sentToStation = validation.success && validation.carrierStatus === "vers_station";
+        if (!sentToStation) stationError = validation.message || "تعذر تحويل الطرد إلى Vers Station.";
+      } catch (err) {
+        stationError = err instanceof Error ? err.message : "تعذر تحويل الطرد إلى Vers Station.";
+      }
+    }
+
     let updated: OrvaOrder | null = null;
     try {
       updated = await this.getOrderById(payload.orderId);
     } catch {
       updated = null;
     }
-    const tracking = res.trackingCode || res.trackingNumber || res.data?.tracking_code || res.data?.trackingCode || "";
     return {
       success: true,
       orderId: payload.orderId,
@@ -132,7 +158,38 @@ export class ApiOrdersRepository implements IOrdersRepository {
       courierName: payload.courierName || res.courierName || res.courier || payload.courierId,
       labelUrl: res.labelUrl || (tracking ? `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(tracking)}` : undefined),
       updatedOrder: updated as OrvaOrder,
+      sentToStation,
+      stationError,
       message: res.message || "تم إرسال الطلبية بنجاح إلى شركة التوصيل.",
+    };
+  }
+
+  async validateOrder(trackingOrOrderId: string, askCollection: number = 0): Promise<ValidateOrderResult> {
+    const isTracking = String(trackingOrOrderId).startsWith("EC") || String(trackingOrOrderId).startsWith("TRK");
+    const body: Record<string, unknown> = {
+      askCollection,
+    };
+    if (isTracking) {
+      body.tracking = trackingOrOrderId;
+    } else {
+      body.orderId = trackingOrOrderId;
+    }
+
+    const res = await this.requestJson<any>("/api/delivery?action=validate_order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    return {
+      success: res.success === true,
+      trackingCode: res.trackingCode || (isTracking ? trackingOrOrderId : ""),
+      status: res.status || "validee",
+      carrierStatus: res.carrierStatus || "validee",
+      carrierStatusAr: res.carrierStatusAr || "تم تأكيد الإرسال",
+      askCollection: res.askCollection,
+      validation: res.validation,
+      message: res.message,
     };
   }
 

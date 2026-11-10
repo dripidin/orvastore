@@ -539,6 +539,74 @@ export interface Database {
           updated_at?: string;
         };
       };
+      delivery_validation_reconciliations: {
+        Row: {
+          id: string;
+          operation_id: string;
+          tracking_code: string;
+          order_id: string;
+          carrier_provider: string;
+          ask_collection: number;
+          target_carrier_status: 'en_ramassage' | 'vers_station';
+          reconciliation_state: 'PENDING_CARRIER' | 'CARRIER_ACCEPTED_DB_FAILED' | 'RECONCILED' | 'FAILED' | 'STALE_ABANDONED';
+          carrier_accepted: boolean;
+          carrier_accepted_at: string | null;
+          external_carrier_status: string | null;
+          verified_actor: string;
+          retry_count: number;
+          last_error: string | null;
+          lease_token: string | null;
+          lease_expires_at: string | null;
+          recovery_receipt_signature: string | null;
+          metadata: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          operation_id: string;
+          tracking_code: string;
+          order_id: string;
+          carrier_provider?: string;
+          ask_collection: number;
+          target_carrier_status: 'en_ramassage' | 'vers_station';
+          reconciliation_state: 'PENDING_CARRIER' | 'CARRIER_ACCEPTED_DB_FAILED' | 'RECONCILED' | 'FAILED' | 'STALE_ABANDONED';
+          carrier_accepted?: boolean;
+          carrier_accepted_at?: string | null;
+          external_carrier_status?: string | null;
+          verified_actor: string;
+          retry_count?: number;
+          last_error?: string | null;
+          lease_token?: string | null;
+          lease_expires_at?: string | null;
+          recovery_receipt_signature?: string | null;
+          metadata?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          operation_id?: string;
+          tracking_code?: string;
+          order_id?: string;
+          carrier_provider?: string;
+          ask_collection?: number;
+          target_carrier_status?: 'en_ramassage' | 'vers_station';
+          reconciliation_state?: 'PENDING_CARRIER' | 'CARRIER_ACCEPTED_DB_FAILED' | 'RECONCILED' | 'FAILED' | 'STALE_ABANDONED';
+          carrier_accepted?: boolean;
+          carrier_accepted_at?: string | null;
+          external_carrier_status?: string | null;
+          verified_actor?: string;
+          retry_count?: number;
+          last_error?: string | null;
+          lease_token?: string | null;
+          lease_expires_at?: string | null;
+          recovery_receipt_signature?: string | null;
+          metadata?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       order_conversions: {
         Row: {
           id: string;
@@ -1023,4 +1091,5 @@ export type OrderConversion = Database['public']['Tables']['order_conversions'][
 export type CourierConfiguration = Database['public']['Tables']['courier_configurations']['Row'];
 export type SiteSettings = Database['public']['Tables']['site_settings']['Row'];
 export type AuditLog = Database['public']['Tables']['audit_logs']['Row'];
+export type DeliveryValidationReconciliation = Database['public']['Tables']['delivery_validation_reconciliations']['Row'];
 export type PublicSiteSettings = Database['public']['Views']['public_site_settings']['Row'];

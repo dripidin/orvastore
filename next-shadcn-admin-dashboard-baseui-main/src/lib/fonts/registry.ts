@@ -6,7 +6,6 @@ import {
   Inter,
   JetBrains_Mono,
   Lora,
-  Merriweather,
   Noto_Sans,
   Noto_Serif,
   Nunito_Sans,
@@ -17,8 +16,8 @@ import {
   Roboto,
   Roboto_Slab,
 } from "next/font/google";
-
 import localFont from "next/font/local";
+
 import { GeistPixelSquare } from "geist/font/pixel";
 
 export const tajawal = localFont({
@@ -106,11 +105,11 @@ const robotoSlab = Roboto_Slab({
   variable: "--font-roboto-slab",
 });
 
-const merriweather = Merriweather({
-  subsets: ["latin"],
-  weight: ["400", "700"],
+// Safe local/CSS definition for Merriweather to avoid Turbopack Google Font query parsing bug
+const merriweather = {
   variable: "--font-merriweather",
-});
+  className: "font-merriweather",
+};
 
 const lora = Lora({
   subsets: ["latin"],

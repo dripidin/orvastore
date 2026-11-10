@@ -104,6 +104,7 @@ function OrderPushDialogForm({
 
   // Submitting / Result state
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
+  const [askStationOpen, setAskStationOpen] = React.useState<boolean>(false);
   const [pushedResult, setPushedResult] = React.useState<{
     trackingCode: string;
     courierName: string;
@@ -111,10 +112,10 @@ function OrderPushDialogForm({
   } | null>(
     order.in_redex && order.redex_tracking_code
       ? {
-          trackingCode: order.redex_tracking_code,
-          courierName: "Redex Delivery DZ",
-          labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(order.redex_tracking_code)}`,
-        }
+        trackingCode: order.redex_tracking_code,
+        courierName: "Redex Delivery DZ",
+        labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(order.redex_tracking_code)}`,
+      }
       : null
   );
 
@@ -156,8 +157,9 @@ function OrderPushDialogForm({
     }
   };
 
-  const handlePushOrder = async () => {
+  const handlePushOrder = async (sendToStation: boolean) => {
     if (isSubmitting) return;
+    setAskStationOpen(false);
 
     if (saveAsDefault) {
       saveCourierPreTemplate({
@@ -182,6 +184,7 @@ function OrderPushDialogForm({
 
       const result = await repo.pushOrder({
         orderId: order.id,
+        sendToStation,
         courierId: selectedCourier.id,
         courierName: selectedCourier.name,
         deliveryType,
@@ -206,11 +209,14 @@ function OrderPushDialogForm({
         labelUrl: result.labelUrl,
       });
 
+      const atStation = Boolean(result.sentToStation);
       const updatedRow: OrderRow = {
         ...order,
-        status: "confirmed",
+        status: atStation ? "redex_station" : "pushed",
         in_redex: true,
         redex_tracking_code: result.trackingCode,
+        carrier_status: atStation ? "vers_station" : "prete_a_expedier",
+        carrier_status_ar: atStation ? "في الطريق إلى مركز التوزيع" : "جاهز للإرسال",
         deliveryType: deliveryType === "desk" ? "استلام من المكتب (Stop Desk)" : "توصيل للمنزل",
       };
 
@@ -218,11 +224,25 @@ function OrderPushDialogForm({
         onOrderPushed(updatedRow, result.trackingCode, result.courierName);
       }
 
-      toast.add({
-        title: "تم إرسال الطلبية بنجاح! 🚀",
-        description: `رقم التتبع: ${result.trackingCode} عبر ${selectedCourier.nameAr}`,
-        type: "success",
-      });
+      if (atStation) {
+        toast.add({
+          title: "Redex Station 🚚",
+          description: `رقم التتبع: ${result.trackingCode} — تم الإرسال كـ Vers Station`,
+          type: "success",
+        });
+      } else if (sendToStation) {
+        toast.add({
+          title: "Pushed to Redex (Prêt à expédier)",
+          description: `تم إنشاء الطرد ${result.trackingCode} لكن تعذر تحويله إلى Vers Station: ${result.stationError || "حاول التأكيد لاحقاً"}`,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Pushed to Redex 📦",
+          description: `رقم التتبع: ${result.trackingCode} — Prêt à expédier`,
+          type: "success",
+        });
+      }
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("orva:orders-updated"));
@@ -331,7 +351,7 @@ function OrderPushDialogForm({
                 </div>
               </div>
               <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px]">
-                مُرسل وموثق
+                {order.status === "redex_station" || order.carrier_status === "vers_station" ? "Redex Station" : "Pushed to Redex"}
               </Badge>
             </div>
 
@@ -392,11 +412,10 @@ function OrderPushDialogForm({
                     setSelectedCourierId(c.id);
                     setShowConfig(false);
                   }}
-                  className={`flex flex-col items-start justify-between p-2.5 rounded-lg border text-right transition-all text-xs ${
-                    active
+                  className={`flex flex-col items-start justify-between p-2.5 rounded-lg border text-right transition-all text-xs ${active
                       ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
                       : "border-border hover:border-muted-foreground/30 bg-card"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
                     <span className="font-bold text-[11px]">{c.name.split(" ")[0]}</span>
@@ -407,9 +426,8 @@ function OrderPushDialogForm({
                   <span className="text-[10px] text-muted-foreground line-clamp-1">{c.nameAr}</span>
                   <div className="flex items-center gap-1 mt-2 text-[9px]">
                     <div
-                      className={`size-1.5 rounded-full ${
-                        hasConfig ? "bg-emerald-500" : "bg-amber-400"
-                      }`}
+                      className={`size-1.5 rounded-full ${hasConfig ? "bg-emerald-500" : "bg-amber-400"
+                        }`}
                     />
                     <span className={hasConfig ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600"}>
                       {hasConfig ? "مفعل وجاهز" : "يحتاج ضبط"}
@@ -584,8 +602,8 @@ function OrderPushDialogForm({
             <Button
               type="button"
               size="sm"
-              onClick={handlePushOrder}
-              disabled={isSubmitting || isTerminal}
+              onClick={() => setAskStationOpen(true)}
+              disabled={isSubmitting || isTerminal || Boolean(pushedResult)}
               className="gap-1.5 text-xs font-bold font-arabic bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {isSubmitting ? (
@@ -596,7 +614,7 @@ function OrderPushDialogForm({
               ) : pushedResult ? (
                 <>
                   <Truck className="size-3.5" />
-                  <span>إعادة إرسال للشركة (Re-Push)</span>
+                  <span>Pushed to Redex</span>
                 </>
               ) : (
                 <>
@@ -608,6 +626,35 @@ function OrderPushDialogForm({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <Dialog open={askStationOpen} onOpenChange={setAskStationOpen}>
+        <DialogContent className="sm:max-w-sm text-right" dir="ltr">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold font-arabic">
+              Send this order as "Vers Station"?
+            </DialogTitle>
+            <DialogDescription className="text-xs font-arabic">
+              هل تريد إرسال الطلبية كـ Vers Station؟ — Yes: Redex Station · No: Prêt à expédier (Pushed to Redex)
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-row justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setAskStationOpen(false)} className="text-xs">
+              Back
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void handlePushOrder(false)} className="text-xs">
+              No — Prêt à expédier
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void handlePushOrder(true)}
+              className="text-xs bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Yes — Vers Station
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

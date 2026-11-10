@@ -17,20 +17,24 @@ export function OrderSwitchDialog({
   open,
   onOpenChange,
   onOrderSwitched,
+  allOrders,
 }: OrderSwitchDialogProps) {
   return (
     <OrderRerouteDialog
       order={order}
+      allOrders={allOrders}
       open={open}
       onOpenChange={onOpenChange}
       onSuccess={(result) => {
         if (onOrderSwitched && order) {
+          const target =
+            allOrders?.find((o) => o.id === (result as any).sourceOrderId) || order;
           const updated: OrderRow = {
-            ...order,
+            ...target,
             isSwitched: true,
-            conversionCount: (order.conversionCount || 0) + 1,
+            conversionCount: (target.conversionCount || 0) + 1,
             conversions: [
-              ...(order.conversions || []),
+              ...(target.conversions || []),
               {
                 event: "ORDER_CONVERSION",
                 switch_status: "switched",

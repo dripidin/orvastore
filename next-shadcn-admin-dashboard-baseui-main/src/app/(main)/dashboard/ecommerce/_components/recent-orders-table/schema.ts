@@ -2,6 +2,8 @@ export const orderFilters = [
   "All",
   "Pending",
   "Confirmed",
+  "Pushed to Redex",
+  "Redex Station",
   "Shipped",
   "Delivered",
   "Returned",
@@ -41,6 +43,8 @@ export type OrderRow = {
   shippingFee: string;
   in_redex?: boolean;
   redex_tracking_code?: string | null;
+  carrier_status?: string | null;
+  carrier_status_ar?: string | null;
   remarks?: any[];
   conversions: ConversionEvent[];
   isSwitched: boolean;

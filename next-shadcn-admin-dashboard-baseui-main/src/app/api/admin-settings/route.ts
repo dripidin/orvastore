@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   saveSettingsAction,
   testTelegramNotificationAction,
@@ -8,8 +8,13 @@ import {
   deleteRedexTokenAction,
 } from '@/app/actions/settings';
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
+import { verifyAdminSession } from '@/lib/auth/admin-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!await verifyAdminSession(request)) {
+    return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+  }
+
   const settings = await getAdminSettingsAction();
   const redex = await getRedexSettingsAction();
 
@@ -64,7 +69,11 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  if (!await verifyAdminSession(request)) {
+    return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
 

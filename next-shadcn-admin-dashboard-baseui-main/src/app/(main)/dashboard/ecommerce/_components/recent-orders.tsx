@@ -66,10 +66,11 @@ import { orderFilters, type OrderFilter, type OrderRow } from "./recent-orders-t
 
 const allowedStatusTransitions: Record<string, string[]> = {
   pending: ["confirmed", "cancelled"],
-  confirmed: ["shipped", "cancelled"],
-  shipped: ["delivered", "returned"],
-  returned: ["pending", "cancelled"],
+  confirmed: ["cancelled", "pending"],
+  pushed: ["cancelled"],
+  redex_station: ["cancelled"],
   cancelled: ["pending"],
+  returned: ["pending"],
 };
 
 function extractConversionsFromRemarks(remarks: any): {
@@ -244,6 +245,8 @@ export function RecentOrders() {
             shippingFee: formatDzd(order.shippingDzd),
             in_redex: order.inRedex,
             redex_tracking_code: order.redexTrackingCode,
+            carrier_status: order.carrierStatus || (order.inRedex ? "prete_a_expedier" : null),
+            carrier_status_ar: order.carrierStatusAr || (order.inRedex ? "جاهز للإرسال" : null),
             remarks: order.remarks,
             conversions,
             isSwitched,
@@ -367,12 +370,34 @@ export function RecentOrders() {
       }
 
       // 2. Status Tab Filter
-      if (activeFilter === "Pending" && order.status !== "pending") return false;
-      if (activeFilter === "Confirmed" && order.status !== "confirmed") return false;
-      if (activeFilter === "Shipped" && !(order.status === "shipped" || Boolean(order.in_redex))) return false;
-      if (activeFilter === "Delivered" && order.status !== "delivered") return false;
-      if (activeFilter === "Returned" && order.status !== "returned") return false;
-      if (activeFilter === "Cancelled" && !(order.status === "cancelled" || order.status === "deleted")) return false;
+      const s = (order.status || "").toLowerCase();
+      const cs = (order.carrier_status || "").toLowerCase();
+      if (activeFilter === "Pending" && s !== "pending") return false;
+      if (activeFilter === "Confirmed" && !(s === "confirmed" && !order.in_redex)) return false;
+      if (
+        activeFilter === "Pushed to Redex" &&
+        !(
+          s === "pushed" ||
+          (Boolean(order.in_redex) &&
+            s !== "redex_station" &&
+            cs !== "vers_station" &&
+            cs !== "vers_hub" &&
+            s !== "shipped" &&
+            s !== "delivered" &&
+            s !== "returned" &&
+            s !== "cancelled")
+        )
+      )
+        return false;
+      if (
+        activeFilter === "Redex Station" &&
+        !(s === "redex_station" || cs === "vers_station" || cs === "vers_hub")
+      )
+        return false;
+      if (activeFilter === "Shipped" && !(s === "shipped" || Boolean(order.in_redex))) return false;
+      if (activeFilter === "Delivered" && s !== "delivered") return false;
+      if (activeFilter === "Returned" && s !== "returned") return false;
+      if (activeFilter === "Cancelled" && !(s === "cancelled" || s === "deleted")) return false;
       if (activeFilter === "Switched Only" && !order.isSwitched) return false;
       if (
         activeFilter === "Risk" &&
@@ -381,7 +406,7 @@ export function RecentOrders() {
           order.riskLevel === "HIGH" ||
           order.riskDecision === "BLOCK" ||
           order.riskDecision === "REVIEW" ||
-          order.status === "review"
+          s === "review"
         )
       ) {
         return false;
@@ -406,7 +431,27 @@ export function RecentOrders() {
     return {
       All: orders.length,
       Pending: orders.filter((o) => o.status === "pending").length,
-      Confirmed: orders.filter((o) => o.status === "confirmed").length,
+      Confirmed: orders.filter((o) => o.status === "confirmed" && !o.in_redex).length,
+      "Pushed to Redex": orders.filter((o) => {
+        const s = (o.status || "").toLowerCase();
+        const cs = (o.carrier_status || "").toLowerCase();
+        return (
+          s === "pushed" ||
+          (Boolean(o.in_redex) &&
+            s !== "redex_station" &&
+            cs !== "vers_station" &&
+            cs !== "vers_hub" &&
+            s !== "shipped" &&
+            s !== "delivered" &&
+            s !== "returned" &&
+            s !== "cancelled")
+        );
+      }).length,
+      "Redex Station": orders.filter((o) => {
+        const s = (o.status || "").toLowerCase();
+        const cs = (o.carrier_status || "").toLowerCase();
+        return s === "redex_station" || cs === "vers_station" || cs === "vers_hub";
+      }).length,
       Shipped: orders.filter((o) => o.status === "shipped" || Boolean(o.in_redex)).length,
       Delivered: orders.filter((o) => o.status === "delivered").length,
       Returned: orders.filter((o) => o.status === "returned").length,
@@ -731,9 +776,13 @@ export function RecentOrders() {
                   {filter === "All"
                     ? "الكل"
                     : filter === "Pending"
-                    ? "معلقة"
+                    ? "قيد الانتظار (Pending)"
                     : filter === "Confirmed"
-                    ? "مؤكدة"
+                    ? "Confirmed not pushed"
+                    : filter === "Pushed to Redex"
+                    ? "Pushed to Redex"
+                    : filter === "Redex Station"
+                    ? "Redex Station"
                     : filter === "Shipped"
                     ? "مشحونة"
                     : filter === "Delivered"
@@ -741,7 +790,9 @@ export function RecentOrders() {
                     : filter === "Returned"
                     ? "مرتجعة / رفض"
                     : filter === "Cancelled"
-                    ? "ملغاة"
+                    ? "Canceled"
+                    : filter === "Risk"
+                    ? "المخاطر (Risk)"
                     : "المحوّلة فقط"}
                 </span>
                 <span
@@ -876,19 +927,13 @@ export function RecentOrders() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="confirmed" className="text-xs">
-                    تأكيد الطلبات المحددة
-                  </SelectItem>
-                  <SelectItem value="shipped" className="text-xs">
-                    شحن الطلبات المحددة
-                  </SelectItem>
-                  <SelectItem value="delivered" className="text-xs">
-                    تسليم الطلبات المحددة
-                  </SelectItem>
-                  <SelectItem value="returned" className="text-xs">
-                    تسجيل كـ مرتجعة / رفض
+                    تأكيد الطلبات (Confirmed not pushed)
                   </SelectItem>
                   <SelectItem value="cancelled" className="text-xs">
-                    إلغاء الطلبات المحددة
+                    إلغاء الطلبات (Canceled)
+                  </SelectItem>
+                  <SelectItem value="pending" className="text-xs">
+                    إعادة لقيد الانتظار (Pending)
                   </SelectItem>
                 </SelectContent>
               </Select>

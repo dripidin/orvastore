@@ -1,40 +1,34 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+
 import Link from "next/link";
+
 import {
-  Globe,
-  FileCode2,
-  ExternalLink,
-  Eye,
-  RefreshCw,
-  Sparkles,
-  CheckCircle2,
   AlertTriangle,
-  Layers,
+  Archive,
   ArrowLeft,
+  Check,
+  CheckCircle2,
   Code2,
   Copy,
-  Check,
-  Package,
+  ExternalLink,
+  Eye,
   FileCheck,
+  FileCode2,
+  Globe,
+  Layers,
+  Package,
+  RefreshCw,
   RotateCcw,
-  Archive,
+  Sparkles,
 } from "lucide-react";
 
 import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -43,9 +37,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-import type { StorePage, SitemapEntry } from "@/lib/repository/store-pages-types";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMockStorePagesRepository } from "@/lib/repository/mock-store-pages-repository";
+import type { SitemapEntry, StorePage } from "@/lib/repository/store-pages-types";
 
 export default function StorePagesAndSitemapPage() {
   const repo = useMemo(() => getMockStorePagesRepository(), []);
@@ -219,12 +213,7 @@ export default function StorePagesAndSitemapPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSitemapModalOpen(true)}
-            className="text-xs gap-1.5"
-          >
+          <Button variant="outline" size="sm" onClick={() => setSitemapModalOpen(true)} className="text-xs gap-1.5">
             <FileCode2 className="h-3.5 w-3.5 text-primary" />
             خريطة الموقع (Sitemap XML)
           </Button>
@@ -242,9 +231,7 @@ export default function StorePagesAndSitemapPage() {
       {feedback && (
         <Alert variant={feedback.type === "error" ? "destructive" : "default"}>
           {feedback.type === "error" ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-          <AlertTitle>
-            {feedback.type === "error" ? "خطأ في العملية" : "تمت العملية بنجاح"}
-          </AlertTitle>
+          <AlertTitle>{feedback.type === "error" ? "خطأ في العملية" : "تمت العملية بنجاح"}</AlertTitle>
           <AlertDescription>{feedback.text}</AlertDescription>
         </Alert>
       )}
@@ -256,9 +243,7 @@ export default function StorePagesAndSitemapPage() {
             <CardDescription className="text-xs">إجمالي الصفحات المسجلة</CardDescription>
             <CardTitle className="text-2xl font-bold">{pages.length}</CardTitle>
           </CardHeader>
-          <CardContent className="text-[11px] text-muted-foreground">
-            تغطي كافة الباقات والعروض في الكتالوج
-          </CardContent>
+          <CardContent className="text-[11px] text-muted-foreground">تغطي كافة الباقات والعروض في الكتالوج</CardContent>
         </Card>
 
         <Card>
@@ -268,21 +253,15 @@ export default function StorePagesAndSitemapPage() {
               {publishedCount}
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-[11px] text-muted-foreground">
-            روابط حقيقية ومثبتة في خادم الإنتاج
-          </CardContent>
+          <CardContent className="text-[11px] text-muted-foreground">روابط حقيقية ومثبتة في خادم الإنتاج</CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">صفحات جاهزة للمعاينة (Preview Ready)</CardDescription>
-            <CardTitle className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {previewReadyCount}
-            </CardTitle>
+            <CardTitle className="text-2xl font-bold text-blue-600 dark:text-blue-400">{previewReadyCount}</CardTitle>
           </CardHeader>
-          <CardContent className="text-[11px] text-muted-foreground">
-            باقات جديدة جاهزة للمراجعة قبل النشر
-          </CardContent>
+          <CardContent className="text-[11px] text-muted-foreground">باقات جديدة جاهزة للمراجعة قبل النشر</CardContent>
         </Card>
 
         <Card>
@@ -292,9 +271,7 @@ export default function StorePagesAndSitemapPage() {
               {draftOrArchivedCount}
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-[11px] text-muted-foreground">
-            محمية ولا تظهر في نتائج محركات البحث
-          </CardContent>
+          <CardContent className="text-[11px] text-muted-foreground">محمية ولا تظهر في نتائج محركات البحث</CardContent>
         </Card>
       </div>
 
@@ -369,9 +346,7 @@ export default function StorePagesAndSitemapPage() {
                             </Badge>
                           </div>
                         )}
-                        <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                          {page.previewPath}
-                        </div>
+                        <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{page.previewPath}</div>
                       </TableCell>
 
                       <TableCell>
@@ -386,7 +361,10 @@ export default function StorePagesAndSitemapPage() {
                           </Badge>
                         )}
                         {page.status === "preview_ready" && (
-                          <Badge variant="secondary" className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-[10px]"
+                          >
                             جاهز للمعاينة (Preview)
                           </Badge>
                         )}
@@ -414,9 +392,8 @@ export default function StorePagesAndSitemapPage() {
                                 variant="outline"
                                 size="sm"
                                 className="h-7 text-[11px] gap-1 text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                                render={
-                                  <a href={page.publicUrl || "#"} target="_blank" rel="noopener noreferrer" />
-                                }
+                                nativeButton={false}
+                                render={<a href={page.publicUrl || "#"} target="_blank" rel="noopener noreferrer" />}
                               >
                                 <ExternalLink className="h-3 w-3" />
                                 <span>عرض</span>
@@ -430,7 +407,9 @@ export default function StorePagesAndSitemapPage() {
                                 disabled={actionLoading === `unpub_${page.pageId}`}
                                 title="إلغاء نشر الصفحة وحذفها من مسار المتجر"
                               >
-                                <RotateCcw className={`h-3 w-3 ${actionLoading === `unpub_${page.pageId}` ? "animate-spin" : ""}`} />
+                                <RotateCcw
+                                  className={`h-3 w-3 ${actionLoading === `unpub_${page.pageId}` ? "animate-spin" : ""}`}
+                                />
                                 <span>إلغاء النشر</span>
                               </Button>
                             </>
@@ -443,7 +422,9 @@ export default function StorePagesAndSitemapPage() {
                               disabled={actionLoading === `pub_${page.pageId}`}
                               title="نشر الصفحة للعملاء في مسار المتجر الفعلي"
                             >
-                              <CheckCircle2 className={`h-3 w-3 ${actionLoading === `pub_${page.pageId}` ? "animate-spin" : ""}`} />
+                              <CheckCircle2
+                                className={`h-3 w-3 ${actionLoading === `pub_${page.pageId}` ? "animate-spin" : ""}`}
+                              />
                               <span>نشر الصفحة</span>
                             </Button>
                           )}
@@ -468,7 +449,9 @@ export default function StorePagesAndSitemapPage() {
                             disabled={actionLoading === `sync_${page.pageId}`}
                             title="مزامنة بيانات الصفحة مع كتالوج المنتجات"
                           >
-                            <RefreshCw className={`h-3 w-3 ${actionLoading === `sync_${page.pageId}` ? "animate-spin" : ""}`} />
+                            <RefreshCw
+                              className={`h-3 w-3 ${actionLoading === `sync_${page.pageId}` ? "animate-spin" : ""}`}
+                            />
                           </Button>
 
                           {page.status !== "archived" && (
@@ -501,9 +484,7 @@ export default function StorePagesAndSitemapPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Code2 className="h-5 w-5 text-primary" />
-                <DialogTitle className="text-base font-bold">
-                  معاينة صفحة المنتج: {previewPage?.title}
-                </DialogTitle>
+                <DialogTitle className="text-base font-bold">معاينة صفحة المنتج: {previewPage?.title}</DialogTitle>
               </div>
               <Badge variant="outline" className="font-mono text-xs">
                 {previewPage?.templateId} v{previewPage?.templateVersion}
@@ -538,12 +519,7 @@ export default function StorePagesAndSitemapPage() {
             </div>
 
             {previewTab === "code" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyHtmlCode}
-                className="text-xs h-7 gap-1"
-              >
+              <Button variant="outline" size="sm" onClick={copyHtmlCode} className="text-xs h-7 gap-1">
                 {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
                 {copied ? "تم النسخ!" : "نسخ الكود"}
               </Button>
@@ -581,7 +557,9 @@ export default function StorePagesAndSitemapPage() {
                 onClick={() => previewPage && handlePublishPage(previewPage)}
                 disabled={actionLoading === `pub_${previewPage?.pageId}`}
               >
-                <CheckCircle2 className={`h-3.5 w-3.5 ${actionLoading === `pub_${previewPage?.pageId}` ? "animate-spin" : ""}`} />
+                <CheckCircle2
+                  className={`h-3.5 w-3.5 ${actionLoading === `pub_${previewPage?.pageId}` ? "animate-spin" : ""}`}
+                />
                 <span>نشر هذه النسخة الآن (Publish Live)</span>
               </Button>
               <Button variant="outline" size="sm" onClick={() => setPreviewPage(null)}>
@@ -598,9 +576,7 @@ export default function StorePagesAndSitemapPage() {
           <DialogHeader className="border-b pb-3">
             <div className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-primary" />
-              <DialogTitle className="text-base font-bold">
-                سجل خريطة الموقع (Sitemap Index Registry)
-              </DialogTitle>
+              <DialogTitle className="text-base font-bold">سجل خريطة الموقع (Sitemap Index Registry)</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
               تصفية الروابط العامة المفهرسة وفق قواعد محركات البحث (SEO Safety Gate).
@@ -609,21 +585,30 @@ export default function StorePagesAndSitemapPage() {
 
           <div className="space-y-3 py-2 text-xs">
             <p className="text-muted-foreground leading-relaxed">
-              تقتصر الروابط العامة المفهرسة حصرياً على الصفحات المنشورة (<code className="text-primary font-mono text-[11px]">published</code>). أي صفحات جديدة أو مسودات تجريبية يتم استبعادها من الفهرسة لتفادي أخطاء 404 أو روابط وهمية.
+              تقتصر الروابط العامة المفهرسة حصرياً على الصفحات المنشورة (
+              <code className="text-primary font-mono text-[11px]">published</code>). أي صفحات جديدة أو مسودات تجريبية
+              يتم استبعادها من الفهرسة لتفادي أخطاء 404 أو روابط وهمية.
             </p>
 
             <div className="rounded-md border p-3 bg-muted/40 font-mono text-[11px] space-y-1.5 direction-ltr text-left overflow-auto max-h-[260px]">
               <div className="text-muted-foreground">&lt;!-- ORVA Store Sitemap Index --&gt;</div>
-              <div className="text-muted-foreground">&lt;urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"&gt;</div>
+              <div className="text-muted-foreground">
+                &lt;urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"&gt;
+              </div>
               {sitemap
                 .filter((entry) => entry.isPublicIndexable)
                 .map((entry) => (
                   <div key={entry.url} className="pl-4 text-emerald-400">
-                    &lt;url&gt;<br />
-                    &nbsp;&nbsp;&lt;loc&gt;https://orva-store.com{entry.url}&lt;/loc&gt;<br />
-                    &nbsp;&nbsp;&lt;lastmod&gt;{entry.lastModified.slice(0, 10)}&lt;/lastmod&gt;<br />
-                    &nbsp;&nbsp;&lt;changefreq&gt;{entry.changeFrequency}&lt;/changefreq&gt;<br />
-                    &nbsp;&nbsp;&lt;priority&gt;{entry.priority.toFixed(1)}&lt;/priority&gt;<br />
+                    &lt;url&gt;
+                    <br />
+                    &nbsp;&nbsp;&lt;loc&gt;https://orva-store.com{entry.url}&lt;/loc&gt;
+                    <br />
+                    &nbsp;&nbsp;&lt;lastmod&gt;{entry.lastModified.slice(0, 10)}&lt;/lastmod&gt;
+                    <br />
+                    &nbsp;&nbsp;&lt;changefreq&gt;{entry.changeFrequency}&lt;/changefreq&gt;
+                    <br />
+                    &nbsp;&nbsp;&lt;priority&gt;{entry.priority.toFixed(1)}&lt;/priority&gt;
+                    <br />
                     &lt;/url&gt;
                   </div>
                 ))}

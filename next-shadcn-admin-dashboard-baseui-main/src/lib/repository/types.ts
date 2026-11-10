@@ -1,6 +1,8 @@
-﻿export type OrderStatus =
+export type OrderStatus =
   | "pending"
   | "confirmed"
+  | "pushed"
+  | "redex_station"
   | "shipped"
   | "delivered"
   | "returned"
@@ -54,6 +56,8 @@ export interface RawOrvaOrder extends Record<string, unknown> {
   inRedex?: boolean;
   redex_tracking_code?: string | null;
   redexTrackingCode?: string | null;
+  carrier_status?: string | null;
+  carrier_status_ar?: string | null;
   remarks?: unknown[];
   created_at?: string;
   createdAt?: string;
@@ -76,6 +80,8 @@ export interface OrvaOrder {
   quantity: number | null;
   inRedex: boolean;
   redexTrackingCode: string | null;
+  carrierStatus?: string | null;
+  carrierStatusAr?: string | null;
   remarks: unknown[];
   conversions?: OrderConversionRecord[];
   isSwitched?: boolean;
@@ -115,6 +121,7 @@ export interface SwitchOrderResult {
 
 export interface PushOrderPayload {
   orderId: string;
+  sendToStation?: boolean;
   courierId: string;
   courierName?: string;
   deliveryType?: "home" | "desk";
@@ -144,6 +151,19 @@ export interface PushOrderResult {
   courierName: string;
   labelUrl?: string;
   updatedOrder?: OrvaOrder | null;
+  sentToStation?: boolean;
+  stationError?: string;
+  message?: string;
+}
+
+export interface ValidateOrderResult {
+  success: boolean;
+  trackingCode: string;
+  status: string;
+  carrierStatus: string;
+  carrierStatusAr: string;
+  askCollection?: number;
+  validation?: unknown;
   message?: string;
 }
 
@@ -174,6 +194,7 @@ export interface IOrdersRepository {
   bulkUpdateStatus(orderIds: string[], status: OrderStatus | string, actor?: string): Promise<BulkStatusUpdateResult>;
   switchOrder(payload: SwitchOrderPayload): Promise<SwitchOrderResult>;
   pushOrder(payload: PushOrderPayload): Promise<PushOrderResult>;
+  validateOrder?(trackingOrOrderId: string, askCollection?: number): Promise<ValidateOrderResult>;
   deleteOrder(orderId: string): Promise<boolean>;
   getAuditLogs(): Promise<AuditLogEntry[]>;
   resetToDefaultMockData(): Promise<void>;

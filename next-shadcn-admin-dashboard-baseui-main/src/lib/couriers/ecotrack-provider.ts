@@ -4,6 +4,7 @@ import {
   CourierParcelResponse,
   CourierConnectionResult,
   CourierTrackingStatus,
+  CourierValidationResult,
 } from './types';
 import { getEcoTrackClient, extractWilayaCode } from './ecotrack-client';
 
@@ -74,15 +75,44 @@ export class RedexCourierProvider implements CourierProvider {
 
     const tracking = createResult.tracking;
 
-    // Auto-validate immediately as per approved workflow
-    await client.validOrder(tracking, 0);
-
+    // Redex Requirement B (Defect APP-01 Remediation):
+    // Initial parcel creation calls createOrder() only and preserves the initial "Prêt à expédier" state.
+    // Automatic validation (validOrder) is strictly prohibited upon creation.
     return {
       success: true,
       trackingCode: tracking,
       trackingUrl: `https://redex.ecotrack.dz/tracking?tracking=${encodeURIComponent(tracking)}`,
       labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(tracking)}`,
       rawResponse: createResult.raw,
+    };
+  }
+
+  /**
+   * Explicit manual validation of a parcel in Redex/EcoTrack (Requirement B)
+   * Locks parcel into pickup/collection flow only when explicitly triggered by an authorized operator.
+   */
+  async validateParcel(
+    trackingCode: string,
+    askCollection: number = 0,
+    credentials?: Record<string, string>
+  ): Promise<CourierValidationResult> {
+    if (askCollection !== 0 && askCollection !== 1) {
+      return {
+        success: false,
+        error: 'Invalid askCollection: must be 0 (vers_station) or 1 (en_ramassage)',
+      };
+    }
+
+    const token = credentials?.token || process.env.ECOTRACK_API_TOKEN;
+    const baseUrl = credentials?.baseUrl || process.env.ECOTRACK_BASE_URL;
+    const client = getEcoTrackClient({ baseUrl, token });
+
+    const result = await client.validOrder(trackingCode, askCollection);
+    return {
+      success: result.success,
+      message: result.message,
+      error: result.error,
+      rawResponse: result,
     };
   }
 

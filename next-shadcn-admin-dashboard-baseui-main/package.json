@@ -12,6 +12,7 @@
     "check:fix": "biome check --write",
     "prepare": "husky",
     "generate:presets": "ts-node -P tsconfig.scripts.json src/scripts/generate-theme-presets.ts",
+    "test:migrations": "node scripts/validate-migrations-pg.mjs",
     "test:e2e": "npx tsx tests/e2e/runner.ts",
     "test:phase7e": "ts-node -P tsconfig.scripts.json ../../scripts/audit-phase7e-suite.js",
     "test:phase7f": "ts-node -P tsconfig.scripts.json ../../scripts/audit-phase7f-suite.js",
@@ -62,6 +63,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10",
+    "@electric-sql/pglite": "^0.5.15",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/d3-geo": "^3.1.1",
     "@types/node": "^22.20.1",

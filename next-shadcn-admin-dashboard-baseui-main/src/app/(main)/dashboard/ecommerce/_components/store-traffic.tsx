@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import { ArrowUpRight, ChartNoAxesColumn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,17 @@ export function StoreTraffic() {
     <Card className="h-full">
       <CardHeader>
         <CardTitle className="font-normal text-muted-foreground text-sm">Store Traffic</CardTitle>
-        <CardDescription className="text-foreground text-xl leading-none tracking-tight">المزامنة غير متاحة بعد</CardDescription>
+        <CardDescription className="text-foreground text-xl leading-none tracking-tight">
+          المزامنة غير متاحة بعد
+        </CardDescription>
         <CardAction>
-          <Button render={<Link href="/dashboard/store-traffic" />} variant="ghost" size="icon-sm" aria-label="فتح زيارات المتجر">
+          <Button
+            nativeButton={false}
+            render={<Link href="/dashboard/store-traffic" />}
+            variant="ghost"
+            size="icon-sm"
+            aria-label="فتح زيارات المتجر"
+          >
             <ArrowUpRight aria-hidden="true" />
           </Button>
         </CardAction>
@@ -20,9 +29,14 @@ export function StoreTraffic() {
       <CardContent>
         <Empty className="border">
           <EmptyHeader>
-            <EmptyMedia variant="icon"><ChartNoAxesColumn aria-hidden="true" /></EmptyMedia>
+            <EmptyMedia variant="icon">
+              <ChartNoAxesColumn aria-hidden="true" />
+            </EmptyMedia>
             <EmptyTitle>لا يوجد مصدر زيارات متصل</EmptyTitle>
-            <EmptyDescription>لم يتم ربط Google Analytics أو مصدر موثوق آخر. لا يمكن مزامنة الزيارات تلقائيًا قبل ربط مصدر حقيقي، لذلك لا تظهر أرقام أو رسوم تقديرية.</EmptyDescription>
+            <EmptyDescription>
+              لم يتم ربط Google Analytics أو مصدر موثوق آخر. لا يمكن مزامنة الزيارات تلقائيًا قبل ربط مصدر حقيقي، لذلك لا
+              تظهر أرقام أو رسوم تقديرية.
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       </CardContent>

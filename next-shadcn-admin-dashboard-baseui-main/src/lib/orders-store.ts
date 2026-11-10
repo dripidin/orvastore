@@ -30,6 +30,8 @@ export interface FallbackOrderRecord {
   isSwitched?: boolean;
   conversionCount?: number;
   sourceOrderId?: string;
+  idempotencyKey?: string;
+  payloadHash?: string;
 }
 
 interface GlobalOrdersStorage {
@@ -89,7 +91,8 @@ export function saveAllFallbackOrders(orders: FallbackOrderRecord[]): void {
   const filePath = getFallbackFilePath();
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(orders, null, 2), 'utf-8');
+    const content = orders.length === 0 ? '[]\n' : JSON.stringify(orders, null, 2) + '\n';
+    fs.writeFileSync(filePath, content, 'utf-8');
   } catch (err) {
     console.warn('[Orders Store File Write Error]:', err);
   }

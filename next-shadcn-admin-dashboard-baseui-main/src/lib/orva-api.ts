@@ -17,6 +17,8 @@ export interface OrvaOrder {
   quantity: number | null;
   inRedex: boolean;
   redexTrackingCode: string | null;
+  carrierStatus?: string | null;
+  carrierStatusAr?: string | null;
   remarks: unknown[];
   conversions?: any[];
   isSwitched?: boolean;
@@ -57,8 +59,21 @@ function getSafeApiMessage(status: number) {
 }
 
 export async function orvaFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (typeof window !== "undefined" && !headers.has("Authorization")) {
+    try {
+      const token = window.localStorage.getItem("orva_admin_token");
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+    } catch {
+      // Ignore storage access errors
+    }
+  }
+
   return fetch(input, {
     ...init,
+    headers,
     cache: "no-store",
     credentials: "same-origin",
   });
@@ -119,9 +134,9 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
 
     id,
     createdAt: readOptionalString(raw, "created_at", "createdAt", "date"),
-    customer: readOptionalString(raw, "fullName", "full_name", "customer"),
-    phone: readOptionalString(raw, "phone", "phone_number"),
-    productName: readOptionalString(raw, "productName", "product_name", "product"),
+    customer: readOptionalString(raw, "fullName", "full_name", "customer", "customer_name", "customerName"),
+    phone: readOptionalString(raw, "phone", "phone_number", "customer_phone", "customerPhone"),
+    productName: readOptionalString(raw, "productName", "product_name", "product", "product_title", "productTitle"),
     status: readString(raw, "status").toLowerCase() || "unknown",
     wilaya: readOptionalString(raw, "wilaya"),
     commune: readOptionalString(raw, "commune"),
@@ -156,6 +171,8 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     quantity: readQuantity(raw.quantity ?? raw.qty),
     inRedex: raw.in_redex === true || raw.inRedex === true,
     redexTrackingCode: readOptionalString(raw, "redex_tracking_code", "redexTrackingCode"),
+    carrierStatus: readOptionalString(raw, "carrier_status", "carrierStatus") || ((raw.in_redex === true || raw.inRedex === true) ? "prete_a_expedier" : null),
+    carrierStatusAr: readOptionalString(raw, "carrier_status_ar", "carrierStatusAr") || ((raw.in_redex === true || raw.inRedex === true) ? "جاهز للإرسال" : null),
     remarks,
     conversions,
     isSwitched: conversions.length > 0,

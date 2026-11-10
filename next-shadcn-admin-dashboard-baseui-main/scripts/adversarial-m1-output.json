@@ -1,0 +1,282 @@
+{
+  "postgrest": [
+    {
+      "table": "orders",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.orders' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "products",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.products' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "inventory",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.inventory' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "customers",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.customers' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "order_items",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.order_items' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "audit_logs",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.audit_logs' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "risk_events",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.risk_events' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "rate_limits",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.rate_limits' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "watchlist",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.watchlist' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "categories",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.categories' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "deliveries",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.deliveries' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "site_settings",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.site_settings' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "public_site_settings",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.public_site_settings' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "_v21_orders_pre_migration_state",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public._v21_orders_pre_migration_state' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "_v21_snapshot_manifest",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public._v21_snapshot_manifest' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "admin_session_revocations",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.admin_session_revocations' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "delivery_validation_reconciliations",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.delivery_validation_reconciliations' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "order_timeline_events",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.order_timeline_events' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "order_conversions",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.order_conversions' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "order_re_routings",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.order_re_routings' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "cod_reconciliations",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.cod_reconciliations' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "product_collections",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.product_collections' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "product_media",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.product_media' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "variants",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.variants' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "collections",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.collections' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "courier_configurations",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.courier_configurations' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "meta_conversion_events",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.meta_conversion_events' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "telegram_alert_logs",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.telegram_alert_logs' in the schema cache",
+      "clean": true
+    },
+    {
+      "table": "algeria_wilayas",
+      "status": 404,
+      "code": "PGRST205",
+      "message": "Could not find the table 'public.algeria_wilayas' in the schema cache",
+      "clean": true
+    }
+  ],
+  "catalog": {
+    "tables": [],
+    "pgTables": [],
+    "pgViews": [],
+    "pgMatViews": [],
+    "pgTypes": [],
+    "triggers": [],
+    "routines": [
+      {
+        "routine_name": "rls_auto_enable",
+        "routine_type": "FUNCTION"
+      },
+      {
+        "routine_name": "update_updated_at_column",
+        "routine_type": "FUNCTION"
+      }
+    ]
+  },
+  "extensions": {
+    "installed": [
+      {
+        "extname": "uuid-ossp",
+        "extversion": "1.1"
+      },
+      {
+        "extname": "pgcrypto",
+        "extversion": "1.3"
+      }
+    ],
+    "uuidTest": [
+      {
+        "uuid_v4": "f5cbba2e-5858-40ad-a17d-9729a9c0fe69",
+        "uuid_v1": "bc15b3f6-dc8b-11f1-a17e-2753989a1501"
+      }
+    ],
+    "pgcryptoTest": [
+      {
+        "pgcrypto_uuid": "6d42d38b-f5ec-4656-8010-3071ec83db24",
+        "bf_hash": "$2a$08$qsd8L1XX1y7ZPBrimdfj9.WIo6wQsdd/BCHSK.3hH2m/sG9yZY4Wq",
+        "sha256_hash": "727c7d18bc4da2384a9bf2e9490bbbc83d9c7655b4ecb00066fcfb8052b78c15"
+      }
+    ]
+  },
+  "migrations": {
+    "schemas": [
+      {
+        "schema_name": "supabase_migrations"
+      }
+    ],
+    "rowCount": 0,
+    "rows": [],
+    "allMigrationTables": [
+      {
+        "table_schema": "auth",
+        "table_name": "schema_migrations"
+      },
+      {
+        "table_schema": "supabase_migrations",
+        "table_name": "schema_migrations"
+      },
+      {
+        "table_schema": "storage",
+        "table_name": "migrations"
+      },
+      {
+        "table_schema": "realtime",
+        "table_name": "schema_migrations"
+      }
+    ]
+  },
+  "openapi": {
+    "status": 401,
+    "exposedPaths": [],
+    "exposedDefs": []
+  }
+}

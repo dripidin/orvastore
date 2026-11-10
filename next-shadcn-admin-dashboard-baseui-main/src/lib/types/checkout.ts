@@ -22,6 +22,7 @@ export interface CodOrderSubmission {
   shippingFee: number;
   totalPayable: number;
   honeypot?: string;
+  idempotencyKey?: string;
 }
 
 export interface CodOrderResult {
@@ -60,7 +61,8 @@ export function isValidAlgerianPhone(phone: string): boolean {
 
 export function maskPhoneForPrivacy(phone: string): string {
   const norm = normalizeAlgerianPhone(phone);
-  return norm;
+  if (norm.length !== 10) return phone;
+  return `${norm.slice(0, 4)} •• •• ${norm.slice(-2)}`;
 }
 
 // ── 3. Logistics & Geographic Structures ────────────────────────────────────
@@ -224,6 +226,12 @@ export const codOrderSubmissionSchema = z
     shippingFee: z.number().nonnegative('Frais de livraison invalides'),
     totalPayable: z.number().positive('Montant total invalide'),
     honeypot: z.string().optional(),
+    idempotencyKey: z
+      .string({ message: 'Clé d\'idempotence requise' })
+      .trim()
+      .min(10, 'Clé d\'idempotence invalide (au moins 10 caractères)')
+      .max(128, 'Clé d\'idempotence trop longue')
+      .regex(/^[a-zA-Z0-9_\-]+$/, 'Caractères non autorisés dans la clé d\'idempotence'),
   })
   .superRefine((data, ctx) => {
     // 1. Honeypot Bot Detection

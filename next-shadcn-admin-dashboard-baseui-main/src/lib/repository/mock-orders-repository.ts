@@ -8,6 +8,7 @@ import type {
   OrvaOrder,
   PushOrderPayload,
   PushOrderResult,
+  ValidateOrderResult,
   RawOrvaOrder,
   RepositoryMode,
   SwitchOrderPayload,
@@ -74,6 +75,8 @@ function normalizeRawOrder(raw: RawOrvaOrder): OrvaOrder {
     quantity: qty,
     inRedex: Boolean(raw.in_redex || raw.inRedex),
     redexTrackingCode: (raw.redex_tracking_code || raw.redexTrackingCode || null) as string | null,
+    carrierStatus: (raw.carrier_status || (Boolean(raw.in_redex || raw.inRedex) ? "prete_a_expedier" : null)) as string | null,
+    carrierStatusAr: (raw.carrier_status_ar || (Boolean(raw.in_redex || raw.inRedex) ? "جاهز للإرسال" : null)) as string | null,
     remarks,
     conversions,
     isSwitched: conversions.length > 0,
@@ -495,11 +498,14 @@ ${payload.notes ? `ملاحظات: ${payload.notes}\n` : ""}بواسطة: ${oper
     });
     currentRemarks.unshift(dispatchNote);
 
+    const toStation = Boolean(payload.sendToStation);
     this.orders[index] = {
       ...existing,
-      status: "shipped",
+      status: toStation ? "redex_station" : "pushed",
       in_redex: true,
       redex_tracking_code: trackingCode,
+      carrier_status: toStation ? "vers_station" : "prete_a_expedier",
+      carrier_status_ar: toStation ? "في الطريق إلى مركز التوزيع" : "جاهز للإرسال",
       deliveryType: payload.deliveryType === "desk" ? "استلام من المكتب (Stop Desk)" : "توصيل للمنزل",
       remarks: currentRemarks,
     };
@@ -522,7 +528,44 @@ ${payload.notes ? `ملاحظات: ${payload.notes}\n` : ""}بواسطة: ${oper
       courierName: courier.name,
       labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`,
       updatedOrder: updated,
+      sentToStation: toStation,
       message: `تم إرسال الطلبية بنجاح إلى شركة ${courier.nameAr}. رقم التتبع: ${trackingCode}`,
+    };
+  }
+
+  async validateOrder(trackingOrOrderId: string, askCollection: number = 0): Promise<ValidateOrderResult> {
+    if (!this.initialized) this.init();
+    const clean = trackingOrOrderId.trim().toLowerCase();
+    const index = this.orders.findIndex(
+      (o) =>
+        String(o.orderId || o.id || "").trim().toLowerCase() === clean ||
+        String(o.trackingCode || (o as any).redex_tracking_code || "").trim().toLowerCase() === clean
+    );
+
+    const trackingCode = index !== -1
+      ? String(this.orders[index].trackingCode || (this.orders[index] as any).redex_tracking_code || clean)
+      : clean;
+
+    const carrierStatus = askCollection === 1 ? "en_ramassage" : "vers_station";
+    const carrierStatusAr = askCollection === 1 ? "قيد الاستلام من المتجر" : "في الطريق إلى مركز التوزيع";
+
+    if (index !== -1) {
+      (this.orders[index] as any).carrier_status = carrierStatus;
+      (this.orders[index] as any).carrier_status_ar = carrierStatusAr;
+      (this.orders[index] as any).validated = true;
+      (this.orders[index] as any).validation_lifecycle = "SYNCHRONIZED";
+      this.persist();
+      this.notifyUpdate("VALIDATE_ORDER");
+    }
+
+    return {
+      success: true,
+      trackingCode,
+      status: carrierStatus,
+      carrierStatus,
+      carrierStatusAr,
+      askCollection,
+      message: `تم تأكيد إرسالية الطرد بنجاح لدى Redex Express (${carrierStatusAr}). رقم التتبع: ${trackingCode}`,
     };
   }
 

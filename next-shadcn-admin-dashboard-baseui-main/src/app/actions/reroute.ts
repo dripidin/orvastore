@@ -19,6 +19,19 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 
 let rerouteSequenceCounter = 100;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function orderIdFilter(...ids: (string | null | undefined)[]): string {
+  const parts: string[] = [];
+  for (const raw of ids) {
+    const clean = String(raw || '').trim().replace(/[,()]/g, '');
+    if (!clean) continue;
+    if (UUID_PATTERN.test(clean)) parts.push(`id.eq.${clean}`);
+    parts.push(`order_id.eq.${clean}`, `order_number.eq.${clean}`);
+  }
+  return Array.from(new Set(parts)).join(',');
+}
+
 export async function rerouteOrderAction(
   payload: OrderReRoutingPayload
 ): Promise<OrderReRoutingResult> {
@@ -78,24 +91,50 @@ export async function rerouteOrderAction(
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .or(`id.eq.${validated.orderId},order_id.eq.${validated.orderId},order_number.eq.${validated.orderId}`)
+        .or(orderIdFilter(validated.orderId))
         .maybeSingle();
 
       if (!error && data) {
+        const parseAmount = (val: unknown): number => {
+          if (typeof val === 'number' && Number.isFinite(val)) return val;
+          if (typeof val === 'string') {
+            const m = val.replace(/,/g, '').match(/(\d+(?:\.\d+)?)/);
+            return m ? Number(m[1]) : 0;
+          }
+          return 0;
+        };
+        const resolvedSubtotal =
+          parseAmount(data.subtotal) ||
+          parseAmount(data.product_total) ||
+          parseAmount(data.unit_price) * Math.max(Number(data.quantity || 1), 1) ||
+          parseAmount(data.price_num) ||
+          4950;
+        const resolvedShippingFee =
+          parseAmount(data.delivery_fee) ||
+          parseAmount(data.shipping_fee) ||
+          500;
+        const resolvedTotalPayable =
+          parseAmount(data.total_payable) ||
+          parseAmount(data.total) ||
+          parseAmount(data.grand_total) ||
+          parseAmount(data.total_price) ||
+          parseAmount(data.price_num) ||
+          resolvedSubtotal + resolvedShippingFee;
+
         sourceOrder = {
           id: data.id,
           orderNumber: data.order_id || data.order_number || data.id,
-          customerName: data.full_name || data.customer_name || 'Client',
-          customerPhone: data.phone || data.customer_phone || '',
-          wilayaName: data.wilaya || data.wilaya_name || '',
-          communeName: data.commune || data.commune_name || '',
-          deliveryType: (data.delivery_type as any) || 'DOMICILE',
-          productPrice: Number(data.price_num || data.subtotal || 4950),
-          shippingFee: Number(data.shipping_fee || data.delivery_fee || 500),
-          totalPayable: Number(data.price_num || data.total || 5450),
+          customerName: data.customer_name || data.full_name || 'Client',
+          customerPhone: data.customer_phone || data.phone || '',
+          wilayaName: data.wilaya_name || data.wilaya || '',
+          communeName: data.commune_name || data.commune || '',
+          deliveryType: (data.delivery_method || data.delivery_type || 'DOMICILE') as any,
+          productPrice: resolvedSubtotal,
+          shippingFee: resolvedShippingFee,
+          totalPayable: resolvedTotalPayable,
           status: data.status || 'PENDING',
-          packId: data.metadata?.packId || 'PACK1',
-          productName: data.product_name || data.metadata?.productName || 'ORVA Pack',
+          packId: data.pack_id || data.metadata?.packId || 'PACK1',
+          productName: data.product_title || data.product_name || data.metadata?.productName || 'ORVA Pack',
         };
       }
     } catch (err) {
@@ -234,10 +273,11 @@ export async function rerouteOrderAction(
           lastConversion: conversionLog,
         },
       })
-      .or(`id.eq.${sourceOrder.id},order_number.eq.${sourceOrder.orderNumber}`);
+      .or(orderIdFilter(sourceOrder.id, sourceOrder.orderNumber));
 
     // Insert new child order
     await supabase.from('orders').insert({
+      order_id: newOrderId,
       order_number: newOrderId,
       customer_name: validated.newCustomerName,
       customer_phone: normalizeAlgerianPhone(validated.newCustomerPhone),

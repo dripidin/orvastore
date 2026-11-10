@@ -114,8 +114,7 @@ export default function ProductDemandByWilayaPage() {
       setOrders(ords);
       setSessions(sess);
     } catch (err: any) {
-      console.error("Failed to load demand analytics data:", err);
-      // Strictly show explicit error, never fallback to mock data in live mode failure
+      // Strictly show explicit error in UI, never fallback to mock data in live mode failure
       setLoadError(err?.message || "تعذر تحميل بيانات الطلبات من المصدر المركزي المحدد.");
       setOrders([]);
     } finally {

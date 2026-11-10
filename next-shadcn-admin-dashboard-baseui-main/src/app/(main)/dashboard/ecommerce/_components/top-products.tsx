@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+
 import { AlertCircle, ArrowUpRight, Package, RefreshCw } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -12,7 +13,9 @@ import { aggregateDeliveredProducts } from "@/lib/orva-analytics";
 import { useOrvaOrders } from "@/lib/use-orva-orders";
 
 export function TopProducts({ showAll = false }: { showAll?: boolean }) {
-  const { orders, isLoading, isRefreshing, hasLoaded, lastUpdated, error, refresh } = useOrvaOrders({ pollingIntervalMs: 30_000 });
+  const { orders, isLoading, isRefreshing, hasLoaded, lastUpdated, error, refresh } = useOrvaOrders({
+    pollingIntervalMs: 30_000,
+  });
   const allProducts = aggregateDeliveredProducts(orders);
   const products = showAll ? allProducts : allProducts.slice(0, 3);
   const canShowResults = hasLoaded || !error;
@@ -28,11 +31,24 @@ export function TopProducts({ showAll = false }: { showAll?: boolean }) {
         </CardDescription>
         <CardAction>
           <div className="flex items-center gap-1">
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="تحديث أفضل المنتجات" onClick={() => void refresh()} disabled={isLoading || isRefreshing}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="تحديث أفضل المنتجات"
+              onClick={() => void refresh()}
+              disabled={isLoading || isRefreshing}
+            >
               <RefreshCw aria-hidden="true" className={isLoading || isRefreshing ? "animate-spin" : undefined} />
             </Button>
             {!showAll && (
-              <Button render={<Link href="/dashboard/top-products" />} variant="ghost" size="icon-sm" aria-label="فتح أفضل المنتجات">
+              <Button
+                nativeButton={false}
+                render={<Link href="/dashboard/top-products" />}
+                variant="ghost"
+                size="icon-sm"
+                aria-label="فتح أفضل المنتجات"
+              >
                 <ArrowUpRight aria-hidden="true" />
               </Button>
             )}
@@ -47,7 +63,9 @@ export function TopProducts({ showAll = false }: { showAll?: boolean }) {
             <AlertTitle>بيانات المنتجات غير متاحة</AlertTitle>
             <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
               <span>{error}</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => void refresh()} disabled={isLoading}>إعادة المحاولة</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => void refresh()} disabled={isLoading}>
+                إعادة المحاولة
+              </Button>
             </AlertDescription>
           </Alert>
         )}
@@ -64,7 +82,9 @@ export function TopProducts({ showAll = false }: { showAll?: boolean }) {
         {showEmptyState && (
           <Empty className="border">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><Package aria-hidden="true" /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <Package aria-hidden="true" />
+              </EmptyMedia>
               <EmptyTitle>لا توجد بيانات منتجات مسلّمة</EmptyTitle>
               <EmptyDescription>تظهر هنا المنتجات كما ورد اسمها في سجلات الطلبات المسلّمة.</EmptyDescription>
             </EmptyHeader>
@@ -84,7 +104,9 @@ export function TopProducts({ showAll = false }: { showAll?: boolean }) {
                     {product.deliveredOrderCount}
                   </div>
                   <div className="self-center text-left text-muted-foreground tabular-nums text-xs font-mono font-semibold">
-                    {product.totalRevenueDzd ? `${new Intl.NumberFormat("fr-DZ").format(product.totalRevenueDzd)} د.ج` : "—"}
+                    {product.totalRevenueDzd
+                      ? `${new Intl.NumberFormat("fr-DZ").format(product.totalRevenueDzd)} د.ج`
+                      : "—"}
                   </div>
                 </div>
               ))}
@@ -94,7 +116,12 @@ export function TopProducts({ showAll = false }: { showAll?: boolean }) {
             </div>
 
             {!showAll && (
-              <Button render={<Link href="/dashboard/top-products" />} variant="outline" className="self-start">
+              <Button
+                nativeButton={false}
+                render={<Link href="/dashboard/top-products" />}
+                variant="outline"
+                className="self-start"
+              >
                 عرض تقرير المنتجات
               </Button>
             )}

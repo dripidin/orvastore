@@ -14,6 +14,16 @@ import {
   cleanAlgerianPhone,
   ECOTRACK_STATUS_MAP_AR,
 } from '@/lib/couriers/ecotrack-client';
+import { verifyAdminSession, getVerifiedAdminSession } from '@/lib/auth/admin-auth';
+import {
+  generateOperationId,
+  createRecoveryReceipt,
+  verifyRecoveryReceipt,
+  acquirePreCarrierReservation,
+  recordCarrierAcceptedFailure,
+  recordReconciliationSuccess,
+  executeSafeReconciliation,
+} from '@/lib/couriers/delivery-reconciliation';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +33,91 @@ function formatWilayaLabel(code?: number, name?: string): string {
     return `${code.toString().padStart(2, '0')} - ${name}`;
   }
   return name;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ORVA_MANUAL_STATUSES = new Set(['PENDING', 'CONFIRMED', 'CANCELLED']);
+
+function buildOrderIdFilter(orderId: string): string {
+  const clean = String(orderId).trim().replace(/[,()]/g, '');
+  const parts = [`order_id.eq.${clean}`, `order_number.eq.${clean}`];
+  if (UUID_PATTERN.test(clean)) parts.unshift(`id.eq.${clean}`);
+  return parts.join(',');
+}
+
+/**
+ * ORVA-only status change: writes orders.status in Supabase and never calls Redex.
+ */
+async function updateOrvaOrderStatus(
+  orderId: string,
+  normalizedStatus: string,
+  actor: string
+): Promise<{ success: boolean; error?: string; httpStatus: number }> {
+  let supabase: any;
+  try {
+    supabase = getSupabaseServerClient() as any;
+  } catch (err: any) {
+    const allStored = getStoredFallbackOrders();
+    let updated = false;
+    for (const fb of allStored) {
+      if (fb.id === orderId || fb.orderNumber === orderId) {
+        fb.status = normalizedStatus as any;
+        updated = true;
+      }
+    }
+    if (updated && process.env.NODE_ENV !== 'production') {
+      saveAllFallbackOrders(allStored);
+      return { success: true, httpStatus: 200 };
+    }
+    return { success: false, error: 'Database unavailable: status not saved', httpStatus: 503 };
+  }
+
+  const filter = buildOrderIdFilter(orderId);
+  const readQuery = supabase.from('orders').select('id, status, remarks').or(filter);
+  const { data: existing, error: readErr } = await (typeof readQuery.limit === 'function'
+    ? readQuery.limit(1).maybeSingle()
+    : readQuery.maybeSingle());
+
+  if (readErr) {
+    console.error('[API /api/delivery] Status read failed:', readErr.message);
+    return { success: false, error: `Database error: ${readErr.message}`, httpStatus: 500 };
+  }
+  if (!existing) {
+    return { success: false, error: `Order ${orderId} not found`, httpStatus: 404 };
+  }
+
+  const remarks = Array.isArray(existing.remarks) ? existing.remarks : [];
+  const updateBuilder = supabase
+    .from('orders')
+    .update({
+      status: normalizedStatus,
+      remarks: [
+        ...remarks,
+        {
+          event: 'STATUS_CHANGE',
+          from: existing.status,
+          to: normalizedStatus,
+          actor,
+          source: 'orva_dashboard',
+          timestamp_utc: new Date().toISOString(),
+        },
+      ],
+      updated_at: new Date().toISOString(),
+    });
+  const updateTarget = typeof updateBuilder.eq === 'function'
+    ? updateBuilder.eq('id', existing.id)
+    : updateBuilder.or(filter);
+  const { data: updatedRows, error: updateErr } = await updateTarget.select('id, status');
+
+  if (updateErr) {
+    console.error('[API /api/delivery] Status update failed:', updateErr.message);
+    return { success: false, error: `Database error: ${updateErr.message}`, httpStatus: 500 };
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return { success: false, error: `Order ${orderId} was not updated`, httpStatus: 409 };
+  }
+  return { success: true, httpStatus: 200 };
 }
 
 /**
@@ -47,7 +142,7 @@ async function executeOrderCancellation(orderIdOrTracking: string, reason?: stri
     const { data: orderRow } = await supabase
       .from('orders')
       .select('*')
-      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target},tracking_code.eq.${target},redex_tracking_code.eq.${target}`)
+      .or(`${buildOrderIdFilter(target)},tracking_code.eq.${target},redex_tracking_code.eq.${target}`)
       .maybeSingle();
 
     if (orderRow) {
@@ -99,18 +194,21 @@ async function executeOrderCancellation(orderIdOrTracking: string, reason?: stri
   // 3. Update Supabase orders table (NEVER DELETE, keep history)
   let dbSuccess = false;
   try {
-    const { error: updateErr } = await supabase
+    const { data: updatedRows, error: updateErr } = await supabase
       .from('orders')
       .update({
         status: 'CANCELLED',
         remarks: updatedRemarks,
         updated_at: new Date().toISOString(),
       })
-      .or(`id.eq.${resolvedOrderId},order_id.eq.${resolvedOrderId},order_number.eq.${resolvedOrderId}`);
+      .or(buildOrderIdFilter(resolvedOrderId))
+      .select('id, status');
 
-    dbSuccess = !updateErr;
+    dbSuccess = !updateErr && Array.isArray(updatedRows) && updatedRows.length > 0;
     if (updateErr) {
       console.warn('[API /api/delivery] Supabase cancellation update error:', updateErr);
+    } else if (!dbSuccess) {
+      console.warn('[API /api/delivery] Supabase cancellation: 0 rows modified by query. Verify RLS policies and ID:', resolvedOrderId);
     }
   } catch (dbErr) {
     console.warn('[API /api/delivery] Supabase cancellation exception:', dbErr);
@@ -173,7 +271,7 @@ async function executeOrderHardDeletion(orderIdOrTracking: string) {
     const { data: orderRow } = await supabase
       .from('orders')
       .select('tracking_code, redex_tracking_code')
-      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`)
+      .or(buildOrderIdFilter(target))
       .maybeSingle();
 
     const tracking = orderRow?.tracking_code || orderRow?.redex_tracking_code || (target.startsWith('EC') ? target : null);
@@ -190,7 +288,7 @@ async function executeOrderHardDeletion(orderIdOrTracking: string) {
     await supabase
       .from('orders')
       .delete()
-      .or(`id.eq.${target},order_id.eq.${target},order_number.eq.${target}`);
+      .or(buildOrderIdFilter(target));
     await supabase
       .from('deliveries')
       .delete()
@@ -305,6 +403,13 @@ export async function GET(request: NextRequest) {
 
   // 2. Official PDF Label Streaming Proxy
   if (action === 'label_pdf') {
+    if (!await verifyAdminSession(request)) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Admin session required to download shipping labels' },
+        { status: 401 }
+      );
+    }
+
     const tracking = searchParams.get('tracking')?.trim();
     if (!tracking) {
       return NextResponse.json({ success: false, error: 'Tracking code is required' }, { status: 400 });
@@ -332,6 +437,9 @@ export async function GET(request: NextRequest) {
 
   // 3. Bulk Sync Active Orders with Redex
   if (action === 'sync_all_active') {
+    if (!await verifyAdminSession(request)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+    }
     try {
       const supabase = getSupabaseServerClient() as any;
       const { data: dbOrders, error } = await supabase
@@ -440,6 +548,9 @@ export async function GET(request: NextRequest) {
 
   // 10. Fetch all orders (Supabase + Deliveries + Fallback)
   if (action === 'get_all_orders') {
+    if (!await verifyAdminSession(request)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+    }
     const combinedOrders: any[] = [];
     const seenIds = new Set<string>();
     let supabaseSuccess = false;
@@ -513,8 +624,16 @@ export async function GET(request: NextRequest) {
             quantity: row.quantity || 1,
             productName: resolvedProductName,
             priceNum: Number(row.price_num || row.unit_price || row.subtotal || 4950),
+            productTotal: row.product_total
+              ? String(row.product_total)
+              : row.subtotal
+                ? `${Number(row.subtotal)} د.ج`
+                : undefined,
+            subtotal: row.subtotal != null ? Number(row.subtotal) : undefined,
+            deliveryFee: row.delivery_fee != null ? Number(row.delivery_fee) : undefined,
+            totalPayable: row.total_payable != null ? Number(row.total_payable) : (row.total != null ? Number(row.total) : undefined),
             shippingFee: row.shipping_fee ? String(row.shipping_fee) : `${Number(row.delivery_fee || 500)} د.ج`,
-            grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total_price || row.total || 5450)} د.ج`,
+            grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total_payable || row.total_price || row.total || 5450)} د.ج`,
             status: opStatus,
             in_redex: Boolean(row.in_redex) || Boolean(resolvedTracking),
             redex_tracking_code: resolvedTracking,
@@ -594,46 +713,61 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
 }
 
+// ── IN-MEMORY CONCURRENCY LOCKS (Layer 1 Protection) ───────────────────────
+interface ValidationMemoryLock {
+  leaseId: string;
+  expiresAt: number;
+  actor: string;
+}
+
+const memoryLockMap: Map<string, ValidationMemoryLock> =
+  (globalThis as any).__validationMemoryLocks ||
+  ((globalThis as any).__validationMemoryLocks = new Map());
+
 // ── POST HANDLER ────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  const adminSession = await getVerifiedAdminSession(request);
+  if (!adminSession || !adminSession.sid) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Valid admin session with session identifier required' },
+      { status: 401 }
+    );
+  }
+  if (adminSession.role !== 'admin') {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden: Admin role required' },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
-  const action = searchParams.get('action');
 
   try {
     const body = await request.json().catch(() => ({}));
+    const action = searchParams.get('action') || body.action;
 
     // Update Status
     if (action === 'update_status') {
-      const { orderId, status, actor } = body;
+      const { orderId, status } = body;
       if (!orderId || !status) {
         return NextResponse.json({ success: false, error: 'orderId and status required' }, { status: 400 });
       }
 
       const normalizedStatus = String(status).toUpperCase();
-
-      // Update in fallback store
-      const allStored = getStoredFallbackOrders();
-      let updatedFallback = false;
-      for (const fb of allStored) {
-        if (fb.id === orderId || fb.orderNumber === orderId) {
-          fb.status = normalizedStatus as any;
-          updatedFallback = true;
-        }
+      if (!ORVA_MANUAL_STATUSES.has(normalizedStatus)) {
+        return NextResponse.json(
+          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled.` },
+          { status: 400 }
+        );
       }
-      if (updatedFallback) saveAllFallbackOrders(allStored);
 
-      // Update in Supabase
-      try {
-        const supabase = getSupabaseServerClient() as any;
-        await supabase
-          .from('orders')
-          .update({
-            status: normalizedStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`);
-      } catch (err) {
-        console.warn('[API /api/delivery] Supabase status update warning:', err);
+      const actorLabel = `admin:${String(adminSession.sid).slice(0, 8)}`;
+      const result = await updateOrvaOrderStatus(String(orderId), normalizedStatus, actorLabel);
+      if (!result.success) {
+        return NextResponse.json(
+          { success: false, error: result.error },
+          { status: result.httpStatus }
+        );
       }
 
       return NextResponse.json({
@@ -646,44 +780,39 @@ export async function POST(request: NextRequest) {
 
     // Bulk Update Status
     if (action === 'bulk_update_status') {
-      const { orderIds, status, actor } = body;
+      const { orderIds, status } = body;
       if (!Array.isArray(orderIds) || !status) {
         return NextResponse.json({ success: false, error: 'orderIds array and status required' }, { status: 400 });
       }
 
       const normalizedStatus = String(status).toUpperCase();
+      if (!ORVA_MANUAL_STATUSES.has(normalizedStatus)) {
+        return NextResponse.json(
+          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled.` },
+          { status: 400 }
+        );
+      }
 
-      const allStored = getStoredFallbackOrders();
-      let updatedFallback = false;
+      const actorLabel = `admin:${String(adminSession.sid).slice(0, 8)}`;
+      const updatedOrderIds: string[] = [];
+      const failed: { orderId: string; error: string }[] = [];
       for (const id of orderIds) {
-        for (const fb of allStored) {
-          if (fb.id === id || fb.orderNumber === id) {
-            fb.status = normalizedStatus as any;
-            updatedFallback = true;
-          }
-        }
-      }
-      if (updatedFallback) saveAllFallbackOrders(allStored);
-
-      try {
-        const supabase = getSupabaseServerClient() as any;
-        await supabase
-          .from('orders')
-          .update({
-            status: normalizedStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .or(`order_id.in.(${orderIds.join(',')}),id.in.(${orderIds.join(',')}),order_number.in.(${orderIds.join(',')})`);
-      } catch (err) {
-        console.warn('[API /api/delivery] Supabase bulk update warning:', err);
+        const result = await updateOrvaOrderStatus(String(id), normalizedStatus, actorLabel);
+        if (result.success) updatedOrderIds.push(String(id));
+        else failed.push({ orderId: String(id), error: result.error || 'Update failed' });
       }
 
-      return NextResponse.json({
-        success: true,
-        updatedCount: orderIds.length,
-        failedCount: 0,
-        updatedOrderIds: orderIds,
-      });
+      return NextResponse.json(
+        {
+          success: updatedOrderIds.length > 0,
+          updatedCount: updatedOrderIds.length,
+          failedCount: failed.length,
+          updatedOrderIds,
+          failed,
+          error: updatedOrderIds.length === 0 ? failed[0]?.error || 'No orders updated' : undefined,
+        },
+        { status: updatedOrderIds.length > 0 ? 200 : 500 }
+      );
     }
 
     // Cancel Order (Non-destructive: Cancels parcel on Redex and sets status CANCELLED)
@@ -724,7 +853,680 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Live Push & Auto-Validate with Redex (EcoTrack API)
+    // Explicit Reconcile Order (Idempotent Recovery Worker - Stage 2 Remediation B)
+    // Strictly interrogates carrier state first and NEVER calls validOrder()!
+    if (action === 'reconcile_order') {
+      if (!adminSession?.sid) {
+        return NextResponse.json({ success: false, error: 'Unauthorized: Session identifier missing' }, { status: 401 });
+      }
+      if (adminSession.role !== 'admin') {
+        return NextResponse.json({ success: false, error: 'Forbidden: Admin role required' }, { status: 403 });
+      }
+      const verifiedActor = `admin:${adminSession.sid.slice(0, 8)}`;
+      const tracking = (
+        searchParams.get('tracking') ||
+        body.tracking ||
+        body.trackingCode ||
+        body.trackingNumber ||
+        ''
+      ).trim();
+
+      if (!tracking) {
+        return NextResponse.json({ success: false, error: 'Tracking code required for reconciliation' }, { status: 400 });
+      }
+
+      const rawAsk = body.askCollection ?? body.ask_collection ?? 0;
+      const askCollection = Number(rawAsk) === 1 ? 1 : 0;
+      const operationId = generateOperationId(tracking, askCollection, body.operationId || body.operation_id);
+      const ecotrack = getEcoTrackClient({ baseUrl: body.baseUrl, token: body.token });
+      const supabase = getSupabaseServerClient() as any;
+
+      const reconResult = await executeSafeReconciliation({
+        operationId,
+        trackingCode: tracking,
+        askCollection,
+        verifiedActor,
+        ecotrackClient: ecotrack,
+        supabase,
+      });
+
+      return NextResponse.json(reconResult, { status: reconResult.success ? 200 : 422 });
+    }
+
+    // Manual Order Validation (Redex Requirement B / Remediation A.2 Integrity Fix)
+    // Explicit, authorized manual operation to lock parcel into Redex pickup/collection flow
+    if (action === 'validate_order' || action === 'valid_order') {
+      const tracking = (
+        searchParams.get('tracking') ||
+        body.tracking ||
+        body.trackingCode ||
+        body.trackingNumber ||
+        ''
+      ).trim();
+      const orderId = body.orderId || body.orderNumber || body.id;
+
+      // 1. Strict askCollection validation (must be exactly 0 or 1)
+      const rawAsk = body.askCollection ?? body.ask_collection;
+      if (rawAsk !== 0 && rawAsk !== 1 && rawAsk !== '0' && rawAsk !== '1') {
+        return NextResponse.json({
+          success: false,
+          error: 'قيمة askCollection غير صالحة. يجب أن تكون 0 (إيداع في مركز التوزيع) أو 1 (طلب استلام من المتجر عبر سائق).',
+        }, { status: 400 });
+      }
+      const askCollection = Number(rawAsk);
+
+      // Approved Redex Status Mapping (Finding 2)
+      const carrierStatus = askCollection === 1 ? 'en_ramassage' : 'vers_station';
+      const carrierStatusAr = askCollection === 1 ? 'قيد الاستلام من المتجر' : 'في الطريق إلى مركز التوزيع';
+
+      // 2. Derive trusted audit actor exclusively from verified admin session claims (Findings 1 & 7, Remediation A.3)
+      if (!adminSession?.sid) {
+        return NextResponse.json({ success: false, error: 'Unauthorized: Session identifier missing' }, { status: 401 });
+      }
+      if (adminSession.role !== 'admin') {
+        return NextResponse.json({ success: false, error: 'Forbidden: Admin role required' }, { status: 403 });
+      }
+      const verifiedActor = `admin:${adminSession.sid.slice(0, 8)}`;
+
+      let resolvedTracking = tracking;
+      let resolvedOrderId = orderId ? String(orderId).trim() : '';
+      const supabase = getSupabaseServerClient() as any;
+
+      // 3. Resolve tracking code if only orderId was provided
+      if (!resolvedTracking && resolvedOrderId) {
+        try {
+          const { data: orderRow } = await supabase
+            .from('orders')
+            .select('tracking_code, redex_tracking_code, order_id')
+            .or(buildOrderIdFilter(resolvedOrderId))
+            .maybeSingle();
+
+          if (orderRow) {
+            resolvedTracking = orderRow.tracking_code || orderRow.redex_tracking_code || '';
+            if (orderRow.order_id) resolvedOrderId = orderRow.order_id;
+          }
+        } catch (findErr) {
+          console.warn('[API /api/delivery] Order resolution for validation warning:', findErr);
+        }
+
+        if (!resolvedTracking) {
+          const allStored = getStoredFallbackOrders();
+          const fbMatch = allStored.find((f: any) => f.id === resolvedOrderId || f.orderNumber === resolvedOrderId);
+          if (fbMatch) {
+            resolvedTracking = (fbMatch as any).tracking_code || (fbMatch as any).redex_tracking_code || '';
+            resolvedOrderId = (fbMatch as any).orderNumber || fbMatch.id || resolvedOrderId;
+          }
+        }
+      }
+
+      // If only tracking was provided (e.g. barcode scan), resolve the parent order_id (DEF-07 Fix)
+      if (resolvedTracking && !resolvedOrderId) {
+        try {
+          const { data: orderRow } = await supabase
+            .from('orders')
+            .select('order_id, id')
+            .or(`tracking_code.eq.${resolvedTracking},redex_tracking_code.eq.${resolvedTracking}`)
+            .maybeSingle();
+
+          if (orderRow) {
+            resolvedOrderId = orderRow.order_id || orderRow.id || '';
+          }
+        } catch (findErr) {
+          console.warn('[API /api/delivery] Order resolution by tracking warning:', findErr);
+        }
+
+        if (!resolvedOrderId) {
+          const allStored = getStoredFallbackOrders();
+          const fbMatch = allStored.find((f: any) =>
+            f.tracking_code === resolvedTracking ||
+            f.redex_tracking_code === resolvedTracking
+          );
+          if (fbMatch) {
+            resolvedOrderId = fbMatch.orderNumber || fbMatch.id || '';
+          }
+        }
+      }
+
+      if (!resolvedTracking) {
+        return NextResponse.json({
+          success: false,
+          error: 'رقم التتبع (tracking) أو معرّف الطلبية (orderId) مطلوب لتأكيد الإرسالية',
+        }, { status: 400 });
+      }
+
+      // 4. Pre-Validation State Inspection & Missing Delivery Record Check
+      let existingDelivery: any = null;
+      try {
+        const { data: dRow, error: findErr } = await supabase
+          .from('deliveries')
+          .select('*')
+          .eq('tracking_number', resolvedTracking)
+          .maybeSingle();
+        if (!findErr && dRow && (dRow.tracking_number || dRow.id)) {
+          existingDelivery = dRow;
+        }
+      } catch (dErr) {
+        console.warn('[API /api/delivery] Deliveries lookup exception:', dErr);
+      }
+
+      const allStoredFallback = getStoredFallbackOrders();
+      const existingFb = allStoredFallback.find(
+        (f: any) => f.tracking_code === resolvedTracking || f.redex_tracking_code === resolvedTracking || (Boolean(orderId) && (f.id === orderId || f.orderNumber === orderId))
+      );
+
+      // Explicitly reject missing delivery record (Do not treat missing records as already validated)
+      if (!existingDelivery && !existingFb) {
+        return NextResponse.json({
+          success: false,
+          error: `سجل الشحنة غير موجود في النظام برقم التتبع (${resolvedTracking}). يجب إنشاء الإرسالية أولاً قبل تأكيدها.`,
+        }, { status: 404 });
+      }
+
+      const currentStatus = existingDelivery?.carrier_status || (existingFb as any)?.carrier_status || 'prete_a_expedier';
+      const existingLifecycle = existingDelivery?.raw_response?.validation_lifecycle || (existingFb as any)?.validation_lifecycle;
+      const carrierAlreadyAccepted = Boolean(existingDelivery?.raw_response?.carrier_accepted || (existingFb as any)?.carrier_accepted);
+
+      // 5. Idempotent Return for Already Synchronized Parcels
+      if (
+        (existingLifecycle === 'SYNCHRONIZED' || currentStatus === 'en_ramassage' || currentStatus === 'vers_station') &&
+        (existingDelivery?.raw_response?.validated === true || (existingFb as any)?.validated === true)
+      ) {
+        return NextResponse.json({
+          success: true,
+          alreadyValidated: true,
+          trackingCode: resolvedTracking,
+          status: currentStatus,
+          carrierStatus: currentStatus,
+          carrierStatusAr: existingDelivery?.carrier_status_ar || (existingFb as any)?.carrier_status_ar || carrierStatusAr,
+          askCollection,
+          validatedBy: existingDelivery?.raw_response?.validated_by || (existingFb as any)?.validated_by || verifiedActor,
+          supabaseSynced: true,
+          message: 'هذا الطرد تم تأكيده ومزامنته مسبقاً لدى شركة التوصيل.',
+        }, { status: 200 });
+      }
+
+      // 6. State Progression Gate (Never regress downstream logistical states)
+      const nonRegressibleStatuses = [
+        'en_station', 'vers_hub', 'en_hub', 'vers_wilaya', 'en_preparation',
+        'dispatched_to_driver', 'en_livraison', 'livred', 'livre', 'livre_non_encaisse',
+        'encaisse_non_paye', 'encaissed', 'payed', 'paye_et_archive', 'return_asked',
+        'return_in_transit', 'retour_chez_livreur', 'retour_transit_entrepot',
+        'retour_en_traitement', 'retour_recu', 'return_received', 'retour_archive', 'annule'
+      ];
+      if (nonRegressibleStatuses.includes(currentStatus.toLowerCase())) {
+        return NextResponse.json({
+          success: false,
+          error: `لا يمكن تأكيد الشحنة: حالة الطرد الحالية (${currentStatus}) متقدمة في مسار التوصيل ولا يمكن إرجاعها إلى مرحلة الاستلام.`,
+          trackingCode: resolvedTracking,
+          currentStatus,
+          alreadyProgressed: true,
+        }, { status: 409 });
+      }
+
+      // 7. Check In-Progress Leases & Memory Locks (Remediation A.3 - Requirements 1, 2 & 3)
+      const LEASE_DURATION_MS = 30000; // 30 seconds
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+
+      const memoryLock = memoryLockMap.get(resolvedTracking);
+      const isMemoryLockActive = Boolean(memoryLock && memoryLock.expiresAt > nowMs);
+
+      const existingLeaseExpiresAt = existingDelivery?.raw_response?.lease_expires_at || (existingFb as any)?.lease_expires_at;
+      const isDbLeaseActive = (currentStatus === 'validation_in_progress' || existingLifecycle === 'VALIDATION_IN_PROGRESS') &&
+        Boolean(existingLeaseExpiresAt && new Date(existingLeaseExpiresAt).getTime() > nowMs);
+
+      if (isMemoryLockActive || isDbLeaseActive) {
+        // Wait briefly for in-flight validation to complete if active
+        const startWait = Date.now();
+        while (Date.now() - startWait < 3000) {
+          await new Promise((r) => setTimeout(r, 60));
+          const latestLock = memoryLockMap.get(resolvedTracking);
+          if (!latestLock || latestLock.expiresAt <= Date.now()) {
+            break;
+          }
+        }
+
+        // Check if finished by concurrent process
+        const freshStored = getStoredFallbackOrders();
+        const freshFb = freshStored.find((f: any) => (f as any).tracking_code === resolvedTracking || (f as any).redex_tracking_code === resolvedTracking);
+        const freshStatus = (freshFb as any)?.carrier_status;
+        if (freshFb && (freshFb as any).validated && (freshStatus === 'en_ramassage' || freshStatus === 'vers_station')) {
+          return NextResponse.json({
+            success: true,
+            alreadyValidated: true,
+            concurrentInterferenceHandled: true,
+            trackingCode: resolvedTracking,
+            status: freshStatus,
+            carrierStatus: freshStatus,
+            carrierStatusAr: (freshFb as any).carrier_status_ar || carrierStatusAr,
+            message: 'تم تأكيد الشحنة بنجاح بواسطة العملية المتزامنة.',
+          }, { status: 200 });
+        }
+
+        return NextResponse.json({
+          success: false,
+          error: 'عملية تأكيد الإرسالية قيد التنفيذ حالياً بواسطة مشغّل آخر. يرجى الانتظار.',
+          inProgress: true,
+          trackingCode: resolvedTracking,
+        }, { status: 409 });
+      }
+
+      // Immediately acquire in-process memory lock synchronously to close the event loop window
+      const initialLeaseId = crypto.randomUUID();
+      memoryLockMap.set(resolvedTracking, {
+        leaseId: initialLeaseId,
+        expiresAt: nowMs + LEASE_DURATION_MS,
+        actor: verifiedActor,
+      });
+
+      // Check if lease expired while stuck in VALIDATION_IN_PROGRESS (Requirement 3: Never blindly re-call Redex!)
+      const isStuckLeaseExpired = (currentStatus === 'validation_in_progress' || existingLifecycle === 'VALIDATION_IN_PROGRESS') &&
+        (!existingLeaseExpiresAt || new Date(existingLeaseExpiresAt).getTime() <= nowMs);
+
+      let carrierConfirmedAccepted = carrierAlreadyAccepted;
+
+      // 7.1 Pre-carrier durable reservation in dedicated delivery_validation_reconciliations table (Stage 2 Stabilization / DEF-07 Fix)
+      const parentOrderId = String(resolvedOrderId || existingDelivery?.order_id || (existingFb as any)?.orderNumber || (existingFb as any)?.id || '');
+      const operationId = generateOperationId(resolvedTracking, askCollection, body.operationId || body.operation_id);
+
+      let preReservation: any = null;
+      if (parentOrderId && parentOrderId !== resolvedTracking) {
+        try {
+          preReservation = await acquirePreCarrierReservation(supabase, {
+            operationId,
+            trackingCode: resolvedTracking,
+            orderId: parentOrderId,
+            askCollection,
+            targetCarrierStatus: carrierStatus as 'en_ramassage' | 'vers_station',
+            verifiedActor,
+          });
+        } catch (presErr) {
+          console.warn('[API /api/delivery] Pre-carrier reservation warning:', presErr);
+        }
+      }
+
+      if (preReservation?.alreadyReconciled) {
+        memoryLockMap.delete(resolvedTracking);
+        return NextResponse.json({
+          success: true,
+          alreadyValidated: true,
+          operationId,
+          trackingCode: resolvedTracking,
+          status: carrierStatus,
+          carrierStatus,
+          carrierStatusAr: existingDelivery?.carrier_status_ar || (existingFb as any)?.carrier_status_ar || carrierStatusAr,
+          askCollection,
+          validatedBy: existingDelivery?.raw_response?.validated_by || (existingFb as any)?.validated_by || verifiedActor,
+          supabaseSynced: true,
+          reconciliationState: 'RECONCILED',
+          message: 'هذا الطرد تم تأكيده ومزامنته مسبقاً لدى شركة التوصيل (Durable Idempotent Recovery).',
+        }, { status: 200 });
+      }
+
+      if (preReservation?.conflict) {
+        memoryLockMap.delete(resolvedTracking);
+        return NextResponse.json({
+          success: false,
+          error: preReservation.error || 'عملية تأكيد الإرسالية قيد التنفيذ حالياً بواسطة مشغّل آخر. يرجى الانتظار.',
+          inProgress: true,
+          operationId,
+          trackingCode: resolvedTracking,
+        }, { status: 409 });
+      }
+
+      if (preReservation?.dbError) {
+        console.warn('[API /api/delivery] Pre-carrier reservation DB warning:', preReservation.error);
+      }
+
+      if (preReservation?.alreadyAccepted) {
+        carrierConfirmedAccepted = true;
+      }
+
+      if (isStuckLeaseExpired && !carrierConfirmedAccepted) {
+        // Query courier to inspect actual external state before deciding whether to call validOrder
+        try {
+          const ecotrackInspect = getEcoTrackClient({ baseUrl: body.baseUrl, token: body.token });
+          const trackInfo = await ecotrackInspect.getTrackingInfo(resolvedTracking);
+          if (trackInfo && trackInfo.success && Array.isArray(trackInfo.activity) && trackInfo.activity.length > 0) {
+            const hasProgressedAtCarrier = trackInfo.activity.some((act: any) => {
+              const s = String(act.status || '').toLowerCase();
+              return s === 'en_ramassage' || s === 'vers_station' || nonRegressibleStatuses.includes(s);
+            });
+            if (hasProgressedAtCarrier) {
+              carrierConfirmedAccepted = true;
+            }
+          }
+        } catch (tErr) {
+          console.warn('[API /api/delivery] Carrier status inspection warning during lease recovery:', tErr);
+        }
+      }
+
+      // 8. Atomic Database Reservation BEFORE external carrier call (Requirements 1 & 2)
+      const leaseId = initialLeaseId;
+      const leaseExpiresAt = new Date(nowMs + LEASE_DURATION_MS).toISOString();
+
+      let leaseAcquired = false;
+      let leaseError: any = null;
+
+      try {
+        const statusCondition = isStuckLeaseExpired
+          ? `carrier_status.eq.prete_a_expedier,carrier_status.eq.validation_in_progress`
+          : `carrier_status.eq.prete_a_expedier`;
+
+        const { data: lRows, error: lErr } = await supabase
+          .from('deliveries')
+          .update({
+            carrier_status: 'validation_in_progress',
+            carrier_status_ar: 'جارٍ التأكيد لدى شركة التوصيل...',
+            raw_response: {
+              ...(existingDelivery?.raw_response || {}),
+              validation_lifecycle: 'VALIDATION_IN_PROGRESS',
+              lease_id: leaseId,
+              leased_at: nowIso,
+              lease_expires_at: leaseExpiresAt,
+              lease_holder: verifiedActor,
+              carrier_accepted: carrierConfirmedAccepted,
+            },
+            updated_at: nowIso,
+          })
+          .eq('tracking_number', resolvedTracking)
+          .or(statusCondition)
+          .select('id, tracking_number, carrier_status');
+
+        leaseError = lErr;
+        leaseAcquired = !lErr && Array.isArray(lRows) && lRows.length > 0;
+      } catch (lEx: any) {
+        leaseError = lEx;
+      }
+
+      // Mirror atomic lease in fallback store
+      let fbLeased = false;
+      for (const fb of allStoredFallback) {
+        if ((fb as any).tracking_code === resolvedTracking || (fb as any).redex_tracking_code === resolvedTracking) {
+          const fbStatus = (fb as any).carrier_status;
+          const fbLeaseExp = (fb as any).lease_expires_at;
+          const fbExpired = fbStatus === 'validation_in_progress' && fbLeaseExp && new Date(fbLeaseExp).getTime() <= nowMs;
+          if (
+            fbStatus === 'prete_a_expedier' ||
+            fbExpired ||
+            (fb as any).validation_lifecycle === 'RECONCILIATION_REQUIRED'
+          ) {
+            (fb as any).carrier_status = 'validation_in_progress';
+            (fb as any).carrier_status_ar = 'جارٍ التأكيد لدى شركة التوصيل...';
+            (fb as any).validation_lifecycle = 'VALIDATION_IN_PROGRESS';
+            (fb as any).lease_id = leaseId;
+            (fb as any).leased_at = nowIso;
+            (fb as any).lease_expires_at = leaseExpiresAt;
+            (fb as any).lease_holder = verifiedActor;
+            fbLeased = true;
+          }
+        }
+      }
+      if (fbLeased) {
+        saveAllFallbackOrders(allStoredFallback);
+        if (!existingDelivery) {
+          leaseAcquired = true;
+        }
+      }
+
+      // If lease was not acquired, another concurrent request beat us to it!
+      if (!leaseAcquired && !leaseError) {
+        memoryLockMap.delete(resolvedTracking);
+        return NextResponse.json({
+          success: false,
+          error: 'عملية تأكيد الإرسالية قيد التنفيذ حالياً بواسطة مشغّل آخر أو تم تغيير حالتها.',
+          inProgress: true,
+          trackingCode: resolvedTracking,
+        }, { status: 409 });
+      }
+
+      // 9. External Carrier Validation (Redex / EcoTrack)
+      // Only executed if NOT already confirmed accepted by the carrier
+      let validResult: any = { success: true, message: 'Commande déjà acceptée par le transporteur (reconciliation retry)' };
+      if (!carrierConfirmedAccepted) {
+        const ecotrack = getEcoTrackClient({
+          baseUrl: body.baseUrl,
+          token: body.token,
+        });
+
+        validResult = await ecotrack.validOrder(resolvedTracking, askCollection);
+
+        if (!validResult.success) {
+          memoryLockMap.delete(resolvedTracking);
+          // Carrier rejected the validation: safely release lease / revert to prete_a_expedier
+          try {
+            await supabase
+              .from('deliveries')
+              .update({
+                carrier_status: 'prete_a_expedier',
+                carrier_status_ar: 'جاهز للإرسال',
+                raw_response: {
+                  ...(existingDelivery?.raw_response || {}),
+                  validation_lifecycle: 'FAILED',
+                  last_error: validResult.error || 'Carrier validation rejected',
+                  lease_expires_at: nowIso,
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('tracking_number', resolvedTracking)
+              .eq('carrier_status', 'validation_in_progress')
+              .select('id');
+          } catch (_) {}
+
+          for (const fb of allStoredFallback) {
+            if ((fb as any).tracking_code === resolvedTracking || (fb as any).redex_tracking_code === resolvedTracking) {
+              (fb as any).carrier_status = 'prete_a_expedier';
+              (fb as any).carrier_status_ar = 'جاهز للإرسال';
+              (fb as any).validation_lifecycle = 'FAILED';
+              (fb as any).last_error = validResult.error;
+              (fb as any).lease_expires_at = null;
+            }
+          }
+          saveAllFallbackOrders(allStoredFallback);
+
+          return NextResponse.json({
+            success: false,
+            error: validResult.error || 'فشل تأكيد إرسالية الطرد لدى Redex Express',
+            trackingCode: resolvedTracking,
+            raw: validResult,
+          }, { status: 422 });
+        }
+      }
+
+      // 10. Commit Final Synchronized State to Supabase
+      let delivUpdated = false;
+      let delivError: any = null;
+      let updatedDeliveryRows: any[] = [];
+
+      try {
+        const { data: uRows, error: uErr } = await supabase
+          .from('deliveries')
+          .update({
+            status: 'IN_TRANSIT',
+            carrier_status: carrierStatus,
+            carrier_status_ar: carrierStatusAr,
+            raw_response: {
+              ...(existingDelivery?.raw_response || {}),
+              validated: true,
+              validated_at: nowIso,
+              validated_by: verifiedActor,
+              ask_collection: askCollection,
+              carrier_accepted: true,
+              validation_lifecycle: 'SYNCHRONIZED',
+              validation_message: validResult.message,
+              lease_expires_at: null,
+              lease_id: null,
+            },
+            updated_at: nowIso,
+          })
+          .eq('tracking_number', resolvedTracking)
+          .or(`carrier_status.eq.validation_in_progress,carrier_status.eq.prete_a_expedier`)
+          .select('id, tracking_number, carrier_status');
+
+        delivError = uErr;
+        updatedDeliveryRows = uRows || [];
+        delivUpdated = !uErr && updatedDeliveryRows.length > 0;
+      } catch (dbEx: any) {
+        delivError = dbEx;
+      }
+
+      // Handle Supabase Persistence Failure (Carrier Succeeded, Database Failed)
+      // When Supabase fails, DO NOT report success! Record RECONCILIATION_REQUIRED in durable and fallback stores.
+      if (delivError || (!delivUpdated && !existingFb)) {
+        memoryLockMap.delete(resolvedTracking);
+        console.error('[API /api/delivery] Supabase persistence error during validation:', delivError);
+
+        // 1. Record failure in dedicated delivery_validation_reconciliations table
+        if (parentOrderId && parentOrderId !== resolvedTracking) {
+          try {
+            await recordCarrierAcceptedFailure(supabase, {
+              operationId,
+              trackingCode: resolvedTracking,
+              orderId: parentOrderId,
+              askCollection,
+              targetCarrierStatus: carrierStatus as 'en_ramassage' | 'vers_station',
+              verifiedActor,
+              dbError: delivError?.message || 'Supabase write failed',
+            });
+          } catch (_) {}
+        }
+
+        // 2. Sign tamper-evident client recovery receipt for total database outage resilience
+        const recoveryReceipt = createRecoveryReceipt({
+          operationId,
+          trackingCode: resolvedTracking,
+          orderId: parentOrderId,
+          askCollection,
+          carrierAccepted: true,
+          carrierStatus,
+          actor: verifiedActor,
+          issuedAt: nowMs,
+          expiresAt: nowMs + 7 * 24 * 3600 * 1000,
+        }, process.env.ADMIN_JWT_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'orva-recovery-secret-fallback-32c');
+
+        for (const fb of allStoredFallback) {
+          if ((fb as any).tracking_code === resolvedTracking || (fb as any).redex_tracking_code === resolvedTracking) {
+            (fb as any).carrier_status = carrierStatus;
+            (fb as any).carrier_status_ar = carrierStatusAr;
+            (fb as any).carrier_accepted = true;
+            (fb as any).validation_lifecycle = 'RECONCILIATION_REQUIRED';
+            (fb as any).last_error = delivError?.message || 'Supabase write failed';
+            (fb as any).validated_by = verifiedActor;
+            (fb as any).validated_at = nowIso;
+            (fb as any).lease_expires_at = null;
+            (fb as any).operation_id = operationId;
+          }
+        }
+        saveAllFallbackOrders(allStoredFallback);
+
+        return NextResponse.json({
+          success: false,
+          error: 'تم تأكيد الشحنة لدى Redex Express بنجاح، ولكن فشلت المزامنة مع قاعدة البيانات المحلية. الشحنة موضوعة في حالة RECONCILIATION_REQUIRED للمزامنة لاحقاً.',
+          operationId,
+          trackingCode: resolvedTracking,
+          carrierAccepted: true,
+          supabaseSynced: false,
+          reconciliationRequired: true,
+          retryable: true,
+          recoveryReceipt,
+          details: delivError?.message,
+        }, { status: 502 });
+      }
+
+      // Record successful reconciliation state in delivery_validation_reconciliations
+      try {
+        await recordReconciliationSuccess(supabase, {
+          operationId,
+          carrierStatus,
+        });
+      } catch (_) {}
+
+      // 11. Update Orders Remarks with Deduplication Protection
+      let orderRemarksSynced = false;
+      try {
+        const { data: existingOrder, error: oFetchErr } = await supabase
+          .from('orders')
+          .select('id, remarks')
+          .or(`tracking_code.eq.${resolvedTracking},redex_tracking_code.eq.${resolvedTracking}`)
+          .maybeSingle();
+
+        if (existingOrder && !oFetchErr) {
+          const prevRemarks = Array.isArray(existingOrder.remarks) ? existingOrder.remarks : [];
+          const alreadyLogged = prevRemarks.some((r: any) =>
+            r?.event === 'PARCEL_VALIDATED_MANUALLY' && r?.tracking === resolvedTracking
+          );
+          const statusPatch = carrierStatus === 'vers_station' ? { status: 'REDEX_STATION' } : {};
+
+          if (!alreadyLogged) {
+            const validationEvent = {
+              event: 'PARCEL_VALIDATED_MANUALLY',
+              tracking: resolvedTracking,
+              ask_collection: askCollection,
+              carrier_status: carrierStatus,
+              carrier_status_ar: carrierStatusAr,
+              actor: verifiedActor,
+              timestamp_utc: nowIso,
+              validation_message: validResult.message,
+            };
+            const { data: rRows, error: rErr } = await supabase
+              .from('orders')
+              .update({
+                ...statusPatch,
+                remarks: [...prevRemarks, validationEvent],
+                updated_at: nowIso,
+              })
+              .eq('id', existingOrder.id)
+              .select('id');
+
+            orderRemarksSynced = !rErr && Array.isArray(rRows) && rRows.length > 0;
+          } else {
+            if (statusPatch.status) {
+              await supabase
+                .from('orders')
+                .update({ ...statusPatch, updated_at: nowIso })
+                .eq('id', existingOrder.id);
+            }
+            orderRemarksSynced = true; // Already recorded, no duplicate appended
+          }
+        }
+      } catch (remarkEx) {
+        console.warn('[API /api/delivery] Remarks update warning:', remarkEx);
+      }
+
+      // 12. Mirror State to Fallback Store & Release In-Memory Lock
+      memoryLockMap.delete(resolvedTracking);
+      for (const fb of allStoredFallback) {
+        if ((fb as any).tracking_code === resolvedTracking || (fb as any).redex_tracking_code === resolvedTracking) {
+          (fb as any).carrier_status = carrierStatus;
+          (fb as any).carrier_status_ar = carrierStatusAr;
+          (fb as any).validated = true;
+          (fb as any).carrier_accepted = true;
+          (fb as any).validation_lifecycle = 'SYNCHRONIZED';
+          (fb as any).validated_at = nowIso;
+          (fb as any).validated_by = verifiedActor;
+          (fb as any).lease_expires_at = null;
+          (fb as any).lease_id = null;
+        }
+      }
+      saveAllFallbackOrders(allStoredFallback);
+
+      return NextResponse.json({
+        success: true,
+        trackingCode: resolvedTracking,
+        status: carrierStatus,
+        carrierStatus,
+        carrierStatusAr,
+        askCollection,
+        validatedBy: verifiedActor,
+        supabaseSynced: true,
+        validationLifecycle: 'SYNCHRONIZED',
+        reconciled: Boolean(carrierConfirmedAccepted),
+        validation: validResult,
+        message: `تم تأكيد إرسالية الطرد بنجاح لدى Redex Express (${carrierStatusAr}). رقم التتبع: ${resolvedTracking}`,
+      });
+    }
+
+    // Live Push to Redex (EcoTrack API) — Requirement B: Initial parcel creation (Prêt à expédier)
     if (action === 'create' || action === 'push_order') {
       const orderId = body.orderId || body.orderNumber || body.id;
       if (!orderId) {
@@ -748,38 +1550,59 @@ export async function POST(request: NextRequest) {
 
       const supabase = getSupabaseServerClient() as any;
 
-      // 1. Enrich from Supabase if fields are missing
-      if (!clientName || !clientPhone || !wilayaName) {
-        try {
-          const { data: existingRow } = await supabase
-            .from('orders')
-            .select('*')
-            .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`)
-            .maybeSingle();
+      // 1. Fetch order from Supabase for enrichment and duplicate protection
+      let existingTracking: string | null = null;
+      try {
+        const { data: existingRow } = await supabase
+          .from('orders')
+          .select('*')
+          .or(buildOrderIdFilter(orderId))
+          .maybeSingle();
 
-          if (existingRow) {
-            clientName = clientName || existingRow.full_name || existingRow.customer_name || 'Client';
-            clientPhone = clientPhone || existingRow.phone || existingRow.customer_phone || '';
-            clientPhone2 = clientPhone2 || existingRow.phone2 || '';
-            wilayaName = wilayaName || existingRow.wilaya || existingRow.wilaya_name || '';
-            wilayaCode = wilayaCode || existingRow.wilaya_code;
-            rawCommune = rawCommune || existingRow.commune || existingRow.commune_name || '';
-            address = address || existingRow.address || rawCommune || 'Centre Ville';
-            if (existingRow.delivery_type) {
-              stopDeskFlag = existingRow.delivery_type.includes('مكتب') || existingRow.delivery_type === 'STOP_DESK' ? 1 : 0;
-            }
-            if (!codAmount) {
-              codAmount = Number(
-                existingRow.grand_total
-                  ? String(existingRow.grand_total).replace(/[^\d]/g, '')
-                  : existingRow.total_price || existingRow.total || 5450
-              );
-            }
-            productName = productName || existingRow.product_name || 'Pack ORVA';
+        if (existingRow) {
+          existingTracking = existingRow.redex_tracking_code || existingRow.tracking_code || null;
+          clientName = clientName || existingRow.full_name || existingRow.customer_name || 'Client';
+          clientPhone = clientPhone || existingRow.phone || existingRow.customer_phone || '';
+          clientPhone2 = clientPhone2 || existingRow.phone2 || '';
+          wilayaName = wilayaName || existingRow.wilaya || existingRow.wilaya_name || '';
+          wilayaCode = wilayaCode || existingRow.wilaya_code;
+          rawCommune = rawCommune || existingRow.commune || existingRow.commune_name || '';
+          address = address || existingRow.address || rawCommune || 'Centre Ville';
+          if (existingRow.delivery_type) {
+            stopDeskFlag = existingRow.delivery_type.includes('مكتب') || existingRow.delivery_type === 'STOP_DESK' ? 1 : 0;
           }
-        } catch (fetchErr) {
-          console.warn('[API /api/delivery] Could not fetch existing order from Supabase:', fetchErr);
+          if (!codAmount) {
+            codAmount = Number(
+              existingRow.grand_total
+                ? String(existingRow.grand_total).replace(/[^\d]/g, '')
+                : existingRow.total_price || existingRow.total || 5450
+            );
+          }
+          productName = productName || existingRow.product_name || 'Pack ORVA';
         }
+      } catch (fetchErr) {
+        console.warn('[API /api/delivery] Could not fetch existing order from Supabase:', fetchErr);
+      }
+
+      // 1.1 Check fallback store for tracking if not found in Supabase
+      if (!existingTracking) {
+        const allStored = getStoredFallbackOrders();
+        const fbMatch = allStored.find((f) => f.id === orderId || f.orderNumber === orderId);
+        if (fbMatch && ((fbMatch as any).redex_tracking_code || (fbMatch as any).tracking_code)) {
+          existingTracking = (fbMatch as any).redex_tracking_code || (fbMatch as any).tracking_code;
+        }
+      }
+
+      // 1.2 Duplicate Dispatch Prevention Guard
+      if (existingTracking && !body.forceRecreate) {
+        return NextResponse.json({
+          success: false,
+          error: `هذا الطلب تم إرساله مسبقاً إلى Redex برقم تتبع نشط (${existingTracking}). يرجى استخدام تحويل الطلبية أو طباعة الوصل مباشرة.`,
+          trackingCode: existingTracking,
+          trackingNumber: existingTracking,
+          alreadyDispatched: true,
+          labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(existingTracking)}`,
+        }, { status: 409 });
       }
 
       // 2. Validate essential inputs
@@ -852,12 +1675,14 @@ export async function POST(request: NextRequest) {
 
       const trackingCode = createResult.tracking;
 
-      // 5. Auto-validate order immediately
-      const validResult = await ecotrack.validOrder(trackingCode, 0);
+      // 5. Redex Requirement B (Defect APP-01 Remediation):
+      // Initial parcel creation calls createOrder() only and preserves the initial "Prêt à expédier" state.
+      // Auto-validation (validOrder) is strictly prohibited upon creation.
 
       // 6. Record shipment in deliveries table
+      let delivUpsertSuccess = false;
       try {
-        await supabase
+        const { error: delivErr } = await supabase
           .from('deliveries')
           .upsert({
             order_id: String(orderId),
@@ -868,33 +1693,39 @@ export async function POST(request: NextRequest) {
             carrier_status_ar: 'جاهز للإرسال',
             raw_response: {
               redex_response: createResult.raw,
-              validated: validResult.success,
+              validated: false,
               pushed_at: new Date().toISOString(),
               commune_resolved: finalCommune,
               original_commune: rawCommune,
             },
             updated_at: new Date().toISOString(),
           }, { onConflict: 'tracking_number' });
+
+        delivUpsertSuccess = !delivErr;
+        if (delivErr) {
+          console.warn('[API /api/delivery] Deliveries table record error:', delivErr);
+        }
       } catch (delivErr) {
         console.warn('[API /api/delivery] Deliveries table record warning:', delivErr);
       }
 
-      // 7. Update Supabase orders table: Automatically transition to CONFIRMED
-      let supabaseUpdated = false;
+      // 7. Update Supabase orders table: Mark in_redex and tracking codes, transition to PUSHED (ORVA: "Pushed to Redex")
+      let orderUpdateSuccess = false;
       try {
-        const { error: orderUpdateErr } = await supabase
+        const { data: updatedOrderRows, error: orderUpdateErr } = await supabase
           .from('orders')
           .update({
             in_redex: true,
             redex_tracking_code: trackingCode,
             tracking_code: trackingCode,
             courier: 'REDEX',
-            status: 'CONFIRMED',
+            status: 'PUSHED',
             updated_at: new Date().toISOString(),
           })
-          .or(`id.eq.${orderId},order_id.eq.${orderId},order_number.eq.${orderId}`);
+          .or(buildOrderIdFilter(orderId))
+          .select('id, status');
 
-        supabaseUpdated = !orderUpdateErr;
+        orderUpdateSuccess = !orderUpdateErr && Array.isArray(updatedOrderRows) && updatedOrderRows.length > 0;
         if (orderUpdateErr) {
           console.warn('[API /api/delivery] Supabase dispatch update warning:', orderUpdateErr);
         }
@@ -902,15 +1733,49 @@ export async function POST(request: NextRequest) {
         console.warn('[API /api/delivery] Supabase dispatch update exception:', dbErr);
       }
 
+      const supabaseUpdated = delivUpsertSuccess && orderUpdateSuccess;
+
       // 8. Update Fallback store
       const allStored = getStoredFallbackOrders();
+      let matchedInFallback = false;
       for (const fb of allStored) {
         if (fb.id === orderId || fb.orderNumber === orderId) {
-          fb.status = 'CONFIRMED' as any;
+          fb.status = 'PUSHED' as any;
           (fb as any).in_redex = true;
           (fb as any).redex_tracking_code = trackingCode;
           (fb as any).tracking_code = trackingCode;
+          (fb as any).carrier_status = 'prete_a_expedier';
+          (fb as any).carrier_status_ar = 'جاهز للإرسال';
+          matchedInFallback = true;
         }
+      }
+      if (!matchedInFallback) {
+        allStored.push({
+          id: String(orderId),
+          orderNumber: String(orderId),
+          customerName: body.fullName || 'Client',
+          customerPhone: cleanPhone,
+          customerPhone2: clientPhone2 ? cleanAlgerianPhone(clientPhone2) : null,
+          wilayaCode: finalWilayaCode,
+          wilayaName: body.wilaya || '',
+          communeName: finalCommune,
+          deliveryType: stopDeskFlag === 1 ? 'STOP_DESK' : 'DOMICILE',
+          deliveryAddress: finalAddress,
+          packId: 'custom',
+          productName,
+          productPrice: Number(codAmount),
+          shippingFee: 0,
+          totalPayable: Number(codAmount),
+          status: 'PUSHED',
+          originHub: 'BISKRA_07',
+          createdAt: new Date().toISOString(),
+          remarks: [],
+          in_redex: true,
+          redex_tracking_code: trackingCode,
+          tracking_code: trackingCode,
+          carrier_status: 'prete_a_expedier',
+          carrier_status_ar: 'جاهز للإرسال',
+        } as any);
       }
       saveAllFallbackOrders(allStored);
 
@@ -918,13 +1783,16 @@ export async function POST(request: NextRequest) {
         success: true,
         trackingCode,
         trackingNumber: trackingCode,
-        status: 'confirmed',
+        status: 'prete_a_expedier',
+        carrierStatus: 'prete_a_expedier',
+        carrierStatusAr: 'جاهز للإرسال',
+        orderStatus: 'PUSHED',
         courierId: 'redex',
         courierName: 'Redex Express (EcoTrack)',
         labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`,
-        validation: validResult,
+        validated: false,
         supabaseSynced: supabaseUpdated,
-        message: `تم إرسال الطلبية #${orderId} واعتمادها بنجاح لدى Redex Express. رقم التتبع: ${trackingCode}`,
+        message: `تم إنشاء إرسالية الطلبية #${orderId} بنجاح لدى Redex Express (جاهز للإرسال). رقم التتبع: ${trackingCode}`,
       });
     }
 
@@ -946,6 +1814,10 @@ export async function POST(request: NextRequest) {
 
 // ── DELETE HANDLER ──────────────────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
+  if (!await verifyAdminSession(request)) {
+    return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const body = await request.json().catch(() => ({}));
