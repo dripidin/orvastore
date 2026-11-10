@@ -24,7 +24,8 @@ import {
   ALGERIA_58_WILAYAS,
   type CodOrderSubmission,
   calculateDeliveryTariff,
-  isStopDeskAllowed,
+  isStopDeskAllowed,  setLiveTariffs,
+
   isValidAlgerianPhone,
 } from "@/lib/types/checkout";
 
@@ -116,6 +117,24 @@ export function EmbeddedCodOrderForm({
     return isStopDeskAllowed(wilayaCode);
   }, [wilayaCode]);
 
+  // Live EcoTrack tariffs (falls back to the static matrix when unavailable)
+  const [tariffVersion, setTariffVersion] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/delivery-fees", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d?.success && d.fees) {
+          setLiveTariffs(d.fees);
+          setTariffVersion((v) => v + 1);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Dynamic Shipping Fee
   const shippingFee = useMemo(() => {
     try {
@@ -123,7 +142,7 @@ export function EmbeddedCodOrderForm({
     } catch {
       return 500;
     }
-  }, [wilayaCode, deliveryType]);
+  }, [wilayaCode, deliveryType, tariffVersion]);
 
   // Total Net Payable
   const totalPayable = effectivePrice + shippingFee;

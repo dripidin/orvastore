@@ -270,6 +270,14 @@ export async function submitCodOrderAction(
 ): Promise<CodOrderResult> {
   try {
     // 1. Server-Side Zod Validation
+    try {
+      const { getDeliveryFees } = await import('@/lib/delivery-fees');
+      const { setLiveTariffs } = await import('@/lib/types/checkout');
+      const live = await getDeliveryFees(false);
+      if (live.success) setLiveTariffs(live.fees);
+    } catch {
+      // fall back to the static tariff matrix
+    }
     const parseResult = codOrderSubmissionSchema.safeParse(submission);
     if (!parseResult.success) {
       const firstError = parseResult.error.issues[0]?.message || 'Données invalides';

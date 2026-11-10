@@ -268,16 +268,16 @@ function OrderRerouteDialogInner({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[92vw] sm:max-w-[25vw] sm:min-w-[360px] max-h-[90vh] overflow-y-auto p-4 text-right"
+        className="w-[92vw] sm:max-w-[480px] sm:min-w-[400px] max-h-[90vh] overflow-y-auto gap-3 rounded-xl border-zinc-200 p-0 text-right shadow-xl dark:border-zinc-800"
         dir="rtl"
       >
-        <DialogHeader className="border-b pb-3 text-right space-y-1">
+        <DialogHeader className="space-y-1 border-b border-zinc-200 bg-zinc-50/80 px-5 py-4 text-right backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/60">
           <div className="flex items-center justify-between gap-2">
-            <DialogTitle className="text-sm font-bold flex items-center gap-1.5">
-              <RefreshCw className="size-4 text-primary" />
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary"><RefreshCw className="size-4" /></span>
               <span>تحويل الطلبية (Switch Order)</span>
             </DialogTitle>
-            <Badge variant="outline" className="font-mono text-[11px]">
+            <Badge variant="outline" className="rounded-md bg-background font-mono text-[11px] tracking-tight">
               {order.id}
             </Badge>
           </div>
@@ -287,13 +287,13 @@ function OrderRerouteDialogInner({
         </DialogHeader>
 
         {isDelivered && (
-          <div className="my-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
+          <div className="mx-5 my-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
             <ShieldAlert className="size-4 shrink-0 mt-0.5 text-red-600" />
             <span>لا يمكن تحويل الطلبيات المسلّمة نهائياً (Delivered).</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1 text-xs [&>*:not(:last-child)]:mx-5">
           {formError && (
             <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2.5 text-xs font-medium text-red-600 dark:text-red-400 flex items-center gap-2">
               <AlertCircle className="size-3.5 shrink-0" />
@@ -507,7 +507,7 @@ function OrderRerouteDialogInner({
             </div>
           )}
 
-          <DialogFooter className="border-t pt-2.5 flex items-center justify-between gap-2">
+          <DialogFooter className="sticky bottom-0 -mx-0 flex flex-row-reverse items-center justify-between gap-2 border-t border-zinc-200 bg-background/90 px-5 py-3 backdrop-blur-md dark:border-zinc-800">
             <Button
               type="button"
               variant="outline"

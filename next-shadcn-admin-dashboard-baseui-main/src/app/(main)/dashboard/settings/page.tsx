@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { SettingsIntegrations } from "./settings-integrations";
+import { SyncFeesCard } from "./sync-fees-card";
 
 export const metadata: Metadata = {
   title: "System Settings & Integrations Center | ORVA Store",
@@ -18,6 +19,8 @@ export default function Page() {
       </header>
 
       <DevEnvironmentBanner />
+
+      <SyncFeesCard />
 
       {/* Unified Settings & Integrations */}
       <div dir="ltr">

@@ -1,5 +1,6 @@
 "use client";
 
+import { ShipmentTrackingPanel } from "./shipment-tracking-panel";
 import * as React from "react";
 import { format, parseISO } from "date-fns";
 import {
@@ -284,6 +285,8 @@ export function OrderDetailsDrawer({
               </Button>
             </div>
           )}
+
+          {trackingCode && <ShipmentTrackingPanel trackingCode={trackingCode} />}
 
           {/* Optional Conversion History */}
           {order.conversions && order.conversions.length > 0 && (

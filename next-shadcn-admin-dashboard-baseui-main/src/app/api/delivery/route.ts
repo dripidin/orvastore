@@ -37,7 +37,7 @@ function formatWilayaLabel(code?: number, name?: string): string {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const ORVA_MANUAL_STATUSES = new Set(['PENDING', 'CONFIRMED', 'CANCELLED']);
+const ORVA_MANUAL_STATUSES = new Set(['PENDING', 'CONFIRMED', 'CANCELLED', 'DELIVERED', 'RETURNED']);
 
 function buildOrderIdFilter(orderId: string): string {
   const clean = String(orderId).trim().replace(/[,()]/g, '');
@@ -756,7 +756,7 @@ export async function POST(request: NextRequest) {
       const normalizedStatus = String(status).toUpperCase();
       if (!ORVA_MANUAL_STATUSES.has(normalizedStatus)) {
         return NextResponse.json(
-          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled.` },
+          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled, delivered, returned.` },
           { status: 400 }
         );
       }
@@ -788,7 +788,7 @@ export async function POST(request: NextRequest) {
       const normalizedStatus = String(status).toUpperCase();
       if (!ORVA_MANUAL_STATUSES.has(normalizedStatus)) {
         return NextResponse.json(
-          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled.` },
+          { success: false, error: `Status '${status}' cannot be set manually. Allowed: pending, confirmed, cancelled, delivered, returned.` },
           { status: 400 }
         );
       }

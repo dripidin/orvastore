@@ -142,6 +142,17 @@ export function isStopDeskAllowed(wilayaCode: number): boolean {
   return wilayaCode <= 48 && wilaya?.zone !== 5;
 }
 
+export interface LiveTariff {
+  domicile: number;
+  stopdesk: number;
+}
+
+let liveTariffs: Record<number, LiveTariff> = {};
+
+/** Installs live EcoTrack tariffs (wilaya code -> fees). Static matrix remains the fallback. */
+export function setLiveTariffs(map: Record<number, LiveTariff>): void {
+  liveTariffs = map && typeof map === 'object' ? map : {};
+}
 export function calculateDeliveryTariff(
   wilayaCode: number,
   deliveryType: 'DOMICILE' | 'STOP_DESK'
@@ -156,6 +167,11 @@ export function calculateDeliveryTariff(
     );
   }
 
+  const live = liveTariffs[wilayaCode];
+  if (live) {
+    const liveFee = deliveryType === 'STOP_DESK' ? live.stopdesk : live.domicile;
+    if (Number.isFinite(liveFee) && liveFee > 0) return liveFee;
+  }
   const wilaya = ALGERIA_58_WILAYAS.find((w) => w.code === wilayaCode);
   const zone = wilaya?.zone ?? 2;
 

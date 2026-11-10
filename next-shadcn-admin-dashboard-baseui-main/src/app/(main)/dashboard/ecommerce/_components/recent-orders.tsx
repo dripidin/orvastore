@@ -389,11 +389,6 @@ export function RecentOrders() {
         )
       )
         return false;
-      if (
-        activeFilter === "Redex Station" &&
-        !(s === "redex_station" || cs === "vers_station" || cs === "vers_hub")
-      )
-        return false;
       if (activeFilter === "Shipped" && !(s === "shipped" || Boolean(order.in_redex))) return false;
       if (activeFilter === "Delivered" && s !== "delivered") return false;
       if (activeFilter === "Returned" && s !== "returned") return false;
@@ -781,8 +776,6 @@ export function RecentOrders() {
                     ? "Confirmed not pushed"
                     : filter === "Pushed to Redex"
                     ? "Pushed to Redex"
-                    : filter === "Redex Station"
-                    ? "Redex Station"
                     : filter === "Shipped"
                     ? "مشحونة"
                     : filter === "Delivered"

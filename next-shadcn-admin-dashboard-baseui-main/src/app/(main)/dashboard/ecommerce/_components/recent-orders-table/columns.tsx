@@ -518,6 +518,31 @@ export function createRecentOrdersColumns(
                     </DropdownMenuItem>
                   )}
 
+                  {onUpdateStatus && availableStatuses.includes("delivered") && (
+                    <DropdownMenuItem
+                      onClick={() => onUpdateStatus(row.original.id, "delivered")}
+                      disabled={isUpdating}
+                      className="cursor-pointer font-semibold flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-300"
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-3.5 text-emerald-600" />
+                        <span>مستلمة (Received)</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+
+                  {onUpdateStatus && availableStatuses.includes("returned") && (
+                    <DropdownMenuItem
+                      onClick={() => onUpdateStatus(row.original.id, "returned")}
+                      disabled={isUpdating}
+                      className="cursor-pointer font-semibold flex items-center justify-between text-xs text-orange-700 dark:text-orange-300"
+                    >
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="size-3.5 text-orange-600" />
+                        <span>مرتجعة (Returned)</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
                   {row.original.redex_tracking_code && (
                     <DropdownMenuItem
                       onClick={() => window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(row.original.redex_tracking_code!)}`, '_blank')}
