@@ -17,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShoppingBag,
+  Trash2,
   Truck,
   XCircle,
 } from "lucide-react";
@@ -213,6 +214,7 @@ export function createRecentOrdersColumns(
   onCopyOrderId?: (orderId: string) => void,
   onPushOrder?: (order: OrderRow) => void,
   onViewRisk?: (order: OrderRow) => void,
+  onDeleteOrder?: (order: OrderRow) => void,
 ): ColumnDef<DataTableFeatures, OrderRow>[] {
   return [
     {
@@ -565,6 +567,20 @@ export function createRecentOrdersColumns(
                       <span>نسخ رقم الطلبية</span>
                     </div>
                   </DropdownMenuItem>
+
+                  {onDeleteOrder && (
+                    <DropdownMenuItem
+                      onClick={() => onDeleteOrder(row.original)}
+                      disabled={isUpdating}
+                      variant="destructive"
+                      className="cursor-pointer flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Trash2 className="size-3.5" />
+                        <span>حذف الطلبية نهائياً</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
 
                   {row.original.phone && (
                     <DropdownMenuItem

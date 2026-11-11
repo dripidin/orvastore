@@ -202,6 +202,16 @@ export class ApiOrdersRepository implements IOrdersRepository {
     return res.success === true;
   }
 
+  /** Permanently deletes several orders in one request; returns the ids actually deleted. */
+  async bulkDeleteOrders(orderIds: string[]): Promise<{ deletedIds: string[]; failed: { orderId: string; error: string }[] }> {
+    const res = await this.requestJson<any>("/api/delivery?action=bulk_delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds }),
+    });
+    return { deletedIds: res.deletedIds ?? [], failed: res.failed ?? [] };
+  }
+
   async getAuditLogs(): Promise<AuditLogEntry[]> {
     try {
       const res = await this.requestJson<ApiEnvelope<AuditLogEntry[]>>("/api/delivery?action=audit_logs");

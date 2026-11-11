@@ -20,6 +20,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Trash2,
   SlidersHorizontal,
   Truck,
   X,
@@ -206,6 +207,7 @@ export function RecentOrders() {
   const [pendingStatusById, setPendingStatusById] = React.useState<Record<string, boolean>>({});
   const pendingStatusIds = React.useRef(new Set<string>());
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [isSyncingRedex, setIsSyncingRedex] = React.useState(false);
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "date", desc: true }]);
   const [pagination, setPagination] = React.useState<PaginationState>({
@@ -616,6 +618,71 @@ export function RecentOrders() {
   };
 
 
+  // Permanent deletion (single row or bulk selection across every page)
+  const deleteOrders = React.useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0 || isDeleting) return;
+      const sentToCourier = orders.filter((o) => ids.includes(o.id) && (o.in_redex || o.redex_tracking_code)).length;
+      const warning =
+        `حذف ${ids.length} طلبية نهائياً؟ لا يمكن التراجع عن هذا الإجراء.` +
+        (sentToCourier > 0 ? `\n\n${sentToCourier} منها مُرسلة لشركة التوصيل وسيتم إلغاؤها عندهم أيضاً.` : "");
+      if (!window.confirm(warning)) return;
+
+      setIsDeleting(true);
+      try {
+        const repo = getOrdersRepository() as ReturnType<typeof getOrdersRepository> & {
+          bulkDeleteOrders?: (ids: string[]) => Promise<{ deletedIds: string[]; failed: { orderId: string; error: string }[] }>;
+        };
+        let deletedIds: string[] = [];
+        let failed: { orderId: string; error: string }[] = [];
+        if (repo.bulkDeleteOrders) {
+          ({ deletedIds, failed } = await repo.bulkDeleteOrders(ids));
+        } else {
+          for (const id of ids) {
+            try {
+              if (await repo.deleteOrder(id)) deletedIds.push(id);
+              else failed.push({ orderId: id, error: "تعذر الحذف" });
+            } catch (err) {
+              failed.push({ orderId: id, error: err instanceof Error ? err.message : "تعذر الحذف" });
+            }
+          }
+        }
+
+        const removed = new Set(deletedIds);
+        setOrders((prev) => prev.filter((o) => !removed.has(o.id)));
+        setRowSelection((prev) => {
+          const next = { ...prev };
+          for (const id of removed) delete next[id];
+          return next;
+        });
+        setSelectedOrderForDetails((prev) => (prev && removed.has(prev.id) ? null : prev));
+
+        if (deletedIds.length > 0) {
+          toast.add({ title: "تم الحذف", description: `تم حذف ${deletedIds.length} طلبية نهائياً.`, type: "success" });
+          window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+        }
+        if (failed.length > 0) {
+          toast.add({
+            title: `تعذر حذف ${failed.length} طلبية`,
+            description: failed[0]?.error ?? "حاول مرة أخرى.",
+            type: "error",
+          });
+        }
+      } catch (reason) {
+        toast.add({
+          title: "تعذر الحذف",
+          description: reason instanceof Error ? reason.message : "حاول مرة أخرى.",
+          type: "error",
+        });
+      } finally {
+        setIsDeleting(false);
+      }
+    },
+    [orders, isDeleting],
+  );
+
+  const handleDeleteOrder = React.useCallback((row: OrderRow) => void deleteOrders([row.id]), [deleteOrders]);
+
   const handleCopyOrderId = React.useCallback(async (orderId: string) => {
     try {
       await navigator.clipboard.writeText(orderId);
@@ -635,6 +702,7 @@ export function RecentOrders() {
         handleCopyOrderId,
         handleOpenPushDialog,
         handleOpenRiskDialog,
+        handleDeleteOrder,
       ),
     [
       handleOpenDetails,
@@ -644,6 +712,7 @@ export function RecentOrders() {
       handleCopyOrderId,
       handleOpenPushDialog,
       handleOpenRiskDialog,
+      handleDeleteOrder,
     ],
   );
 
@@ -662,7 +731,13 @@ export function RecentOrders() {
     getRowId: (row) => row.id,
   });
 
-  const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length;
+  // Selection is keyed by order id, so it survives pagination, filters and the 30s auto-refresh.
+  const selectedIds = React.useMemo(
+    () => Object.keys(rowSelection).filter((k) => rowSelection[k] && orders.some((o) => o.id === k)),
+    [rowSelection, orders],
+  );
+  const selectedCount = selectedIds.length;
+  const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every((o) => rowSelection[o.id]);
   const isFiltersActive =
     searchQuery.trim() !== "" ||
     activeFilter !== "All" ||
@@ -905,8 +980,24 @@ export function RecentOrders() {
                 تم تحديد {selectedCount} طلبية
               </Badge>
               <span className="text-muted-foreground text-[11px]">
-                تطبيق إجراء جماعي على الطلبيات المحددة:
+                التحديد يبقى محفوظاً عند الانتقال بين الصفحات.
               </span>
+              {!allFilteredSelected && filteredOrders.length > selectedCount && (
+                <Button
+                  size="xs"
+                  variant="link"
+                  className="h-7 px-1 text-xs"
+                  onClick={() =>
+                    setRowSelection((prev) => {
+                      const next = { ...prev };
+                      for (const o of filteredOrders) next[o.id] = true;
+                      return next;
+                    })
+                  }
+                >
+                  تحديد كل النتائج ({filteredOrders.length})
+                </Button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
@@ -938,7 +1029,7 @@ export function RecentOrders() {
                 variant="outline"
                 disabled={isBulkUpdating}
                 onClick={() => {
-                  const selectedRows = filteredOrders.filter((o) => (rowSelection as any)[o.id]);
+                  const selectedRows = orders.filter((o) => rowSelection[o.id]);
                   exportOrdersToCsv(selectedRows, "orva-selected-orders");
                 }}
                 className="h-7 text-xs gap-1 bg-background"
@@ -949,8 +1040,19 @@ export function RecentOrders() {
 
               <Button
                 size="xs"
+                variant="destructive"
+                disabled={isBulkUpdating || isDeleting}
+                onClick={() => void deleteOrders(selectedIds)}
+                className="h-7 text-xs gap-1"
+              >
+                {isDeleting ? <RefreshCw className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+                <span>حذف المحدد ({selectedCount})</span>
+              </Button>
+
+              <Button
+                size="xs"
                 variant="ghost"
-                disabled={isBulkUpdating}
+                disabled={isBulkUpdating || isDeleting}
                 onClick={() => setRowSelection({})}
                 className="h-7 text-xs text-muted-foreground hover:text-foreground"
               >

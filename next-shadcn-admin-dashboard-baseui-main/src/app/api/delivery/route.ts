@@ -257,44 +257,63 @@ async function executeOrderCancellation(orderIdOrTracking: string, reason?: stri
   };
 }
 
+/** Tables whose rows reference orders.order_id with ON DELETE RESTRICT (must be cleared first). */
+const ORDER_CHILD_TABLES = [
+  'order_items',
+  'deliveries',
+  'order_timeline_events',
+  'order_conversions',
+  'delivery_validation_reconciliations',
+  'cod_reconciliations',
+];
+
 /**
- * Hard Delete Order (Only for cleanup when specifically required)
+ * Hard Delete Order: removes the order and its linked rows, and cancels the parcel at the courier.
  */
-async function executeOrderHardDeletion(orderIdOrTracking: string) {
+async function executeOrderHardDeletion(
+  orderIdOrTracking: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
   const target = String(orderIdOrTracking || '').trim();
   if (!target) return { success: false, error: 'Order ID is required' };
 
-  const supabase = getSupabaseServerClient() as any;
-
-  // Cancel on Redex first
+  let dbDeleted = false;
+  let dbError: string | null = null;
+  let supabase: any = null;
   try {
-    const { data: orderRow } = await supabase
-      .from('orders')
-      .select('tracking_code, redex_tracking_code')
-      .or(buildOrderIdFilter(target))
-      .maybeSingle();
-
-    const tracking = orderRow?.tracking_code || orderRow?.redex_tracking_code || (target.startsWith('EC') ? target : null);
-    if (tracking) {
-      const ecotrack = getEcoTrackClient();
-      await ecotrack.deleteOrder(tracking);
-    }
-  } catch (err) {
-    console.warn('[API /api/delivery] Hard delete Redex check error:', err);
+    supabase = getSupabaseServerClient() as any;
+  } catch {
+    supabase = null;
   }
 
-  // Delete from Supabase orders & deliveries
-  try {
-    await supabase
+  if (supabase) {
+    const { data: rows } = await supabase
       .from('orders')
-      .delete()
+      .select('id, order_id, tracking_code, redex_tracking_code')
       .or(buildOrderIdFilter(target));
-    await supabase
-      .from('deliveries')
-      .delete()
-      .or(`order_id.eq.${target}`);
-  } catch (dbErr) {
-    console.warn('[API /api/delivery] Supabase hard delete warning:', dbErr);
+    const matches: any[] = rows ?? [];
+
+    for (const row of matches) {
+      // Cancel the parcel at the courier first so a deleted order is never shipped
+      const tracking = row.tracking_code || row.redex_tracking_code;
+      if (tracking) {
+        try {
+          await getEcoTrackClient().deleteOrder(tracking);
+        } catch (err) {
+          console.warn('[API /api/delivery] courier delete warning:', err);
+        }
+      }
+
+      for (const table of ORDER_CHILD_TABLES) {
+        const { error } = await supabase.from(table).delete().eq('order_id', row.order_id);
+        if (error && !/does not exist|schema cache|could not find/i.test(error.message || '')) {
+          console.warn(`[API /api/delivery] delete ${table} warning:`, error.message);
+        }
+      }
+
+      const { error } = await supabase.from('orders').delete().eq('id', row.id);
+      if (error) dbError = error.message;
+      else dbDeleted = true;
+    }
   }
 
   // Remove from fallback store
@@ -306,10 +325,15 @@ async function executeOrderHardDeletion(orderIdOrTracking: string) {
       (fb as any).redex_tracking_code !== target &&
       (fb as any).tracking_code !== target
   );
-  if (filtered.length !== allStored.length) {
-    saveAllFallbackOrders(filtered);
-  }
+  const fallbackDeleted = filtered.length !== allStored.length;
+  if (fallbackDeleted) saveAllFallbackOrders(filtered);
 
+  if (dbError && !dbDeleted) {
+    return { success: false, error: `تعذر حذف الطلبية #${target}: ${dbError}` };
+  }
+  if (!dbDeleted && !fallbackDeleted) {
+    return { success: false, error: `الطلبية #${target} غير موجودة.` };
+  }
   return { success: true, message: `تم حذف الطلبية #${target} نهائياً.` };
 }
 
@@ -1796,11 +1820,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Hard delete legacy support
+    // Hard delete (dashboard "حذف")
     if (action === 'delete' || action === 'hard_delete') {
       const orderId = body.orderId || body.orderNumber || body.id || body.tracking;
       const result = await executeOrderHardDeletion(orderId);
-      return NextResponse.json(result);
+      return NextResponse.json(result, { status: result.success ? 200 : 400 });
+    }
+
+    // Bulk hard delete: { orderIds: string[] }
+    if (action === 'bulk_delete') {
+      const ids: string[] = Array.isArray(body.orderIds) ? body.orderIds.map(String).slice(0, 500) : [];
+      if (ids.length === 0) {
+        return NextResponse.json({ success: false, error: 'orderIds array required' }, { status: 400 });
+      }
+      const deletedIds: string[] = [];
+      const failed: { orderId: string; error: string }[] = [];
+      for (const id of ids) {
+        const result = await executeOrderHardDeletion(id);
+        if (result.success) deletedIds.push(id);
+        else failed.push({ orderId: id, error: result.error || 'Delete failed' });
+      }
+      return NextResponse.json(
+        {
+          success: deletedIds.length > 0,
+          deletedCount: deletedIds.length,
+          deletedIds,
+          failedCount: failed.length,
+          failed,
+          error: deletedIds.length === 0 ? failed[0]?.error || 'No orders deleted' : undefined,
+        },
+        { status: deletedIds.length > 0 ? 200 : 400 }
+      );
     }
 
     return NextResponse.json({ success: false, error: 'Unsupported action' }, { status: 400 });
