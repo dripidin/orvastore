@@ -5,7 +5,7 @@ import { StorefrontHeader } from "@/components/storefront/layout/storefront-head
 import { StorefrontFooter } from "@/components/storefront/layout/storefront-footer";
 import { MetaPixel } from "@/components/storefront/analytics/meta-pixel";
 import { getAdminSettingsAction } from "@/app/actions/settings";
-import { listPublishedProducts } from "@/lib/catalog/server";
+import { listBestSellers, listPublishedProducts } from "@/lib/catalog/server";
 import { toNavProduct } from "@/lib/catalog/types";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,10 @@ export const metadata: Metadata = {
 };
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
-  const navProducts = (await listPublishedProducts()).map(toNavProduct);
+  const published = await listPublishedProducts();
+  const navProducts = published.map(toNavProduct);
+  // Navbar: only the 2 most ordered products; the footer keeps the full list.
+  const bestSellers = (await listBestSellers(2, published)).map(toNavProduct);
   let pixelId = "";
   let enabled = true;
 
@@ -43,7 +46,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <MetaPixel pixelId={pixelId} enabled={enabled} />
       <StorefrontDirectionSync />
       <TopNoticeBar />
-      <StorefrontHeader products={navProducts} />
+      <StorefrontHeader products={bestSellers} />
       <main className="flex-1 w-full">{children}</main>
       <StorefrontFooter products={navProducts} />
     </div>

@@ -141,12 +141,27 @@ export class ApiStorePagesRepository implements IStorePagesRepository {
   }
 }
 
-/** Landing-page layouts stored on the product (products.metadata.layout). */
+export const ALL_PRODUCTS_LAYOUT_ID = "global_default";
+
+/**
+ * Landing-page layouts stored on the product (products.metadata.layout).
+ * productId "global_default" means "every product page" (unified design applied in one go).
+ */
 export class ApiLayoutRepository implements ILayoutRepository {
   private products = getApiProductsRepository();
 
+  private async targets(productId: string): Promise<string[]> {
+    if (productId !== ALL_PRODUCTS_LAYOUT_ID) return [productId];
+    return (await this.products.getProducts()).map((p) => p.id);
+  }
+
   /** Returns the unpublished draft when there is one, otherwise the live layout. */
-  async getLayoutConfig(productId = "global_default"): Promise<ProductPageLayoutConfig> {
+  async getLayoutConfig(productId = ALL_PRODUCTS_LAYOUT_ID): Promise<ProductPageLayoutConfig> {
+    if (productId === ALL_PRODUCTS_LAYOUT_ID) {
+      const first = (await this.products.getProducts())[0];
+      const cfg = first?.layoutDraft ?? first?.layout;
+      return cfg ? { ...cfg, productId } : createDefaultLayoutConfig(productId);
+    }
     const p = await this.products.getProductById(productId);
     const cfg = p?.layoutDraft ?? p?.layout;
     return cfg ? { ...cfg, productId } : createDefaultLayoutConfig(productId);
@@ -155,22 +170,26 @@ export class ApiLayoutRepository implements ILayoutRepository {
   /** Saves a draft: visible in the designer only, not in the store. */
   async saveLayoutConfig(config: ProductPageLayoutConfig): Promise<ProductPageLayoutConfig> {
     const saved = { ...config, updatedAt: new Date().toISOString() };
-    await this.products.saveLayout(config.productId, saved, false);
+    for (const id of await this.targets(config.productId)) {
+      await this.products.saveLayout(id, { ...saved, productId: id }, false);
+    }
     return saved;
   }
 
   /** Makes the layout live on the product's landing page. */
   async publishLayoutConfig(config: ProductPageLayoutConfig): Promise<ProductPageLayoutConfig> {
     const saved = { ...config, updatedAt: new Date().toISOString() };
-    await this.products.saveLayout(config.productId, saved, true);
+    for (const id of await this.targets(config.productId)) {
+      await this.products.saveLayout(id, { ...saved, productId: id }, true);
+    }
     return saved;
   }
 
-  async resetLayoutConfig(productId = "global_default"): Promise<ProductPageLayoutConfig> {
+  async resetLayoutConfig(productId = ALL_PRODUCTS_LAYOUT_ID): Promise<ProductPageLayoutConfig> {
     return this.publishLayoutConfig(createDefaultLayoutConfig(productId));
   }
 
-  async restoreDefaultLayout(productId = "global_default"): Promise<ProductPageLayoutConfig> {
+  async restoreDefaultLayout(productId = ALL_PRODUCTS_LAYOUT_ID): Promise<ProductPageLayoutConfig> {
     return this.resetLayoutConfig(productId);
   }
 }

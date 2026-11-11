@@ -38,6 +38,7 @@ export interface Product {
   highlights?: string[];           // landing-page bullet points
   layout?: ProductPageLayoutConfig | null; // live landing-page section layout (designer)
   layoutDraft?: ProductPageLayoutConfig | null; // unpublished designer draft
+  showOutOfStock?: boolean;        // admin switch: show "نفدت الكمية مؤقتاً" on cards and landing page
 }
 
 export type ProductCreateInput = Omit<Product, "id" | "createdAt" | "updatedAt"> & {

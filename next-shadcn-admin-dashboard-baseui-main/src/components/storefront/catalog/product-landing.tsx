@@ -25,7 +25,7 @@ export async function ProductLanding({ product }: { product: StoreProduct }) {
   const others = (await listPublishedProducts()).filter((p) => p.id !== product.id);
   const related =
     others.find((p) => p.packId === product.landing.crossSellTargetId) ??
-    others.find((p) => p.stockQuantity > 0) ??
+    others.find((p) => !p.showOutOfStock) ??
     others[0] ??
     null;
 
@@ -35,6 +35,7 @@ export async function ProductLanding({ product }: { product: StoreProduct }) {
       pack={product.landing}
       layout={product.layout}
       related={related?.landing ?? null}
+      showOutOfStock={product.showOutOfStock}
     />
   );
 }

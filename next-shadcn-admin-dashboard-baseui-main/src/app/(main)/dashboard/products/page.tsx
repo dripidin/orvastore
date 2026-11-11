@@ -85,6 +85,7 @@ export default function ProductsManagementPage() {
   const [formSellingPrice, setFormSellingPrice] = useState<number | "">("");
   const [formOriginalPrice, setFormOriginalPrice] = useState<number | "">("");
   const [formHighlights, setFormHighlights] = useState("");
+  const [formShowOutOfStock, setFormShowOutOfStock] = useState(false);
   const [formPurchaseCost, setFormPurchaseCost] = useState<number | "">("");
   const [formMarketingCost, setFormMarketingCost] = useState<number | "">("");
   const [formStockQuantity, setFormStockQuantity] = useState<number | "">("");
@@ -173,6 +174,21 @@ export default function ProductsManagementPage() {
     return () => window.removeEventListener("orva:products-updated", handleUpdate);
   }, [repo]);
 
+  // Quick Create → "منتج جديد" opens the empty product form (/dashboard/products?create=1)
+  useEffect(() => {
+    const openNew = () => {
+      setEditingId(null);
+      setIsFormOpen(true);
+      setTimeout(() => formSectionRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    };
+    if (new URLSearchParams(window.location.search).get("create") === "1") {
+      window.history.replaceState(null, "", window.location.pathname);
+      openNew();
+    }
+    window.addEventListener("orva:new-product", openNew);
+    return () => window.removeEventListener("orva:new-product", openNew);
+  }, []);
+
   // ── Form Handlers ─────────────────────────────────────────────────────────
   const resetForm = () => {
     setEditingId(null);
@@ -183,6 +199,7 @@ export default function ProductsManagementPage() {
     setFormSellingPrice("");
     setFormOriginalPrice("");
     setFormHighlights("");
+    setFormShowOutOfStock(false);
     setFormPurchaseCost("");
     setFormMarketingCost("");
     setFormStockQuantity("");
@@ -200,6 +217,7 @@ export default function ProductsManagementPage() {
     setFormSellingPrice(prod.sellingPrice);
     setFormOriginalPrice(prod.originalPrice ?? "");
     setFormHighlights((prod.highlights ?? []).join("\n"));
+    setFormShowOutOfStock(prod.showOutOfStock === true);
     setFormPurchaseCost(prod.purchaseCost);
     setFormMarketingCost(prod.marketingCostPerOrder);
     setFormStockQuantity(prod.stockQuantity);
@@ -321,6 +339,7 @@ export default function ProductsManagementPage() {
             .split("\n")
             .map((line) => line.trim())
             .filter(Boolean),
+          showOutOfStock: formShowOutOfStock,
         });
         setFeedbackMessage({ type: "success", text: `تم تحديث المنتج "${formTitle}" بنجاح.` });
       } else {
@@ -341,6 +360,7 @@ export default function ProductsManagementPage() {
             .split("\n")
             .map((line) => line.trim())
             .filter(Boolean),
+          showOutOfStock: formShowOutOfStock,
         });
         setFeedbackMessage({ type: "success", text: `تم إضافة المنتج الجديد "${formTitle}" إلى الكتالوج.` });
       }
@@ -903,6 +923,25 @@ export default function ProductsManagementPage() {
                   />
                 </div>
 
+                <label
+                  htmlFor="formShowOutOfStock"
+                  className="md:col-span-2 flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3"
+                >
+                  <input
+                    id="formShowOutOfStock"
+                    type="checkbox"
+                    checked={formShowOutOfStock}
+                    onChange={(e) => setFormShowOutOfStock(e.target.checked)}
+                    className="mt-0.5 size-4 accent-primary"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold">إظهار رسالة "نفدت الكمية مؤقتاً" في المتجر</span>
+                    <span className="block text-xs text-muted-foreground">
+                      تظهر على بطاقة المنتج في كل صفحات المتجر وفي صفحة الهبوط. أنت من يقرر إظهارها أو إخفاءها.
+                    </span>
+                  </span>
+                </label>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="formPurchaseCost" className="text-sm font-semibold flex items-center justify-between">
                     <span className="text-amber-600 dark:text-amber-400">سعر الشراء / التكلفة (د.ج) *</span>
@@ -1158,6 +1197,11 @@ export default function ProductsManagementPage() {
                                 >
                                   {prod.status === "active" ? prod.publicUrl : `${prod.publicUrl} (غير منشور)`}
                                 </a>
+                              )}
+                              {prod.showOutOfStock && (
+                                <span className="mt-0.5 block w-fit rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                  نفدت الكمية مؤقتاً
+                                </span>
                               )}
                             </div>
                           </div>

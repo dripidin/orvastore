@@ -13,6 +13,8 @@ export interface LandingOverrides {
   reviewsCount?: number;
   alternatePriceDzd?: number;
   crossSellSlug?: string;
+  /** Admin switch: show the "out of stock" notice on product cards and the landing page. */
+  showOutOfStock?: boolean;
   seoTitle?: string;
   seoDescription?: string;
 }
@@ -32,6 +34,7 @@ export interface StoreProduct {
   originalPriceDzd: number | null;
   images: string[];
   stockQuantity: number;
+  showOutOfStock: boolean;
   status: CatalogStatus;
   isFeatured: boolean;
   sortOrder: number;

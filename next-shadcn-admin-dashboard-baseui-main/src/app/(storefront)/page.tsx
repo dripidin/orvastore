@@ -15,6 +15,8 @@ import {
 
 import WaveMesh from "@/components/ui/wave-mesh";
 import { ProductGrid } from "@/components/storefront/catalog/product-card";
+import { CrownPartnerSection } from "@/components/storefront/home/crown-partner-section";
+import { ProductRequestForm } from "@/components/storefront/home/product-request-form";
 import { listPublishedProducts } from "@/lib/catalog/server";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +26,7 @@ export default async function StorefrontHomePage() {
   const bestSeller = products.find((p) => p.stockQuantity > 0) ?? products[0];
 
   return (
-    <div className="space-y-16 sm:space-y-24 pb-20">
+    <div className="space-y-16 sm:space-y-24">
       {/* 1. Hero Banner */}
       <section className="relative overflow-hidden border-b border-slate-200 bg-white pt-12 pb-16 sm:pt-20">
         <div className="pointer-events-none absolute inset-0 z-0">
@@ -192,6 +194,12 @@ export default async function StorefrontHomePage() {
           </div>
         </div>
       </section>
+
+      {/* Customer product requests */}
+      <ProductRequestForm />
+
+      {/* CROWN partner trust band (white, right before the footer) */}
+      <CrownPartnerSection />
     </div>
   );
 }

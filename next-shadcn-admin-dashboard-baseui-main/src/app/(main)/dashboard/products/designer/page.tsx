@@ -123,6 +123,10 @@ export default function ProductPageDesigner() {
     if (selectedProductId && selectedProductId !== "global_default") {
       visitorTracker.trackProductView(selectedProductId);
     }
+    if (selectedProductId === "global_default") {
+      setCurrentPage(null);
+      return;
+    }
     storePagesRepo.getPageByProductId(selectedProductId).then((p) => {
       setCurrentPage(p);
     });
@@ -167,14 +171,36 @@ export default function ProductPageDesigner() {
       setCurrentConfig(JSON.parse(JSON.stringify(saved)));
       setFeedback({
         type: "success",
-        text: `تم حفظ مسوّدة تصميم صفحة "${selectedProduct?.title || "المنتج"}". اضغط "نشر" لتطبيقها على المتجر.`,
+        text: isAllProducts
+          ? `تم حفظ مسوّدة التصميم الموحد لجميع صفحات المنتجات (${products.length}). اضغط "نشر" لتطبيقها على المتجر.`
+          : `تم حفظ مسوّدة تصميم صفحة "${selectedProduct?.title || "المنتج"}". اضغط "نشر" لتطبيقها على المتجر.`,
       });
     } catch {
       setFeedback({ type: "error", text: "حدث خطأ أثناء حفظ المسودة." });
     }
   };
 
+  const isAllProducts = selectedProductId === "global_default";
+
   const handlePublishFromDesigner = async () => {
+    if (isAllProducts) {
+      setPublishing(true);
+      try {
+        const saved = await layoutRepo.publishLayoutConfig(currentConfig);
+        setSavedConfig(saved);
+        setCurrentConfig(JSON.parse(JSON.stringify(saved)));
+        await fetch("/api/store-publish", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+        setFeedback({
+          type: "success",
+          text: `تم تطبيق التصميم الموحد ونشره على جميع صفحات المنتجات (${products.length} صفحة).`,
+        });
+      } catch (err: unknown) {
+        setFeedback({ type: "error", text: err instanceof Error ? err.message : "تعذر تطبيق التصميم الموحد." });
+      } finally {
+        setPublishing(false);
+      }
+      return;
+    }
     if (!currentPage) return;
     setPublishing(true);
     try {
@@ -338,7 +364,7 @@ export default function ProductPageDesigner() {
             حفظ المسودة
           </Button>
 
-          {currentPage && (
+          {(currentPage || isAllProducts) && (
             <Button
               size="sm"
               onClick={handlePublishFromDesigner}
@@ -346,7 +372,7 @@ export default function ProductPageDesigner() {
               className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
             >
               <CheckCircle2 className={`h-3.5 w-3.5 ${publishing ? "animate-spin" : ""}`} />
-              <span>نشر الصفحة للعملاء</span>
+              <span>{isAllProducts ? `نشر على جميع الصفحات (${products.length})` : "نشر الصفحة للعملاء"}</span>
             </Button>
           )}
         </div>
@@ -382,7 +408,7 @@ export default function ProductPageDesigner() {
             onChange={(e) => setSelectedProductId(e.target.value)}
             className="w-full bg-background border rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-primary focus:outline-none"
           >
-            <option value="global_default">🌐 التخطيط الافتراضي العام لجميع المنتجات</option>
+            <option value="global_default">🌐 جميع صفحات المنتجات دفعة واحدة (تصميم موحد)</option>
             {products.map((p) => (
               <option key={p.id} value={p.id}>
                 📦 {p.title} ({p.sku}) — {new Intl.NumberFormat("fr-DZ").format(p.sellingPrice)} د.ج

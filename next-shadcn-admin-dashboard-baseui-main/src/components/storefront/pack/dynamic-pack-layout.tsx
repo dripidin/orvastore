@@ -29,9 +29,17 @@ export interface DynamicPackLayoutProps {
   layout?: ProductPageLayoutConfig | null;
   /** Product recommended at the bottom of the page. */
   related?: StorefrontPack | null;
+  /** Admin switch: show the "temporarily out of stock" notice. */
+  showOutOfStock?: boolean;
 }
 
-export function DynamicPackLayout({ packId, pack, layout, related = null }: DynamicPackLayoutProps) {
+export function DynamicPackLayout({
+  packId,
+  pack,
+  layout,
+  related = null,
+  showOutOfStock = false,
+}: DynamicPackLayoutProps) {
   const [layoutConfig] = useState<ProductPageLayoutConfig>(() => layout ?? createDefaultLayoutConfig(pack.slug));
   const hasDiscount = pack.originalPriceDzd > pack.priceDzd;
 
@@ -113,9 +121,13 @@ export function DynamicPackLayout({ packId, pack, layout, related = null }: Dyna
             </>
           )}
         </div>
-        <div className="text-xs text-amber-800 font-medium bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg">
-          الدفع عند الاستلام
-        </div>
+        {showOutOfStock ? (
+          <div className="text-xs text-white font-bold bg-slate-900 px-3 py-1 rounded-lg">نفدت الكمية مؤقتاً</div>
+        ) : (
+          <div className="text-xs text-amber-800 font-medium bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg">
+            الدفع عند الاستلام
+          </div>
+        )}
       </div>
 
       {/* Highlights Bullet List (controlled by showDescription) */}

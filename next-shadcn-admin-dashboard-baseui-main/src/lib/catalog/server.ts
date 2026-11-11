@@ -127,6 +127,7 @@ function toStoreProduct(row: ProductRow): StoreProduct {
     originalPriceDzd: row.original_price == null ? null : num(row.original_price),
     images,
     stockQuantity: num(row.stock_quantity),
+    showOutOfStock: meta.landing?.showOutOfStock === true,
     status: row.status,
     isFeatured: row.is_featured !== false,
     sortOrder: num(meta.sortOrder, 100),
@@ -190,6 +191,34 @@ export async function getPublishedProductBySlug(slug: string): Promise<StoreProd
     console.warn("[catalog] getPublishedProductBySlug fallback:", err);
     return legacyFallback().find((p) => p.slug === slug) ?? null;
   }
+}
+
+/** Published products ranked by number of (non-cancelled) orders; ties fall back to catalog order. */
+export async function listBestSellers(limit = 2, published?: StoreProduct[]): Promise<StoreProduct[]> {
+  const products = published ?? (await listPublishedProducts());
+  const counts = new Map<string, number>();
+  try {
+    const { data, error } = await db()
+      .from("orders")
+      .select("pack_id, status")
+      .not("pack_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const status = String(row.status || "").toUpperCase();
+      if (status === "CANCELLED" || status === "DELETED") continue;
+      const key = String(row.pack_id).toUpperCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  } catch (err) {
+    console.warn("[catalog] listBestSellers: order counts unavailable:", err);
+  }
+  return products
+    .map((p, index) => ({ p, index, n: counts.get(p.packId) ?? 0 }))
+    .sort((a, b) => b.n - a.n || a.index - b.index)
+    .slice(0, limit)
+    .map((x) => x.p);
 }
 
 /** Accepted unit prices for an order line, read from the DB (null = product unknown / DB offline). */
@@ -261,6 +290,7 @@ function toAdminProduct(row: ProductRow, priv?: { purchase: number; marketing: n
     highlights: sp.landing.highlightsAr,
     layout: sp.layout,
     layoutDraft: row.metadata?.layoutDraft ?? null,
+    showOutOfStock: sp.showOutOfStock,
   };
 }
 
@@ -325,7 +355,7 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
     images: input.images?.length ? input.images : [],
     lowStockThreshold: input.lowStockThreshold ?? 5,
     sortOrder: 100,
-    landing: { highlightsAr: input.highlights ?? [] },
+    landing: { highlightsAr: input.highlights ?? [], showOutOfStock: input.showOutOfStock === true },
     layout: input.layout ?? createDefaultLayoutConfig(slug),
   };
 
@@ -374,6 +404,9 @@ export async function adminUpdateProduct(id: string, input: AdminProductInput): 
   if (input.lowStockThreshold !== undefined) meta.lowStockThreshold = input.lowStockThreshold;
   if (input.highlights !== undefined) meta.landing = { ...(meta.landing ?? {}), highlightsAr: input.highlights };
   if (input.landing !== undefined) meta.landing = { ...(meta.landing ?? {}), ...input.landing };
+  if (input.showOutOfStock !== undefined) {
+    meta.landing = { ...(meta.landing ?? {}), showOutOfStock: input.showOutOfStock === true };
+  }
   if (input.layoutDraft !== undefined) meta.layoutDraft = input.layoutDraft;
   if (input.layout !== undefined) {
     meta.layout = input.layout;

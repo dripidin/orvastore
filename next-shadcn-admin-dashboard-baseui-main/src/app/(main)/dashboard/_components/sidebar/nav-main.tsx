@@ -1,9 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import * as React from "react";
 
-import { ChevronRight, MailIcon, PlusCircleIcon } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+
+import { ChevronRight, MailIcon, PackagePlus, PlusCircleIcon, ShoppingBag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -28,6 +30,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+
+import { QuickOrderDialog } from "../quick-order-dialog";
 import type {
   NavBadge,
   NavGroup,
@@ -83,8 +87,38 @@ function hasSubItems(item: NavMainItem): item is NavMainParentItem {
   return Boolean(item.subItems?.length);
 }
 
+/** Unread customer product requests, refreshed every minute and cleared when the inbox is opened. */
+function useUnreadRequests(): number {
+  const [unread, setUnread] = React.useState(0);
+  React.useEffect(() => {
+    let active = true;
+    const load = () =>
+      fetch("/api/product-requests?count=1", { credentials: "same-origin", cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (active && d?.success) setUnread(Number(d.unread) || 0);
+        })
+        .catch(() => undefined);
+    void load();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 60000);
+    const clear = () => setUnread(0);
+    window.addEventListener("orva:requests-read", clear);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+      window.removeEventListener("orva:requests-read", clear);
+    };
+  }, []);
+  return unread;
+}
+
 export function NavMain({ items }: NavMainProps) {
   const path = usePathname();
+  const router = useRouter();
+  const unread = useUnreadRequests();
+  const [quickOrderOpen, setQuickOrderOpen] = React.useState(false);
 
   const isItemActive = (item: NavMainItem) => {
     if (hasSubItems(item)) {
@@ -108,25 +142,58 @@ export function NavMain({ items }: NavMainProps) {
         <SidebarGroupContent className="flex flex-col gap-2">
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-2">
-              <SidebarMenuButton
-                tooltip="Quick Create"
-                className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-              >
-                <PlusCircleIcon />
-                <span>Quick Create</span>
-              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <SidebarMenuButton
+                      tooltip="Quick Create"
+                      className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+                    />
+                  }
+                >
+                  <PlusCircleIcon />
+                  <span>Quick Create</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => setQuickOrderOpen(true)} className="cursor-pointer gap-2">
+                      <ShoppingBag className="size-4 text-primary" />
+                      <span>طلبية جديدة</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        path.replace(/\/$/, "") === "/dashboard/products"
+                          ? window.dispatchEvent(new CustomEvent("orva:new-product"))
+                          : router.push("/dashboard/products?create=1")
+                      }
+                      className="cursor-pointer gap-2"
+                    >
+                      <PackagePlus className="size-4 text-primary" />
+                      <span>منتج جديد</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 size="icon"
-                className="h-9 w-9 shrink-0 group-data-[collapsible=icon]:opacity-0"
+                className="relative h-9 w-9 shrink-0 group-data-[collapsible=icon]:opacity-0"
                 variant="outline"
+                render={<Link prefetch={false} href="/dashboard/requests" />}
+                title="طلبات المنتجات من الزبائن"
               >
                 <MailIcon />
-                <span className="sr-only">Inbox</span>
+                {unread > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 font-bold text-[10px] text-white tabular-nums">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
+                <span className="sr-only">طلبات الزبائن ({unread} جديدة)</span>
               </Button>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+      <QuickOrderDialog open={quickOrderOpen} onOpenChange={setQuickOrderOpen} />
       {items.map((group) => (
         <SidebarGroup key={group.id}>
           {group.label && (

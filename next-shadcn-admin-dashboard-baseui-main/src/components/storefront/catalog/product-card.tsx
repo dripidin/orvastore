@@ -7,7 +7,7 @@ import { formatDzd, type StoreProduct } from "@/lib/catalog/types";
 
 export function ProductCard({ product, priority = false }: { product: StoreProduct; priority?: boolean }) {
   const { landing } = product;
-  const outOfStock = product.stockQuantity <= 0;
+  const outOfStock = product.showOutOfStock;
   const hasDiscount = landing.originalPriceDzd > landing.priceDzd;
   const discountPct = hasDiscount ? Math.round((landing.savingsDzd / landing.originalPriceDzd) * 100) : 0;
 

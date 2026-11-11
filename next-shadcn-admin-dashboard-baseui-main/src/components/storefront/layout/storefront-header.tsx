@@ -50,7 +50,7 @@ export function StorefrontHeader({ products = [] }: { products?: NavProduct[] })
 
         {/* Quick Pack Navigation Links (Desktop) */}
         <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1.5 rounded-full border border-slate-200 text-xs font-bold text-slate-700">
-          {products.slice(0, 3).map((p, i) => {
+          {products.slice(0, 2).map((p, i) => {
             const Icon = NAV_ICONS[i % NAV_ICONS.length];
             return (
               <Link
