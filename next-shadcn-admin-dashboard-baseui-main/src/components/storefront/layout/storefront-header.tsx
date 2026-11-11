@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Wrench, Package, Flame } from "lucide-react";
+import { Flame, LayoutGrid, Package, Wrench } from "lucide-react";
+import { formatDzd, type NavProduct } from "@/lib/catalog/types";
 import { PhoneBadge } from "./phone-badge";
 
-export function StorefrontHeader() {
+const NAV_ICONS = [Package, Flame, Wrench];
+
+export function StorefrontHeader({ products = [] }: { products?: NavProduct[] }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,31 +50,38 @@ export function StorefrontHeader() {
 
         {/* Quick Pack Navigation Links (Desktop) */}
         <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1.5 rounded-full border border-slate-200 text-xs font-bold text-slate-700">
+          {products.slice(0, 3).map((p, i) => {
+            const Icon = NAV_ICONS[i % NAV_ICONS.length];
+            return (
+              <Link
+                key={p.id}
+                href={p.route}
+                className="px-3.5 py-1.5 rounded-full hover:bg-white hover:text-amber-600 hover:shadow-2xs transition flex items-center gap-1.5 max-w-56"
+              >
+                <Icon className="size-3.5 shrink-0 text-amber-600" />
+                <span className="truncate">{p.title}</span>
+                <span className="shrink-0 font-mono text-slate-500">({formatDzd(p.priceDzd)})</span>
+              </Link>
+            );
+          })}
           <Link
-            href="/pack1"
-            className="px-3.5 py-1.5 rounded-full hover:bg-white hover:text-amber-600 hover:shadow-2xs transition flex items-center gap-1.5"
+            href="/shop/"
+            className="px-3.5 py-1.5 rounded-full bg-slate-900 text-white hover:bg-amber-500 hover:text-slate-950 transition flex items-center gap-1.5"
           >
-            <Package className="size-3.5 text-amber-600" />
-            <span>باك 1 (4,950 د.ج)</span>
-          </Link>
-          <Link
-            href="/pack2"
-            className="px-3.5 py-1.5 rounded-full hover:bg-white hover:text-amber-600 hover:shadow-2xs transition flex items-center gap-1.5"
-          >
-            <Flame className="size-3.5 text-amber-600" />
-            <span>باك 2 فيسوز (12,950 د.ج)</span>
-          </Link>
-          <Link
-            href="/pack3"
-            className="px-3.5 py-1.5 rounded-full hover:bg-white hover:text-amber-600 hover:shadow-2xs transition flex items-center gap-1.5"
-          >
-            <Wrench className="size-3.5 text-amber-600" />
-            <span>باك 3 سودير (15,950 د.ج)</span>
+            <LayoutGrid className="size-3.5" />
+            <span>كل المنتجات</span>
           </Link>
         </nav>
 
         {/* Customer Care Hotline */}
         <div className="flex items-center gap-3">
+          <Link
+            href="/shop/"
+            className="lg:hidden inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white"
+          >
+            <LayoutGrid className="size-3.5" />
+            المنتجات
+          </Link>
           <PhoneBadge phone="0798282495" />
         </div>
       </div>

@@ -58,7 +58,7 @@ import {
   computeUnitMargin,
   computeEstimatedOrderProfit,
 } from "@/lib/repository/product-types";
-import { getMockProductsRepository } from "@/lib/repository/mock-products-repository";
+import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import { storeProductImage, deleteProductImageById } from "@/lib/product-image-db";
 import { useOrvaOrders } from "@/lib/use-orva-orders";
 
@@ -67,7 +67,7 @@ const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 export default function ProductsManagementPage() {
   const { orders } = useOrvaOrders();
-  const repo = useMemo(() => getMockProductsRepository(), []);
+  const repo = useMemo(() => getApiProductsRepository(), []);
 
   // ── State: Products & Inventory ───────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([]);
@@ -83,6 +83,8 @@ export default function ProductsManagementPage() {
   const [formDescription, setFormDescription] = useState("");
   const [formSku, setFormSku] = useState("");
   const [formSellingPrice, setFormSellingPrice] = useState<number | "">("");
+  const [formOriginalPrice, setFormOriginalPrice] = useState<number | "">("");
+  const [formHighlights, setFormHighlights] = useState("");
   const [formPurchaseCost, setFormPurchaseCost] = useState<number | "">("");
   const [formMarketingCost, setFormMarketingCost] = useState<number | "">("");
   const [formStockQuantity, setFormStockQuantity] = useState<number | "">("");
@@ -179,6 +181,8 @@ export default function ProductsManagementPage() {
     setFormDescription("");
     setFormSku("");
     setFormSellingPrice("");
+    setFormOriginalPrice("");
+    setFormHighlights("");
     setFormPurchaseCost("");
     setFormMarketingCost("");
     setFormStockQuantity("");
@@ -194,6 +198,8 @@ export default function ProductsManagementPage() {
     setFormDescription(prod.description);
     setFormSku(prod.sku);
     setFormSellingPrice(prod.sellingPrice);
+    setFormOriginalPrice(prod.originalPrice ?? "");
+    setFormHighlights((prod.highlights ?? []).join("\n"));
     setFormPurchaseCost(prod.purchaseCost);
     setFormMarketingCost(prod.marketingCostPerOrder);
     setFormStockQuantity(prod.stockQuantity);
@@ -310,6 +316,11 @@ export default function ProductsManagementPage() {
           lowStockThreshold,
           status,
           images: formImages.length > 0 ? formImages : ["/placeholder.svg"],
+          originalPrice: Number(formOriginalPrice) > sellingPrice ? Number(formOriginalPrice) : null,
+          highlights: formHighlights
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
         });
         setFeedbackMessage({ type: "success", text: `تم تحديث المنتج "${formTitle}" بنجاح.` });
       } else {
@@ -325,6 +336,11 @@ export default function ProductsManagementPage() {
           lowStockThreshold,
           status,
           images: formImages.length > 0 ? formImages : ["/placeholder.svg"],
+          originalPrice: Number(formOriginalPrice) > sellingPrice ? Number(formOriginalPrice) : null,
+          highlights: formHighlights
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
         });
         setFeedbackMessage({ type: "success", text: `تم إضافة المنتج الجديد "${formTitle}" إلى الكتالوج.` });
       }
@@ -860,6 +876,34 @@ export default function ProductsManagementPage() {
                 </div>
 
                 <div className="space-y-1.5">
+                  <Label htmlFor="formOriginalPrice" className="text-sm font-semibold flex items-center justify-between">
+                    <span>السعر قبل التخفيض (اختياري)</span>
+                    <span className="text-xs text-muted-foreground">يظهر مشطوباً في المتجر</span>
+                  </Label>
+                  <Input
+                    id="formOriginalPrice"
+                    type="number"
+                    min="0"
+                    value={formOriginalPrice}
+                    onChange={(e) => setFormOriginalPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                    placeholder="9750"
+                  />
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="formHighlights" className="text-sm font-semibold">
+                    مميزات المنتج في صفحة الهبوط (ميزة في كل سطر)
+                  </Label>
+                  <Textarea
+                    id="formHighlights"
+                    value={formHighlights}
+                    onChange={(e) => setFormHighlights(e.target.value)}
+                    placeholder={"منفاخ عجلات بعداد ضغط مدمج\nطقم مفاتيح 46 قطعة"}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
                   <Label htmlFor="formPurchaseCost" className="text-sm font-semibold flex items-center justify-between">
                     <span className="text-amber-600 dark:text-amber-400">سعر الشراء / التكلفة (د.ج) *</span>
                     <span className="text-[11px] text-muted-foreground font-mono">سري - داخلي</span>
@@ -1104,6 +1148,17 @@ export default function ProductsManagementPage() {
                               <div className="text-xs text-muted-foreground truncate max-w-[180px]">
                                 {prod.subtitle}
                               </div>
+                              {prod.publicUrl && (
+                                <a
+                                  href={prod.publicUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`text-[11px] font-mono hover:underline ${prod.status === "active" ? "text-primary" : "text-muted-foreground"}`}
+                                  dir="ltr"
+                                >
+                                  {prod.status === "active" ? prod.publicUrl : `${prod.publicUrl} (غير منشور)`}
+                                </a>
+                              )}
                             </div>
                           </div>
                         </TableCell>

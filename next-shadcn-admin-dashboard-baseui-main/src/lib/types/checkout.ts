@@ -16,7 +16,8 @@ export interface CodOrderSubmission {
   communeName: string;
   deliveryAddress?: string;
   deliveryType: 'DOMICILE' | 'STOP_DESK';
-  packId: 'PACK1' | 'PACK2' | 'PACK3';
+  /** Catalog id: product slug uppercased (PACK1..PACK3 for the original packs). */
+  packId: string;
   productName: string;
   productPrice: number;
   shippingFee: number;
@@ -236,7 +237,12 @@ export const codOrderSubmissionSchema = z
     communeName: z.string({ message: 'Nom de la Commune requis' }).min(1, 'Nom de la Commune requis'),
     deliveryType: z.enum(['DOMICILE', 'STOP_DESK']),
     deliveryAddress: z.string().optional(),
-    packId: z.enum(['PACK1', 'PACK2', 'PACK3']),
+    packId: z
+      .string()
+      .trim()
+      .min(1, 'Produit requis')
+      .max(80, 'Identifiant produit invalide')
+      .regex(/^[A-Za-z0-9_-]+$/, 'Identifiant produit invalide'),
     productName: z.string({ message: 'Nom du produit requis' }).min(1, 'Nom du produit requis'),
     productPrice: z.number().positive('Prix du produit invalide'),
     shippingFee: z.number().nonnegative('Frais de livraison invalides'),
@@ -279,22 +285,7 @@ export const codOrderSubmissionSchema = z
       }
     }
 
-    // 4. Pack catalog price verification
-    const CANONICAL_PACK_PRICES: Record<string, number | number[]> = {
-      PACK1: 4950,
-      PACK2: [12950, 13390],
-      PACK3: 15950,
-    };
-    const allowedPrices = Array.isArray(CANONICAL_PACK_PRICES[data.packId])
-      ? (CANONICAL_PACK_PRICES[data.packId] as number[])
-      : [CANONICAL_PACK_PRICES[data.packId]];
-    if (CANONICAL_PACK_PRICES[data.packId] !== undefined && !allowedPrices.includes(data.productPrice)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Prix invalide pour le ${data.packId}`,
-        path: ['productPrice'],
-      });
-    }
+    // 4. Product price is verified against the live catalog in submitCodOrderAction (server).
 
     // 5. Net total arithmetic consistency
     if (data.totalPayable !== data.productPrice + data.shippingFee) {

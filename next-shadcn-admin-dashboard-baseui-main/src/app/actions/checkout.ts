@@ -257,6 +257,27 @@ async function triggerMetaCapiPurchase(params: {
   }
 }
 
+// ── Catalog price verification ──────────────────────────────────────────────
+
+const LEGACY_PACK_PRICES: Record<string, number[]> = {
+  PACK1: [4950],
+  PACK2: [12950, 13390],
+  PACK3: [15950],
+};
+
+/** Returns an error message when the submitted unit price does not match the admin catalog. */
+async function verifyCatalogPrice(packId: string, productPrice: number): Promise<string | null> {
+  const { getAllowedPricesForPack } = await import('@/lib/catalog/server');
+  const allowed = await getAllowedPricesForPack(packId);
+  if (allowed === null) {
+    // Catalog unreachable: keep the legacy guard for the original packs, accept otherwise.
+    const legacy = LEGACY_PACK_PRICES[packId.toUpperCase()];
+    return legacy && !legacy.includes(productPrice) ? `Prix invalide pour le ${packId}` : null;
+  }
+  if (allowed.length === 0) return "هذا المنتج غير متوفر حالياً للطلب.";
+  return allowed.includes(productPrice) ? null : "تغيّر سعر المنتج، يرجى تحديث الصفحة ثم إعادة الطلب.";
+}
+
 // ── In-Flight Concurrency Mutex ─────────────────────────────────────────────
 const inFlightSubmissions = new Map<
   string,
@@ -279,6 +300,12 @@ export async function submitCodOrderAction(
       // fall back to the static tariff matrix
     }
     const parseResult = codOrderSubmissionSchema.safeParse(submission);
+    if (parseResult.success) {
+      const priceError = await verifyCatalogPrice(parseResult.data.packId, parseResult.data.productPrice);
+      if (priceError) {
+        return { success: false, error: priceError, validationErrors: { productPrice: priceError } };
+      }
+    }
     if (!parseResult.success) {
       const firstError = parseResult.error.issues[0]?.message || 'Données invalides';
       const validationErrors: Record<string, string> = {};

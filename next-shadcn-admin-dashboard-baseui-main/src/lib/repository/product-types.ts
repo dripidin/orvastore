@@ -1,3 +1,4 @@
+import type { ProductPageLayoutConfig } from "./layout-types";
 import type { OrderStatus } from "./types";
 
 /**
@@ -30,6 +31,13 @@ export interface Product {
   status: ProductStatus;
   createdAt: string;               // ISO 8601 UTC
   updatedAt: string;               // ISO 8601 UTC
+  /** Storefront fields (server catalog). Optional so mock data stays valid. */
+  slug?: string;
+  publicUrl?: string;              // e.g. "/p/my-product/" — live only when status is "active"
+  originalPrice?: number | null;   // price before discount, shown struck-through
+  highlights?: string[];           // landing-page bullet points
+  layout?: ProductPageLayoutConfig | null; // live landing-page section layout (designer)
+  layoutDraft?: ProductPageLayoutConfig | null; // unpublished designer draft
 }
 
 export type ProductCreateInput = Omit<Product, "id" | "createdAt" | "updatedAt"> & {

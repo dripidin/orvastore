@@ -1,11 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
 
 import {
   ArrowLeft,
-  CheckCircle2,
   ChevronDown,
-  Flame,
   Headphones,
   HelpCircle,
   PhoneCall,
@@ -14,13 +11,18 @@ import {
   ShieldAlert,
   Sparkles,
   Truck,
-  Wrench,
 } from "lucide-react";
 
 import WaveMesh from "@/components/ui/wave-mesh";
-import { Button } from "@/components/ui/button";
+import { ProductGrid } from "@/components/storefront/catalog/product-card";
+import { listPublishedProducts } from "@/lib/catalog/server";
 
-export default function StorefrontHomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function StorefrontHomePage() {
+  const products = await listPublishedProducts();
+  const bestSeller = products.find((p) => p.stockQuantity > 0) ?? products[0];
+
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
       {/* 1. Hero Banner */}
@@ -54,7 +56,7 @@ export default function StorefrontHomePage() {
                 <ChevronDown className="size-5" />
               </a>
               <Link
-                href="/pack1"
+                href={bestSeller?.route ?? "/shop/"}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-base px-6 py-3.5 border border-slate-300 shadow-2xs transition"
               >
                 <span>شاهد الباقة الأكثر طلباً</span>
@@ -70,204 +72,22 @@ export default function StorefrontHomePage() {
           <div className="inline-block bg-amber-100 text-amber-800 font-bold text-xs rounded-full px-3 py-1 mb-2">
             عروض حصرية لفترة محدودة
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black text-slate-900">باقات العتاد الجاهزة للتوصيل</h2>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900">منتجات أورفا الجاهزة للتوصيل</h2>
           <p className="text-sm sm:text-base text-slate-600 mt-2">
             اختر الباقة المناسبة لاحتياجاتك واضغط عليها لتعبئة إستمارة الطلب السريع في ثوانٍ.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Pack 1 */}
-          <div className="bg-white rounded-3xl border-2 border-slate-200 hover:border-amber-500 overflow-hidden shadow-sm hover:shadow-xl transition-all flex flex-col group">
-            <div className="relative bg-slate-100 p-6 flex items-center justify-center aspect-4/3">
-              <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-1 rounded-full shadow-xs">
-                باقة 4 في 1
-              </span>
-              <Image
-                src="/images/packs/pack-1/hero.webp"
-                alt="باك كومبريسار و المفاتيح 4 في 1"
-                width={400}
-                height={300}
-                className="object-contain max-h-56 group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
+        <ProductGrid products={products} />
 
-            <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-xl font-black text-slate-900">باك كومبريسار و المفاتيح 4 في 1</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  الحل المتكامل لطوارئ السيارة وأشغال البيت: منفاخ إطارات، طقم مفاتيح 46 قطعة، ومفكات.
-                </p>
-
-                <ul className="space-y-2 text-xs font-medium text-slate-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>منفاخ عجلات TOYOTA مع عداد ضغط مدمج</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>علبة مفاتيح ورؤوس 46 قطعة STARCLE PRO</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>مفك مرن 11 قطعة STARCLE PRO</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>طقم 6 مفكات بمقابض مريحة</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <span className="text-xs text-slate-400 line-through font-mono">9,750 د.ج</span>
-                    <div className="text-2xl font-black text-slate-900 font-mono">4,950 د.ج</div>
-                  </div>
-                  <span className="text-[10px] bg-red-500/20 text-red-600 px-2 py-0.5 rounded font-bold">
-                    توفير 4,800 د.ج
-                  </span>
-                </div>
-
-                <Link
-                  href="/pack1"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 px-4 rounded-lg shadow-md transition active:scale-95"
-                >
-                  <span>معاينة وطلب الباقة الآن</span>
-                  <ArrowLeft className="size-4" />
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Pack 2 */}
-          <div className="bg-white rounded-3xl border-2 border-amber-500 overflow-hidden shadow-md hover:shadow-xl transition-all flex flex-col group relative">
-            <div className="relative bg-slate-100 p-6 flex items-center justify-center aspect-4/3">
-              <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-1 rounded-full shadow-xs">
-                باقة 5 في 1
-              </span>
-              <Image
-                src="/images/packs/pack-2/hero.webp"
-                alt="باك الفيسوز كراون Elite"
-                width={400}
-                height={300}
-                className="object-contain max-h-56 group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-
-            <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-xl font-black text-slate-900">باك الفيسوز كراون Elite (Pack Pro 2)</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  ماكينة ثقب CROWN 20V الأصلية ببطاريتين مع طقم مفاتيح وعتاد متكامل للورشة.
-                </p>
-
-                <ul className="space-y-2 text-xs font-medium text-slate-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-amber-600 shrink-0" />
-                    <span>ماكينة ثقب CROWN 20V مع 2 بطاريات قوية وحقيبة 29 قطعة</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-amber-600 shrink-0" />
-                    <span>علبة مفاتيح ورؤوس 46 قطعة STARCLE PRO</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-amber-600 shrink-0" />
-                    <span>مفك مرن 11 قطعة STARCLE PRO</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-amber-600 shrink-0" />
-                    <span>طقم مفكات 6 قطع + قفازات حماية GILAN</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <span className="text-xs text-slate-400 line-through font-mono">21,250 د.ج</span>
-                    <div className="text-2xl font-black text-slate-900 font-mono">12,950 د.ج</div>
-                  </div>
-                  <span className="text-[10px] bg-red-500/20 text-red-600 px-2 py-0.5 rounded font-bold">
-                    توفير 8,300 د.ج
-                  </span>
-                </div>
-
-                <Link
-                  href="/pack2"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 px-4 rounded-lg shadow-md transition active:scale-95"
-                >
-                  <span>معاينة وطلب باقة الورشة</span>
-                  <ArrowLeft className="size-4" />
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Pack 3 */}
-          <div className="bg-white rounded-3xl border-2 border-slate-200 hover:border-amber-500 overflow-hidden shadow-sm hover:shadow-xl transition-all flex flex-col group">
-            <div className="relative bg-slate-100 p-6 flex items-center justify-center aspect-4/3">
-              <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-1 rounded-full shadow-xs">
-                باقة 6 في 1
-              </span>
-              <Image
-                src="/images/packs/pack-3/hero.webp"
-                alt="باك سودير كراون الصلب"
-                width={400}
-                height={300}
-                className="object-contain max-h-56 group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-
-            <div className="p-6 flex-1 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-xl font-black text-slate-900">باك سودير كراون الصلب 6 في 1</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  ماكينة لحام CROWN CT33102 MMA-200 MINI مع نظام أمان VRD وملحقات اللحام الكاملة.
-                </p>
-
-                <ul className="space-y-2 text-xs font-medium text-slate-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>ماكينة لحام CROWN CT33102 MMA-200 MINI</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>تحكم رقمي في قوة اللحام ونظام أمان VRD</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>قفازات GILAN المضادة للقطع وقناع اللحام</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-                    <span>فرشاة سلك + كوابل لحام + طقم مفكات 6 قطع</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <span className="text-xs text-slate-400 line-through font-mono">24,500 د.ج</span>
-                    <div className="text-2xl font-black text-slate-900 font-mono">15,950 د.ج</div>
-                  </div>
-                  <span className="text-[10px] bg-red-500/20 text-red-600 px-2 py-0.5 rounded font-bold">
-                    توفير 8,550 د.ج
-                  </span>
-                </div>
-
-                <Link
-                  href="/pack3"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 px-4 rounded-lg shadow-md transition active:scale-95"
-                >
-                  <span>معاينة وطلب باقة اللحام</span>
-                  <ArrowLeft className="size-4" />
-                </Link>
-              </div>
-            </div>
-          </div>
+        <div className="mt-10 text-center">
+          <Link
+            href="/shop/"
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-3.5 font-bold text-white transition hover:bg-amber-500 hover:text-slate-950"
+          >
+            شاهد كل المنتجات ({products.length})
+            <ArrowLeft className="size-4" />
+          </Link>
         </div>
       </section>
 
@@ -353,7 +173,7 @@ export default function StorefrontHomePage() {
             <h3 className="mt-2 text-2xl font-black leading-snug">اطلب الباك القوي من عند Orva</h3>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">اختار الباقة المناسبة، ونكملوا معاك تأكيد الطلب هاتفياً بكل سهولة.</p>
             <div className="mt-6 flex flex-col gap-3">
-              <Link href="/pack1" className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-black text-slate-950 transition hover:bg-amber-400">اكتشف الباقات <ArrowLeft className="size-4" /></Link>
+              <Link href="/shop/" className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-black text-slate-950 transition hover:bg-amber-400">اكتشف الباقات <ArrowLeft className="size-4" /></Link>
               <a href="tel:0798282495" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10">اتصل بنا <PhoneCall className="size-4" /></a>
             </div>
           </aside>

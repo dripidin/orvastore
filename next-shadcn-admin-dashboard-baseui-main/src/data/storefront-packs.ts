@@ -23,8 +23,9 @@ export interface PackBoxItem {
 }
 
 export interface StorefrontPack {
-  id: "PACK1" | "PACK2" | "PACK3";
-  slug: "pack1" | "pack2" | "pack3";
+  /** Order/catalog id: legacy "PACK1".."PACK3" or the uppercased slug of an admin product. */
+  id: string;
+  slug: string;
   route: string;
   nameAr: string;
   nameFr: string;
@@ -43,7 +44,7 @@ export interface StorefrontPack {
   descriptionAr: string;
   highlightsAr: string[];
   boxItems: PackBoxItem[];
-  crossSellTargetId: "PACK1" | "PACK2" | "PACK3";
+  crossSellTargetId: string;
   crossSellHeading: string;
   crossSellSubtitle: string;
   crossSellCtaText: string;

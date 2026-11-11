@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 
 import Link from "next/link";
 
@@ -19,107 +19,21 @@ import {
   type ProductPageLayoutConfig,
   type ProductPageSectionId,
 } from "@/lib/repository/layout-types";
-import { getMockLayoutRepository } from "@/lib/repository/mock-layout-repository";
-
-const LAYOUT_STORAGE_KEY = "orva_product_layout_configs_v1";
-const BROADCAST_CHANNEL_NAME = "orva_layout_sync_v1";
-
-export const PACK_PRODUCT_ID_MAP: Record<"PACK1" | "PACK2" | "PACK3", string> = {
-  PACK1: "prod_pack_1_pro",
-  PACK2: "prod_pack_2_elite",
-  PACK3: "prod_pack_3_ultra",
-};
 
 export interface DynamicPackLayoutProps {
-  packId: "PACK1" | "PACK2" | "PACK3";
+  /** Catalog id sent with the order (slug uppercased, e.g. PACK1). */
+  packId: string;
+  /** Landing content built on the server from the admin catalog. */
   pack: StorefrontPack;
+  /** Live section layout published from the dashboard designer. */
+  layout?: ProductPageLayoutConfig | null;
+  /** Product recommended at the bottom of the page. */
+  related?: StorefrontPack | null;
 }
 
-function getStoredLayoutConfig(productId: string): ProductPageLayoutConfig {
-  if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, ProductPageLayoutConfig>;
-        if (parsed[productId]) {
-          return parsed[productId];
-        }
-        if (parsed.global_default) {
-          return { ...parsed.global_default, productId };
-        }
-      }
-    } catch {
-      // Fallback to default
-    }
-  }
-  return createDefaultLayoutConfig(productId);
-}
-
-export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
-  const targetProductId = useMemo(() => {
-    return PACK_PRODUCT_ID_MAP[packId] || "prod_pack_1_pro";
-  }, [packId]);
-
-  // Initial state reads localStorage synchronously if in browser to prevent layout flicker on reload
-  const [layoutConfig, setLayoutConfig] = useState<ProductPageLayoutConfig>(() =>
-    getStoredLayoutConfig(targetProductId),
-  );
-
-  // Synchronize layout configuration from MockLayoutRepository or localStorage
-  const refreshLayout = useCallback(async () => {
-    try {
-      const layoutRepo = getMockLayoutRepository();
-      const config = await layoutRepo.getLayoutConfig(targetProductId);
-
-      if (config) {
-        setLayoutConfig(config);
-      }
-    } catch {
-      setLayoutConfig(getStoredLayoutConfig(targetProductId));
-    }
-  }, [targetProductId]);
-
-  useEffect(() => {
-    // Initial fetch on mount
-    void refreshLayout();
-
-    // 1. Subscribe to BroadcastChannel for real-time cross-tab synchronization
-    let bc: BroadcastChannel | null = null;
-    try {
-      if (typeof BroadcastChannel !== "undefined") {
-        bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        bc.onmessage = (event) => {
-          if (event.data?.type === "LAYOUT_UPDATED") {
-            void refreshLayout();
-          }
-        };
-      }
-    } catch (e) {
-      console.warn("[DynamicPackLayout] BroadcastChannel not supported or error:", e);
-    }
-
-    // 2. Subscribe to local window CustomEvent
-    const handleLocalUpdate = () => {
-      void refreshLayout();
-    };
-    window.addEventListener("orva:layout-updated", handleLocalUpdate);
-
-    // 3. Subscribe to window storage event (for cross-tab storage changes)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === LAYOUT_STORAGE_KEY) {
-        void refreshLayout();
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-
-    return () => {
-      if (bc) {
-        bc.close();
-      }
-      window.removeEventListener("orva:layout-updated", handleLocalUpdate);
-      window.removeEventListener("storage", handleStorageChange);
-    };
-  }, [refreshLayout]);
+export function DynamicPackLayout({ packId, pack, layout, related = null }: DynamicPackLayoutProps) {
+  const [layoutConfig] = useState<ProductPageLayoutConfig>(() => layout ?? createDefaultLayoutConfig(pack.slug));
+  const hasDiscount = pack.originalPriceDzd > pack.priceDzd;
 
   // Section visibility predicate
   const isSectionVisible = (sectionId: ProductPageSectionId): boolean => {
@@ -147,6 +61,10 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
         <span>الرئيسية</span>
       </Link>
       <span>/</span>
+      <Link href="/shop/" className="hover:text-amber-600 transition">
+        كل المنتجات
+      </Link>
+      <span>/</span>
       <span className="text-slate-900 font-bold">{pack.nameAr}</span>
     </nav>
   );
@@ -159,17 +77,19 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
     <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-5 text-right">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200/80 rounded-full px-3 py-1 text-xs font-bold shadow-2xs">
-          باقة متكاملة
+          {pack.badgeAr}
         </span>
+        {pack.reviewsCount > 0 && (
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
           <div className="flex text-amber-500">
             {[...Array(5)].map((_, i) => (
               <Star key={i} className="size-4 fill-amber-500 text-amber-500" />
             ))}
           </div>
-          <span className="font-bold text-slate-900 font-mono">4.9 / 5</span>
+          <span className="font-bold text-slate-900 font-mono">{pack.rating} / 5</span>
           <span>({pack.reviewsCount} تقييم زبون حقيقي)</span>
         </div>
+        )}
       </div>
 
       <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">{pack.nameAr}</h1>
@@ -182,12 +102,16 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
           <span className="text-2xl sm:text-3xl font-black text-amber-600 font-mono">
             {new Intl.NumberFormat("fr-DZ").format(pack.priceDzd)} د.ج
           </span>
-          <span className="text-sm line-through text-slate-400 font-mono">
-            {new Intl.NumberFormat("fr-DZ").format(pack.originalPriceDzd)} د.ج
-          </span>
-          <span className="text-[10px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold">
-            توفير {new Intl.NumberFormat("fr-DZ").format(pack.savingsDzd)} د.ج
-          </span>
+          {hasDiscount && (
+            <>
+              <span className="text-sm line-through text-slate-400 font-mono">
+                {new Intl.NumberFormat("fr-DZ").format(pack.originalPriceDzd)} د.ج
+              </span>
+              <span className="text-[10px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold">
+                توفير {new Intl.NumberFormat("fr-DZ").format(pack.savingsDzd)} د.ج
+              </span>
+            </>
+          )}
         </div>
         <div className="text-xs text-amber-800 font-medium bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg">
           الدفع عند الاستلام
@@ -195,7 +119,7 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
       </div>
 
       {/* Highlights Bullet List (controlled by showDescription) */}
-      {layoutConfig.showDescription && (
+      {layoutConfig.showDescription && pack.highlightsAr.length > 0 && (
         <div className="space-y-2.5 pt-2">
           <h3 className="font-bold text-sm text-slate-900">أهم ما يميز هذه الباقة:</h3>
           <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
@@ -242,7 +166,7 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
   const renderSubtitleBanner = () => (
     <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 text-slate-700 text-sm leading-relaxed text-right">
       <span className="inline-block bg-amber-500 text-slate-950 text-xs px-2.5 py-0.5 rounded-full font-bold ml-2">
-        باقة متكاملة
+        {pack.badgeAr}
       </span>
       {pack.subtitleAr}
     </div>
@@ -251,7 +175,7 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
   const renderDescriptionCard = () => (
     <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4 text-right">
       <h2 className="text-lg sm:text-xl font-bold text-slate-900">تفاصيل ومواصفات الباقة الكاملة</h2>
-      <p className="text-sm sm:text-base text-slate-600 leading-relaxed">{pack.seo.description}</p>
+      <p className="text-sm sm:text-base text-slate-600 leading-relaxed whitespace-pre-line">{pack.descriptionAr}</p>
       <div className="space-y-2 pt-2">
         <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
           {pack.highlightsAr.map((highlight, index) => (
@@ -275,11 +199,12 @@ export function DynamicPackLayout({ packId, pack }: DynamicPackLayoutProps) {
     />
   );
 
-  const renderFeatures = () => <WhatsInTheBox items={pack.boxItems} packName={pack.nameAr} />;
+  const renderFeatures = () =>
+    pack.boxItems.length > 0 ? <WhatsInTheBox items={pack.boxItems} packName={pack.nameAr} /> : null;
 
   const renderBenefits = () => <ReassuranceGrid />;
 
-  const renderRelatedProducts = () => <PackCrossSell currentPackId={packId} />;
+  const renderRelatedProducts = () => <PackCrossSell currentPack={pack} targetPack={related} />;
 
   const renderFaq = () => <PackFaq />;
 

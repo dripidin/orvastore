@@ -3,18 +3,17 @@ import Link from "next/link";
 
 import { ArrowLeft, CheckCircle2, Sparkles } from "lucide-react";
 
-import { STOREFRONT_PACKS, type StorefrontPack } from "@/data/storefront-packs";
+import type { StorefrontPack } from "@/data/storefront-packs";
 
 export interface PackCrossSellProps {
-  currentPackId: "PACK1" | "PACK2" | "PACK3";
+  /** Landing data of the page being viewed (supplies heading / CTA copy). */
+  currentPack: StorefrontPack;
+  /** Product to recommend, taken from the live catalog. */
+  targetPack: StorefrontPack | null;
   className?: string;
 }
 
-export function PackCrossSell({ currentPackId, className = "" }: PackCrossSellProps) {
-  const currentPack = STOREFRONT_PACKS[currentPackId];
-  if (!currentPack) return null;
-
-  const targetPack: StorefrontPack = STOREFRONT_PACKS[currentPack.crossSellTargetId];
+export function PackCrossSell({ currentPack, targetPack, className = "" }: PackCrossSellProps) {
   if (!targetPack) return null;
 
   return (

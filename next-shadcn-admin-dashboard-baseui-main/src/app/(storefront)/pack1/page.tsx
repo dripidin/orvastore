@@ -1,23 +1,21 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
-import { DynamicPackLayout } from "@/components/storefront/pack/dynamic-pack-layout";
-import { STOREFRONT_PACKS } from "@/data/storefront-packs";
+import { ProductLanding, productMetadata } from "@/components/storefront/catalog/product-landing";
+import { getPublishedProductBySlug } from "@/lib/catalog/server";
 
-const pack = STOREFRONT_PACKS.PACK1;
+export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: pack.seo.title,
-  description: pack.seo.description,
-  keywords: pack.seo.keywords,
-  openGraph: {
-    title: pack.seo.title,
-    description: pack.seo.description,
-    images: [{ url: pack.heroImage, alt: pack.heroImageAlt }],
-    locale: "ar_DZ",
-    type: "website",
-  },
-};
+const SLUG = "pack1";
 
-export default function Pack1Page() {
-  return <DynamicPackLayout packId="PACK1" pack={pack} />;
+export async function generateMetadata(): Promise<Metadata> {
+  const product = await getPublishedProductBySlug(SLUG);
+  return product ? productMetadata(product) : { title: "المنتج غير متوفر | متجر أورفا" };
+}
+
+/** Legacy URL kept for ads and links: content comes from the admin catalog (slug "pack1"). */
+export default async function Pack1Page() {
+  const product = await getPublishedProductBySlug(SLUG);
+  if (!product) notFound();
+  return <ProductLanding product={product} />;
 }

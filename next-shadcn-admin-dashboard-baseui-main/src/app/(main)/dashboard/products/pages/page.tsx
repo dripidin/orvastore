@@ -39,11 +39,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getMockStorePagesRepository } from "@/lib/repository/mock-store-pages-repository";
+import { getApiStorePagesRepository } from "@/lib/repository/api-store-pages-repository";
 import type { SitemapEntry, StorePage } from "@/lib/repository/store-pages-types";
 
 export default function StorePagesAndSitemapPage() {
-  const repo = useMemo(() => getMockStorePagesRepository(), []);
+  const repo = useMemo(() => getApiStorePagesRepository(), []);
 
   const [pages, setPages] = useState<StorePage[]>([]);
   const [sitemap, setSitemap] = useState<SitemapEntry[]>([]);

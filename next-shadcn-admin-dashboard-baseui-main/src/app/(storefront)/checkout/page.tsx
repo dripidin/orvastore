@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function CheckoutPage() {
-  redirect('/pack1');
+  redirect('/shop/');
 }

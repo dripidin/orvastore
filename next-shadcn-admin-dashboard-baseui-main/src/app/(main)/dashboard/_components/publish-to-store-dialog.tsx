@@ -9,11 +9,22 @@ import { toast } from "@/components/ui/toast";
 
 const STORE_PAGES: { path: string; label: string }[] = [
   { path: "/", label: "الصفحة الرئيسية للمتجر" },
-  { path: "/pack1", label: "صفحة الباك 1" },
-  { path: "/pack2", label: "صفحة الباك 2" },
-  { path: "/pack3", label: "صفحة الباك 3" },
-  { path: "/checkout", label: "صفحة الطلب (Checkout)" },
+  { path: "/shop/", label: "صفحة كل المنتجات" },
 ];
+
+interface CatalogEntry {
+  id: string;
+  title: string;
+  status: "active" | "draft" | "archived";
+  publicUrl: string | null;
+  price: number;
+}
+
+const STATUS_LABEL: Record<CatalogEntry["status"], { text: string; cls: string }> = {
+  active: { text: "منشور", cls: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" },
+  draft: { text: "مسودة — غير ظاهر", cls: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+  archived: { text: "مؤرشف", cls: "bg-muted text-muted-foreground border-border" },
+};
 
 /** "Publish to Store": refreshes the storefront cache so the latest products, prices and designs go live. */
 export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" }) {
@@ -21,13 +32,17 @@ export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" 
   const [publishing, setPublishing] = React.useState(false);
   const [publishedAt, setPublishedAt] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<"ok" | "error" | null>(null);
+  const [products, setProducts] = React.useState<CatalogEntry[] | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     setResult(null);
     fetch("/api/store-publish", { credentials: "same-origin", cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setPublishedAt(d?.publishedAt ?? null))
+      .then((d) => {
+        setPublishedAt(d?.publishedAt ?? null);
+        setProducts(Array.isArray(d?.products) ? d.products : []);
+      })
       .catch(() => undefined);
   }, [open]);
 
@@ -39,6 +54,7 @@ export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" 
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) throw new Error(d?.error || "فشل النشر");
       setPublishedAt(d.publishedAt);
+      if (Array.isArray(d.products)) setProducts(d.products);
       setResult("ok");
       toast.add({ title: "تم النشر على المتجر", description: "التعديلات أصبحت ظاهرة للزبائن.", type: "success" });
     } catch (err) {
@@ -99,6 +115,44 @@ export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" 
                   </li>
                 ))}
               </ul>
+            </section>
+
+            <section className="rounded-xl border p-4">
+              <h3 className="mb-3 font-bold text-sm">صفحات المنتجات ({products?.length ?? "…"})</h3>
+              {products === null ? (
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" /> جارٍ تحميل المنتجات…
+                </p>
+              ) : products.length === 0 ? (
+                <p className="text-muted-foreground">لا توجد منتجات بعد. أضفها من صفحة المنتجات.</p>
+              ) : (
+                <ul className="max-h-60 divide-y overflow-y-auto">
+                  {products.map((p) => (
+                    <li key={p.id} className="flex items-center justify-between gap-2 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{p.title}</div>
+                        {p.publicUrl && (
+                          <a
+                            href={p.publicUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-[11px] text-primary hover:underline"
+                            dir="ltr"
+                          >
+                            {p.publicUrl}
+                          </a>
+                        )}
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_LABEL[p.status].cls}`}>
+                        {STATUS_LABEL[p.status].text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                المنتج يظهر للزبائن فقط إذا كانت حالته "نشط". غيّرها من صفحة المنتجات.
+              </p>
             </section>
 
             <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5">

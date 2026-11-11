@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { Wrench, PhoneCall, Truck, ShieldCheck, MapPin } from "lucide-react";
+import { formatDzd, type NavProduct } from "@/lib/catalog/types";
 import { PhoneBadge } from "./phone-badge";
 
-export function StorefrontFooter() {
+export function StorefrontFooter({ products = [] }: { products?: NavProduct[] }) {
   return (
     <footer className="bg-slate-950 text-slate-300 border-t border-slate-800 pt-12 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-10">
@@ -37,23 +38,15 @@ export function StorefrontFooter() {
           <div className="space-y-3">
             <h4 className="text-white font-bold text-sm tracking-wide">باقات العتاد المتوفرة</h4>
             <ul className="space-y-2 text-xs text-slate-400">
+              {products.slice(0, 6).map((p) => (
+                <li key={p.id}>
+                  <Link href={p.route} className="hover:text-amber-400 transition">
+                    {p.title} ({formatDzd(p.priceDzd)})
+                  </Link>
+                </li>
+              ))}
               <li>
-                <Link href="/pack1" className="hover:text-amber-400 transition">
-                  باك كومبريسار و المفاتيح 4 في 1 (4,950 د.ج)
-                </Link>
-              </li>
-              <li>
-                <Link href="/pack2" className="hover:text-amber-400 transition">
-                  باك الفيسوز كراون Elite 5 في 1 (12,950 د.ج)
-                </Link>
-              </li>
-              <li>
-                <Link href="/pack3" className="hover:text-amber-400 transition">
-                  باك سودير كراون MMA-200 Mini (15,950 د.ج)
-                </Link>
-              </li>
-              <li>
-                <Link href="/" className="hover:text-amber-400 transition">
+                <Link href="/shop/" className="hover:text-amber-400 transition">
                   الكتالوج الكامل للمتجر
                 </Link>
               </li>

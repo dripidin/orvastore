@@ -5,6 +5,10 @@ import { StorefrontHeader } from "@/components/storefront/layout/storefront-head
 import { StorefrontFooter } from "@/components/storefront/layout/storefront-footer";
 import { MetaPixel } from "@/components/storefront/analytics/meta-pixel";
 import { getAdminSettingsAction } from "@/app/actions/settings";
+import { listPublishedProducts } from "@/lib/catalog/server";
+import { toNavProduct } from "@/lib/catalog/types";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "متجر أورفا | ORVA STORE DZ — عتاد ومعدات الصيانة والورشة الأصلية",
@@ -13,6 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
+  const navProducts = (await listPublishedProducts()).map(toNavProduct);
   let pixelId = "";
   let enabled = true;
 
@@ -38,9 +43,9 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <MetaPixel pixelId={pixelId} enabled={enabled} />
       <StorefrontDirectionSync />
       <TopNoticeBar />
-      <StorefrontHeader />
+      <StorefrontHeader products={navProducts} />
       <main className="flex-1 w-full">{children}</main>
-      <StorefrontFooter />
+      <StorefrontFooter products={navProducts} />
     </div>
   );
 }

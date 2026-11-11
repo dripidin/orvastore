@@ -47,9 +47,8 @@ import {
   type ProductPageLayoutConfig,
   type ProductPageSectionId,
 } from "@/lib/repository/layout-types";
-import { getMockLayoutRepository } from "@/lib/repository/mock-layout-repository";
-import { getMockProductsRepository } from "@/lib/repository/mock-products-repository";
-import { getMockStorePagesRepository } from "@/lib/repository/mock-store-pages-repository";
+import { getApiLayoutRepository, getApiStorePagesRepository } from "@/lib/repository/api-store-pages-repository";
+import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import type { Product } from "@/lib/repository/product-types";
 import type { StorePage } from "@/lib/repository/store-pages-types";
 
@@ -73,9 +72,9 @@ const ALGERIA_WILAYAS = [
 ];
 
 export default function ProductPageDesigner() {
-  const productsRepo = useMemo(() => getMockProductsRepository(), []);
-  const layoutRepo = useMemo(() => getMockLayoutRepository(), []);
-  const storePagesRepo = useMemo(() => getMockStorePagesRepository(), []);
+  const productsRepo = useMemo(() => getApiProductsRepository(), []);
+  const layoutRepo = useMemo(() => getApiLayoutRepository(), []);
+  const storePagesRepo = useMemo(() => getApiStorePagesRepository(), []);
 
   // ── State: Catalog Products ───────────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([]);
@@ -103,13 +102,20 @@ export default function ProductPageDesigner() {
 
   // Load products on mount
   useEffect(() => {
-    productsRepo.getProducts().then((list) => {
-      setProducts(list);
-    });
+    productsRepo
+      .getProducts()
+      .then((list) => {
+        setProducts(list);
+        setSelectedProductId((current) => (list.some((p) => p.id === current) ? current : (list[0]?.id ?? current)));
+      })
+      .catch((err: unknown) =>
+        setFeedback({ type: "error", text: err instanceof Error ? err.message : "تعذر تحميل المنتجات." }),
+      );
   }, [productsRepo]);
 
   // Load layout config when selected product changes
   useEffect(() => {
+    if (selectedProductId.startsWith("prod_pack_")) return; // legacy mock id: wait for real products
     layoutRepo.getLayoutConfig(selectedProductId).then((cfg) => {
       setSavedConfig(cfg);
       setCurrentConfig(JSON.parse(JSON.stringify(cfg)));
@@ -161,7 +167,7 @@ export default function ProductPageDesigner() {
       setCurrentConfig(JSON.parse(JSON.stringify(saved)));
       setFeedback({
         type: "success",
-        text: `تم حفظ مسوّدة تصميم صفحة "${selectedProduct?.title || "المنتج"}" بنجاح في التخزين المحلي.`,
+        text: `تم حفظ مسوّدة تصميم صفحة "${selectedProduct?.title || "المنتج"}". اضغط "نشر" لتطبيقها على المتجر.`,
       });
     } catch {
       setFeedback({ type: "error", text: "حدث خطأ أثناء حفظ المسودة." });
@@ -172,7 +178,7 @@ export default function ProductPageDesigner() {
     if (!currentPage) return;
     setPublishing(true);
     try {
-      const saved = await layoutRepo.saveLayoutConfig(currentConfig);
+      const saved = await layoutRepo.publishLayoutConfig(currentConfig);
       setSavedConfig(saved);
       setCurrentConfig(JSON.parse(JSON.stringify(saved)));
 
