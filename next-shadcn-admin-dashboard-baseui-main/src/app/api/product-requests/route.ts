@@ -2,14 +2,14 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
 import { isValidAlgerianPhone, normalizeAlgerianPhone } from "@/lib/types/checkout";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  addProductRequest,
+  deleteProductRequest,
+  listProductRequests,
+  markProductRequestsRead,
+} from "@/lib/product-requests-store";
 
 export const dynamic = "force-dynamic";
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function db(): any {
-  return getSupabaseServerClient() as any;
-}
 
 function fail(error: string, status = 400) {
   return NextResponse.json({ success: false, error }, { status });
@@ -45,17 +45,16 @@ export async function POST(request: NextRequest) {
   if (productWanted.length < 3) return fail("يرجى كتابة المنتج الذي تبحث عنه.");
   if (phoneRaw && !isValidAlgerianPhone(phoneRaw)) return fail("رقم الهاتف غير صحيح.");
 
-  const { error } = await db()
-    .from("product_requests")
-    .insert({
+  try {
+    await addProductRequest({
       customer_name: customerName,
       phone: phoneRaw ? normalizeAlgerianPhone(phoneRaw) : null,
       wilaya: clean(body.wilaya, 60) || null,
       product_wanted: productWanted,
       message: clean(body.message, 1000) || null,
     });
-  if (error) {
-    console.error("[product-requests] insert failed:", error.message);
+  } catch (err) {
+    console.error("[product-requests] save failed:", err);
     return fail("تعذر إرسال طلبك حالياً، حاول لاحقاً.", 500);
   }
   return NextResponse.json({ success: true });
@@ -66,19 +65,10 @@ export async function GET(request: NextRequest) {
   if (!(await verifyAdminSession(request))) return fail("Unauthorized", 401);
   const onlyCount = new URL(request.url).searchParams.get("count") === "1";
   try {
-    const { count } = await db()
-      .from("product_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("is_read", false);
-    if (onlyCount) return NextResponse.json({ success: true, unread: count ?? 0 });
-
-    const { data, error } = await db()
-      .from("product_requests")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) throw error;
-    return NextResponse.json({ success: true, unread: count ?? 0, data });
+    const data = await listProductRequests();
+    const unread = data.filter((r) => !r.is_read).length;
+    if (onlyCount) return NextResponse.json({ success: true, unread });
+    return NextResponse.json({ success: true, unread, data });
   } catch (err) {
     return fail(err instanceof Error ? err.message : "Lookup failed", 500);
   }
@@ -88,10 +78,11 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!(await verifyAdminSession(request))) return fail("Unauthorized", 401);
   const body = (await request.json().catch(() => ({}))) as { all?: boolean; ids?: string[] };
-  let query = db().from("product_requests").update({ is_read: true });
-  query = body.all ? query.eq("is_read", false) : query.in("id", body.ids ?? []);
-  const { error } = await query;
-  if (error) return fail(error.message, 500);
+  try {
+    await markProductRequestsRead(body.all ? "all" : (body.ids ?? []));
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Update failed", 500);
+  }
   return NextResponse.json({ success: true });
 }
 
@@ -100,7 +91,10 @@ export async function DELETE(request: NextRequest) {
   if (!(await verifyAdminSession(request))) return fail("Unauthorized", 401);
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return fail("id required");
-  const { error } = await db().from("product_requests").delete().eq("id", id);
-  if (error) return fail(error.message, 500);
+  try {
+    await deleteProductRequest(id);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Delete failed", 500);
+  }
   return NextResponse.json({ success: true });
 }
