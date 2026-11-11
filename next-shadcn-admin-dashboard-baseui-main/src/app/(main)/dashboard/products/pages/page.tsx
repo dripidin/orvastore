@@ -27,6 +27,7 @@ import {
 import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -213,6 +214,7 @@ export default function StorePagesAndSitemapPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <PublishToStoreButton />
           <Button variant="outline" size="sm" onClick={() => setSitemapModalOpen(true)} className="text-xs gap-1.5">
             <FileCode2 className="h-3.5 w-3.5 text-primary" />
             خريطة الموقع (Sitemap XML)

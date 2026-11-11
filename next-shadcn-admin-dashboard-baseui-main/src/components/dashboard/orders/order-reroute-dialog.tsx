@@ -3,14 +3,20 @@
 import * as React from "react";
 import {
   AlertCircle,
+  Building2,
   CheckCircle2,
+  Home,
   MapPin,
+  Package,
   Phone,
   RefreshCw,
   ShieldAlert,
   User,
+  Warehouse,
 } from "lucide-react";
 
+import type { OrderRow } from "@/app/(main)/dashboard/ecommerce/_components/recent-orders-table/schema";
+import { rerouteOrderAction } from "@/app/actions/reroute";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,30 +30,30 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import communesRawData from "@/data/geoalgeria/communes.json";
 import {
   ALGERIA_58_WILAYAS,
   calculateDeliveryTariff,
   isStopDeskAllowed,
   isValidAlgerianPhone,
   normalizeAlgerianPhone,
+  setLiveTariffs,
 } from "@/lib/types/checkout";
-import {
-  isTerminalStatus,
-  type OrderReRoutingPayload,
-  type OrderReRoutingResult,
-} from "@/lib/types/re-routing";
-import { rerouteOrderAction } from "@/app/actions/reroute";
-import { ALGERIA_COMMUNES_BY_WILAYA_ID } from "@/data/algeria-locations";
-import type { OrderRow } from "@/app/(main)/dashboard/ecommerce/_components/recent-orders-table/schema";
+import { isTerminalStatus, type OrderReRoutingPayload, type OrderReRoutingResult } from "@/lib/types/re-routing";
+import { useDeliveryOffices } from "@/lib/use-delivery-offices";
+
+interface RawCommune {
+  id: number;
+  commune_name_fr: string;
+  commune_name_ar: string;
+  wilaya_code: number;
+}
+
+const communesData = communesRawData as RawCommune[];
+const HUB_LABEL = "بسكرة (07)";
 
 export interface OrderRerouteDialogProps {
   order: OrderRow | null;
@@ -57,13 +63,7 @@ export interface OrderRerouteDialogProps {
   onSuccess?: (result: OrderReRoutingResult) => void;
 }
 
-export function OrderRerouteDialog({
-  order,
-  allOrders,
-  open,
-  onOpenChange,
-  onSuccess,
-}: OrderRerouteDialogProps) {
+export function OrderRerouteDialog({ order, allOrders, open, onOpenChange, onSuccess }: OrderRerouteDialogProps) {
   if (!order) return null;
 
   return (
@@ -74,6 +74,17 @@ export function OrderRerouteDialog({
       onOpenChange={onOpenChange}
       onSuccess={onSuccess}
     />
+  );
+}
+
+function SectionTitle({ step, children }: { step: number; children: React.ReactNode }) {
+  return (
+    <h3 className="mb-3 flex items-center gap-2 font-bold text-foreground text-sm">
+      <span className="grid size-5 place-items-center rounded-full bg-primary text-[10px] text-primary-foreground">
+        {step}
+      </span>
+      {children}
+    </h3>
   );
 }
 
@@ -90,18 +101,17 @@ function OrderRerouteDialogInner({
   onOpenChange: (open: boolean) => void;
   onSuccess?: (result: OrderReRoutingResult) => void;
 }) {
-  // Selected source order (defaults to clicked order, admin can switch to any other order)
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>(initialOrder.id);
 
   React.useEffect(() => {
-    setSelectedOrderId(initialOrder.id);
+    if (open) setSelectedOrderId(initialOrder.id);
   }, [initialOrder.id, open]);
 
-  const order = React.useMemo(() => {
-    return allOrders.find((o) => o.id === selectedOrderId) || initialOrder;
-  }, [allOrders, selectedOrderId, initialOrder]);
+  const order = React.useMemo(
+    () => allOrders.find((o) => o.id === selectedOrderId) || initialOrder,
+    [allOrders, selectedOrderId, initialOrder],
+  );
 
-  // Selectable orders (non-delivered)
   const selectableOrders = React.useMemo(() => {
     const list = allOrders.length > 0 ? allOrders : [initialOrder];
     return list.filter((o) => !isTerminalStatus(o.status));
@@ -114,112 +124,99 @@ function OrderRerouteDialogInner({
   const [newCommuneName, setNewCommuneName] = React.useState<string>("");
   const [newDeliveryType, setNewDeliveryType] = React.useState<"DOMICILE" | "STOP_DESK">("DOMICILE");
   const [newDeliveryAddress, setNewDeliveryAddress] = React.useState<string>("");
-  const [reason, setReason] = React.useState<string>(
-    "الزبون الأصلي ألغى/رفض الاستلام؛ تم إعادة توجيه الطرد لزبون جديد"
-  );
+  const [reason, setReason] = React.useState<string>("الزبون الأصلي ألغى/رفض الاستلام؛ تم إعادة توجيه الطرد لزبون جديد");
   const [shippedOverrideConfirmed, setShippedOverrideConfirmed] = React.useState<boolean>(false);
 
-  // UI state
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [phoneError, setPhoneError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const isDelivered = isTerminalStatus(order.status);
-  const isShipped =
-    order.status?.toLowerCase() === "shipped" || Boolean(order.in_redex);
+  const isShipped = order.status?.toLowerCase() === "shipped" || Boolean(order.in_redex);
+  const locked = isDelivered || isSubmitting;
 
-  const selectedWilaya = React.useMemo(() => {
-    return ALGERIA_58_WILAYAS.find((w) => w.code === selectedWilayaCode) || ALGERIA_58_WILAYAS[15];
-  }, [selectedWilayaCode]);
+  const selectedWilaya = React.useMemo(
+    () => ALGERIA_58_WILAYAS.find((w) => w.code === selectedWilayaCode) || ALGERIA_58_WILAYAS[15],
+    [selectedWilayaCode],
+  );
 
-  const availableCommunes = React.useMemo(() => {
-    return ALGERIA_COMMUNES_BY_WILAYA_ID[String(selectedWilayaCode)] || [];
-  }, [selectedWilayaCode]);
-
-  const stopDeskAllowed = React.useMemo(() => {
-    return isStopDeskAllowed(selectedWilayaCode);
-  }, [selectedWilayaCode]);
+  const availableCommunes = React.useMemo(
+    () => communesData.filter((c) => c.wilaya_code === selectedWilayaCode),
+    [selectedWilayaCode],
+  );
 
   React.useEffect(() => {
-    if (!stopDeskAllowed && newDeliveryType === "STOP_DESK") {
-      setNewDeliveryType("DOMICILE");
-    }
-  }, [stopDeskAllowed, newDeliveryType]);
-
-  React.useEffect(() => {
-    if (availableCommunes.length > 0 && !availableCommunes.includes(newCommuneName)) {
-      setNewCommuneName(availableCommunes[0]);
+    if (availableCommunes.length > 0 && !availableCommunes.some((c) => c.commune_name_ar === newCommuneName)) {
+      setNewCommuneName(availableCommunes[0].commune_name_ar);
     }
   }, [availableCommunes, newCommuneName]);
 
-  const productPrice = React.useMemo(() => {
-    if (order.priceNum && order.priceNum > 0) return order.priceNum;
-    return 4950;
-  }, [order.priceNum]);
+  // Delivery office (stop-desk) availability for the chosen commune
+  const deliveryOffices = useDeliveryOffices(selectedWilayaCode);
+  const communeHasOffice = deliveryOffices.hasOffice(newCommuneName);
+  const wilayaStopDeskAllowed = isStopDeskAllowed(selectedWilayaCode);
+  const stopDeskAllowed = wilayaStopDeskAllowed && communeHasOffice !== false;
 
+  React.useEffect(() => {
+    if (!stopDeskAllowed && newDeliveryType === "STOP_DESK") setNewDeliveryType("DOMICILE");
+  }, [stopDeskAllowed, newDeliveryType]);
+
+  // Same tariffs as a fresh order shipped from the hub: live EcoTrack fees, static matrix as fallback
+  const [tariffSource, setTariffSource] = React.useState<"live" | "fallback">("fallback");
+  const [tariffVersion, setTariffVersion] = React.useState(0);
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch("/api/delivery-fees", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled || !d?.success || !d.fees) return;
+        setLiveTariffs(d.fees);
+        setTariffSource("live");
+        setTariffVersion((v) => v + 1);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const productPrice = order.priceNum && order.priceNum > 0 ? order.priceNum : 4950;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tariffVersion re-reads the live tariff table
   const newShippingFee = React.useMemo(() => {
     try {
       return calculateDeliveryTariff(selectedWilayaCode, newDeliveryType);
     } catch {
       return 500;
     }
-  }, [selectedWilayaCode, newDeliveryType]);
+  }, [selectedWilayaCode, newDeliveryType, tariffVersion]);
 
   const updatedTotal = productPrice + newShippingFee;
 
   const handlePhoneChange = (val: string) => {
     setNewCustomerPhone(val);
-    if (!val.trim()) {
-      setPhoneError("رقم الهاتف مطلوب");
-      return;
-    }
-    if (!isValidAlgerianPhone(val)) {
-      setPhoneError("رقم هاتف غير صالح (05/06/07 — 10 أرقام)");
-    } else {
-      setPhoneError(null);
-    }
+    if (!val.trim()) setPhoneError("رقم الهاتف مطلوب");
+    else if (!isValidAlgerianPhone(val)) setPhoneError("رقم هاتف غير صالح (05/06/07 — 10 أرقام)");
+    else setPhoneError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (isDelivered) {
-      setFormError("لا يمكن تحويل الطلبيات المسلمة نهائياً (Delivered).");
-      return;
-    }
-    if (!newCustomerName.trim() || newCustomerName.trim().length < 2) {
-      setFormError("يرجى إدخال اسم العميل الجديد");
-      return;
-    }
-    if (!isValidAlgerianPhone(newCustomerPhone)) {
-      setFormError("رقم هاتف العميل الجديد غير صالح");
-      return;
-    }
-    if (!selectedWilayaCode || selectedWilayaCode < 1 || selectedWilayaCode > 58) {
-      setFormError("يرجى اختيار ولاية صالحة");
-      return;
-    }
-    if (!newCommuneName.trim()) {
-      setFormError("يرجى اختيار البلدية");
-      return;
-    }
+    if (isDelivered) return setFormError("لا يمكن تحويل الطلبيات المسلّمة نهائياً.");
+    if (newCustomerName.trim().length < 2) return setFormError("يرجى إدخال اسم الزبون الجديد");
+    if (!isValidAlgerianPhone(newCustomerPhone)) return setFormError("رقم هاتف الزبون الجديد غير صالح");
+    if (!newCommuneName.trim()) return setFormError("يرجى اختيار البلدية");
     if (newDeliveryType === "STOP_DESK" && !stopDeskAllowed) {
-      setFormError(`الاستلام من المكتب غير متوفر في ولاية ${selectedWilaya.nameAr}`);
-      return;
+      return setFormError(`لا يوجد مكتب توصيل في بلدية ${newCommuneName}`);
     }
-    if (newDeliveryType === "DOMICILE" && (!newDeliveryAddress || newDeliveryAddress.trim().length < 3)) {
-      setFormError("يرجى كتابة عنوان التوصيل");
-      return;
+    if (newDeliveryType === "DOMICILE" && newDeliveryAddress.trim().length < 3) {
+      return setFormError("يرجى كتابة عنوان التوصيل");
     }
-    if (isShipped && !shippedOverrideConfirmed) {
-      setFormError("يرجى تأكيد تحويل الطرد المشحون");
-      return;
-    }
-    if (!reason.trim() || reason.trim().length < 3) {
-      setFormError("يرجى توضيح سبب التحويل");
-      return;
-    }
+    if (isShipped && !shippedOverrideConfirmed) return setFormError("يرجى تأكيد تحويل الطرد المشحون");
+    if (reason.trim().length < 3) return setFormError("يرجى توضيح سبب التحويل");
 
     setIsSubmitting(true);
     try {
@@ -233,33 +230,27 @@ function OrderRerouteDialogInner({
         newCommuneName: newCommuneName.trim(),
         newDeliveryType,
         newDeliveryAddress:
-          newDeliveryAddress.trim() ||
-          (newDeliveryType === "STOP_DESK" ? "Bureau Stop-Desk" : undefined),
+          newDeliveryAddress.trim() || (newDeliveryType === "STOP_DESK" ? "Bureau Stop-Desk" : undefined),
         reason: reason.trim(),
         operator: "Admin",
         shippedOverrideConfirmed,
       };
 
       const result = await rerouteOrderAction(payload);
-
       if (result.success) {
         toast.add({
-          title: "تم تحويل الطلبية بنجاح! 🎉",
-          description: `تم إنشاء الطلبية المحولة برقم: ${result.orderId}`,
+          title: "تم تحويل الطلبية بنجاح",
+          description: `رقم الطلبية المحوّلة: ${result.orderId} — التوصيل ${result.updatedShippingFee?.toLocaleString()} د.ج`,
           type: "success",
         });
-
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("orva:orders-updated"));
-        }
-
+        window.dispatchEvent(new CustomEvent("orva:orders-updated"));
         onSuccess?.(result);
         onOpenChange(false);
       } else {
         setFormError(result.error || "تعذر إكمال عملية التحويل.");
       }
-    } catch (err: any) {
-      setFormError(err?.message || "حدث خطأ غير متوقع أثناء معالجة الطلب.");
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "حدث خطأ غير متوقع أثناء معالجة الطلب.");
     } finally {
       setIsSubmitting(false);
     }
@@ -268,275 +259,346 @@ function OrderRerouteDialogInner({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[92vw] sm:max-w-[480px] sm:min-w-[400px] max-h-[90vh] overflow-y-auto gap-3 rounded-xl border-zinc-200 p-0 text-right shadow-xl dark:border-zinc-800"
+        className="flex max-h-[92vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 text-right sm:max-w-4xl"
         dir="rtl"
       >
-        <DialogHeader className="space-y-1 border-b border-zinc-200 bg-zinc-50/80 px-5 py-4 text-right backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/60">
-          <div className="flex items-center justify-between gap-2">
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary"><RefreshCw className="size-4" /></span>
-              <span>تحويل الطلبية (Switch Order)</span>
-            </DialogTitle>
-            <Badge variant="outline" className="rounded-md bg-background font-mono text-[11px] tracking-tight">
+        <DialogHeader className="space-y-1 border-b bg-muted/40 px-6 py-4 text-right">
+          <div className="flex flex-wrap items-center gap-3 pl-8">
+            <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+              <RefreshCw className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="font-bold text-base">تحويل الطلبية إلى زبون آخر</DialogTitle>
+              <DialogDescription className="text-muted-foreground text-xs">
+                يُحتسب التوصيل كأن الطرد يخرج من المستودع ({HUB_LABEL}) بنفس تعريفة الطلب العادي.
+              </DialogDescription>
+            </div>
+            <Badge variant="outline" className="font-mono text-[11px]" dir="ltr">
               {order.id}
             </Badge>
           </div>
-          <DialogDescription className="text-[11px] text-muted-foreground">
-            اختر الطلبية وأدخل بيانات المستلم الجديد
-          </DialogDescription>
         </DialogHeader>
 
-        {isDelivered && (
-          <div className="mx-5 my-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
-            <ShieldAlert className="size-4 shrink-0 mt-0.5 text-red-600" />
-            <span>لا يمكن تحويل الطلبيات المسلّمة نهائياً (Delivered).</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1 text-xs [&>*:not(:last-child)]:mx-5">
-          {formError && (
-            <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2.5 text-xs font-medium text-red-600 dark:text-red-400 flex items-center gap-2">
-              <AlertCircle className="size-3.5 shrink-0" />
-              <span>{formError}</span>
-            </div>
-          )}
-
-          {/* 1. Select any order to switch */}
-          <div className="space-y-1">
-            <Label htmlFor="selectSourceOrder" className="text-xs font-semibold">
-              اختر الطلبية للتحويل (Select Order)
-            </Label>
-            <Select
-              value={selectedOrderId}
-              onValueChange={(val) => {
-                if (val) setSelectedOrderId(val);
-              }}
-              disabled={isSubmitting}
-            >
-              <SelectTrigger id="selectSourceOrder" className="h-8 text-xs">
-                <SelectValue placeholder="اختر الطلبية..." />
-              </SelectTrigger>
-              <SelectContent className="max-h-60" dir="rtl">
-                {selectableOrders.map((o) => (
-                  <SelectItem key={o.id} value={o.id} className="text-xs">
-                    {o.id} — {o.customer || "بدون اسم"} ({o.wilaya || "—"})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="rounded-md border bg-muted/30 p-2 text-[11px] flex items-center justify-between">
-              <span className="text-muted-foreground truncate">
-                الحالي: <strong className="text-foreground">{order.customer}</strong> ({order.wilaya})
-              </span>
-              <span className="font-bold text-primary shrink-0">{productPrice.toLocaleString()} د.ج</span>
-            </div>
-          </div>
-
-          {/* 2. New Customer Name & Phone */}
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <Label htmlFor="newCustomerName" className="text-xs flex items-center gap-1">
-                <User className="size-3 text-primary" />
-                <span>الاسم الكامل للزبون الجديد *</span>
-              </Label>
-              <Input
-                id="newCustomerName"
-                placeholder="مثال: يوسف بلقاسم"
-                value={newCustomerName}
-                onChange={(e) => setNewCustomerName(e.target.value)}
-                disabled={isDelivered || isSubmitting}
-                className="h-8 text-xs"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="newCustomerPhone" className="text-xs flex items-center gap-1">
-                <Phone className="size-3 text-primary" />
-                <span>رقم الهاتف (05/06/07) *</span>
-              </Label>
-              <Input
-                id="newCustomerPhone"
-                placeholder="0770123456"
-                value={newCustomerPhone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                disabled={isDelivered || isSubmitting}
-                dir="ltr"
-                className={`h-8 text-xs ${phoneError ? "border-red-500" : ""}`}
-                required
-              />
-              {phoneError && <p className="text-[10px] text-red-500">{phoneError}</p>}
-            </div>
-          </div>
-
-          {/* 3. Destination Wilaya, Commune, Delivery Type */}
-          <div className="space-y-2 border-t pt-2">
-            <div className="space-y-1">
-              <Label htmlFor="wilayaSelect" className="text-xs flex items-center gap-1">
-                <MapPin className="size-3 text-primary" />
-                <span>الولاية الجديدة *</span>
-              </Label>
-              <Select
-                value={String(selectedWilayaCode)}
-                onValueChange={(val) => {
-                  if (val) setSelectedWilayaCode(Number(val));
-                }}
-                disabled={isDelivered || isSubmitting}
-              >
-                <SelectTrigger id="wilayaSelect" className="h-8 text-xs">
-                  <SelectValue placeholder="اختر الولاية" />
-                </SelectTrigger>
-                <SelectContent className="max-h-56" dir="rtl">
-                  {ALGERIA_58_WILAYAS.map((w) => (
-                    <SelectItem key={w.code} value={String(w.code)} className="text-xs">
-                      {w.code.toString().padStart(2, "0")} — {w.nameAr} ({w.nameFr})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label htmlFor="communeSelect" className="text-xs">
-                  البلدية *
-                </Label>
-                <Select
-                  value={newCommuneName}
-                  onValueChange={(val) => {
-                    if (val) setNewCommuneName(val);
-                  }}
-                  disabled={isDelivered || isSubmitting || availableCommunes.length === 0}
-                >
-                  <SelectTrigger id="communeSelect" className="h-8 text-xs">
-                    <SelectValue placeholder="اختر البلدية" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-56" dir="rtl">
-                    {availableCommunes.map((comm) => (
-                      <SelectItem key={comm} value={comm} className="text-xs">
-                        {comm}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="deliveryTypeSelect" className="text-xs">
-                  طريقة التوصيل *
-                </Label>
-                <Select
-                  value={newDeliveryType}
-                  onValueChange={(val) => {
-                    if (val === "DOMICILE" || val === "STOP_DESK") setNewDeliveryType(val);
-                  }}
-                  disabled={isDelivered || isSubmitting}
-                >
-                  <SelectTrigger id="deliveryTypeSelect" className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent dir="rtl">
-                    <SelectItem value="DOMICILE" className="text-xs">
-                      توصيل للمنزل
-                    </SelectItem>
-                    <SelectItem value="STOP_DESK" disabled={!stopDeskAllowed} className="text-xs">
-                      مكتب (Stop-Desk)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {newDeliveryType === "DOMICILE" && (
-              <div className="space-y-1">
-                <Label htmlFor="newDeliveryAddress" className="text-xs">
-                  عنوان التوصيل *
-                </Label>
-                <Input
-                  id="newDeliveryAddress"
-                  placeholder="الحي، الشارع، رقم المنزل"
-                  value={newDeliveryAddress}
-                  onChange={(e) => setNewDeliveryAddress(e.target.value)}
-                  disabled={isDelivered || isSubmitting}
-                  className="h-8 text-xs"
-                  required
-                />
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 overflow-y-auto px-6 py-5 text-xs">
+            {isDelivered && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-700 dark:text-red-300">
+                <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+                <span>لا يمكن تحويل الطلبيات المسلّمة نهائياً.</span>
               </div>
             )}
-          </div>
+            {formError && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 font-medium text-red-600 dark:text-red-400">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
 
-          {/* 4. Total Summary & Reason */}
-          <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              الشحن: {newShippingFee.toLocaleString()} د.ج
-            </span>
-            <span className="text-xs font-bold text-primary">
-              الإجمالي: {updatedTotal.toLocaleString("fr-DZ")} د.ج
-            </span>
-          </div>
+            <div className="grid gap-5 lg:grid-cols-5">
+              {/* Source order + price summary */}
+              <div className="space-y-4 lg:col-span-2">
+                <section className="rounded-xl border p-4">
+                  <SectionTitle step={1}>الطلبية الأصلية</SectionTitle>
+                  <Select
+                    value={selectedOrderId}
+                    onValueChange={(val) => {
+                      if (val) setSelectedOrderId(val);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="selectSourceOrder" className="h-9 w-full text-xs">
+                      <SelectValue placeholder="اختر الطلبية..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64" dir="rtl">
+                      {selectableOrders.map((o) => (
+                        <SelectItem key={o.id} value={o.id} className="text-xs">
+                          {o.id} — {o.customer || "بدون اسم"} ({o.wilaya || "—"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <dl className="mt-3 space-y-2">
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-muted-foreground">الزبون الحالي</dt>
+                      <dd className="font-semibold">{order.customer}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-muted-foreground">الوجهة الحالية</dt>
+                      <dd className="font-semibold">
+                        {order.wilaya} — {order.commune}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-muted-foreground">المنتج</dt>
+                      <dd className="truncate font-semibold">{order.items}</dd>
+                    </div>
+                  </dl>
+                </section>
 
-          <div className="space-y-1">
-            <Label htmlFor="reason" className="text-xs">
-              سبب التحويل *
-            </Label>
-            <Textarea
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              disabled={isDelivered || isSubmitting}
-              className="text-xs min-h-[42px] resize-none"
-              required
-            />
-          </div>
+                <section className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <h3 className="mb-3 flex items-center gap-2 font-bold text-sm">
+                    <Package className="size-4 text-primary" />
+                    ملخص المبلغ الجديد
+                  </h3>
+                  <dl className="space-y-2">
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">سعر المنتج</dt>
+                      <dd className="font-semibold tabular-nums">{productPrice.toLocaleString()} د.ج</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="flex items-center gap-1 text-muted-foreground">
+                        <Warehouse className="size-3" />
+                        التوصيل {HUB_LABEL} ← {selectedWilaya.nameAr} ({newDeliveryType === "STOP_DESK" ? "مكتب" : "منزل"})
+                      </dt>
+                      <dd className="font-semibold tabular-nums">{newShippingFee.toLocaleString()} د.ج</dd>
+                    </div>
+                    <div className="flex items-center justify-between border-t pt-2">
+                      <dt className="font-bold">المبلغ عند الاستلام</dt>
+                      <dd className="font-bold text-base text-primary tabular-nums">
+                        {updatedTotal.toLocaleString()} د.ج
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    {tariffSource === "live" ? "تعريفة EcoTrack الحية." : "التعريفة الاحتياطية (تعذر جلب التعريفة الحية)."}
+                  </p>
+                </section>
+              </div>
 
-          {isShipped && (
-            <div className="rounded-md border border-purple-500/30 bg-purple-500/10 p-2 flex items-start gap-2">
-              <Checkbox
-                id="shippedOverrideConfirmed"
-                checked={shippedOverrideConfirmed}
-                onCheckedChange={(c) => setShippedOverrideConfirmed(Boolean(c))}
-                disabled={isDelivered || isSubmitting}
-                className="mt-0.5"
-              />
-              <Label
-                htmlFor="shippedOverrideConfirmed"
-                className="text-[11px] font-medium cursor-pointer text-purple-900 dark:text-purple-200"
-              >
-                تأكيد تحويل طرد مُرسل لشركة التوصيل
-              </Label>
+              {/* New recipient */}
+              <section className="space-y-4 rounded-xl border p-4 lg:col-span-3">
+                <SectionTitle step={2}>بيانات الزبون الجديد</SectionTitle>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newCustomerName" className="flex items-center gap-1 text-xs">
+                      <User className="size-3 text-primary" /> الاسم الكامل *
+                    </Label>
+                    <Input
+                      id="newCustomerName"
+                      placeholder="مثال: يوسف بلقاسم"
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      disabled={locked}
+                      className="h-9 text-xs"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newCustomerPhone" className="flex items-center gap-1 text-xs">
+                      <Phone className="size-3 text-primary" /> رقم الهاتف *
+                    </Label>
+                    <Input
+                      id="newCustomerPhone"
+                      placeholder="0770123456"
+                      value={newCustomerPhone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      disabled={locked}
+                      dir="ltr"
+                      className={`h-9 text-right text-xs ${phoneError ? "border-red-500" : ""}`}
+                      required
+                    />
+                    {phoneError && <p className="text-[10px] text-red-500">{phoneError}</p>}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="wilayaSelect" className="flex items-center gap-1 text-xs">
+                      <MapPin className="size-3 text-primary" /> الولاية *
+                    </Label>
+                    <Select
+                      value={String(selectedWilayaCode)}
+                      onValueChange={(val) => {
+                        if (val) setSelectedWilayaCode(Number(val));
+                      }}
+                      disabled={locked}
+                    >
+                      <SelectTrigger id="wilayaSelect" className="h-9 w-full text-xs">
+                        <SelectValue placeholder="اختر الولاية" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64" dir="rtl">
+                        {ALGERIA_58_WILAYAS.map((w) => (
+                          <SelectItem key={w.code} value={String(w.code)} className="text-xs">
+                            {w.code.toString().padStart(2, "0")} — {w.nameAr} ({w.nameFr})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="communeSelect" className="flex items-center gap-1 text-xs">
+                      <Building2 className="size-3 text-primary" /> البلدية *
+                    </Label>
+                    <Select
+                      value={newCommuneName}
+                      onValueChange={(val) => {
+                        if (val) setNewCommuneName(val);
+                      }}
+                      disabled={locked || availableCommunes.length === 0}
+                    >
+                      <SelectTrigger id="communeSelect" className="h-9 w-full text-xs">
+                        <SelectValue placeholder="اختر البلدية" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64" dir="rtl">
+                        {availableCommunes.map((c) => (
+                          <SelectItem key={c.id} value={c.commune_name_ar} className="text-xs">
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span>
+                                {c.commune_name_ar} ({c.commune_name_fr})
+                              </span>
+                              {deliveryOffices.hasOffice(c.commune_name_ar) && (
+                                <span className="rounded-full bg-emerald-500/10 px-1.5 text-[10px] font-semibold text-emerald-700">
+                                  مكتب التوصيل متوفر
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {communeHasOffice === true && (
+                      <p className="flex items-center gap-1 font-semibold text-[11px] text-emerald-700">
+                        <CheckCircle2 className="size-3" /> مكتب التوصيل متوفر في هذه البلدية
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">طريقة التوصيل *</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewDeliveryType("DOMICILE")}
+                      disabled={locked}
+                      className={`flex items-center gap-2 rounded-lg border p-3 text-right transition ${
+                        newDeliveryType === "DOMICILE"
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <Home className="size-4 text-primary" />
+                      <span className="font-semibold">توصيل للمنزل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stopDeskAllowed && setNewDeliveryType("STOP_DESK")}
+                      disabled={locked || !stopDeskAllowed}
+                      className={`flex items-center gap-2 rounded-lg border p-3 text-right transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        newDeliveryType === "STOP_DESK"
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <Building2 className="size-4 text-primary" />
+                      <span className="font-semibold">استلام من المكتب</span>
+                    </button>
+                  </div>
+
+                  {communeHasOffice === false && wilayaStopDeskAllowed ? (
+                    <div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-900 dark:text-amber-200">
+                      <p className="font-bold">
+                        لا يوجد مكتب توصيل في بلدية {newCommuneName}، سيكون التوصيل عبر رجل التوصيل إلى المنزل ويُحتسب
+                        سعر التوصيل للمنزل.
+                      </p>
+                      {deliveryOffices.offices.length > 0 && (
+                        <p>
+                          مكاتب التوصيل المتوفرة في ولاية {selectedWilaya.nameAr}:{" "}
+                          <span className="font-semibold">{deliveryOffices.offices.map((o) => o.ar).join("، ")}</span>
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    !wilayaStopDeskAllowed && (
+                      <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-900 dark:text-amber-200">
+                        الاستلام من المكتب غير متوفر في ولاية {selectedWilaya.nameAr}، سيكون التوصيل عبر رجل التوصيل إلى
+                        المنزل.
+                      </p>
+                    )
+                  )}
+                </div>
+
+                {newDeliveryType === "DOMICILE" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newDeliveryAddress" className="text-xs">
+                      عنوان التوصيل *
+                    </Label>
+                    <Input
+                      id="newDeliveryAddress"
+                      placeholder="الحي، الشارع، رقم المنزل"
+                      value={newDeliveryAddress}
+                      onChange={(e) => setNewDeliveryAddress(e.target.value)}
+                      disabled={locked}
+                      className="h-9 text-xs"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="reason" className="text-xs">
+                    سبب التحويل *
+                  </Label>
+                  <Textarea
+                    id="reason"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    disabled={locked}
+                    className="min-h-[56px] resize-none text-xs"
+                    required
+                  />
+                </div>
+
+                {isShipped && (
+                  <div className="flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 p-2.5">
+                    <Checkbox
+                      id="shippedOverrideConfirmed"
+                      checked={shippedOverrideConfirmed}
+                      onCheckedChange={(c) => setShippedOverrideConfirmed(Boolean(c))}
+                      disabled={locked}
+                      className="mt-0.5"
+                    />
+                    <Label
+                      htmlFor="shippedOverrideConfirmed"
+                      className="cursor-pointer font-medium text-[11px] text-purple-900 dark:text-purple-200"
+                    >
+                      أؤكد تحويل طرد سبق إرساله لشركة التوصيل
+                    </Label>
+                  </div>
+                )}
+              </section>
             </div>
-          )}
+          </div>
 
-          <DialogFooter className="sticky bottom-0 -mx-0 flex flex-row-reverse items-center justify-between gap-2 border-t border-zinc-200 bg-background/90 px-5 py-3 backdrop-blur-md dark:border-zinc-800">
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-              className="text-xs"
-            >
-              إلغاء
-            </Button>
-
-            <Button
-              type="submit"
-              size="xs"
-              disabled={isDelivered || isSubmitting || (isShipped && !shippedOverrideConfirmed)}
-              className="gap-1.5 text-xs font-bold"
-            >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw className="size-3 animate-spin" />
-                  <span>جارٍ التحويل...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="size-3" />
-                  <span>تأكيد التحويل</span>
-                </>
-              )}
-            </Button>
+          <DialogFooter className="m-0 flex flex-row items-center justify-between gap-2 sm:justify-between rounded-none border-t bg-muted/30 px-6 py-3">
+            <span className="hidden text-muted-foreground text-xs sm:inline">
+              الإجمالي الجديد:{" "}
+              <strong className="text-foreground tabular-nums">{updatedTotal.toLocaleString()} د.ج</strong>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+                إلغاء
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isDelivered || isSubmitting || (isShipped && !shippedOverrideConfirmed)}
+                className="gap-1.5 font-bold"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    جارٍ التحويل...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-3.5" />
+                    تأكيد التحويل
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

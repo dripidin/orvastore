@@ -19,3 +19,4 @@ export async function POST(request: NextRequest) {
   const result = await getDeliveryFees(true);
   return NextResponse.json(result, { status: result.success ? 200 : 502 });
 }
+

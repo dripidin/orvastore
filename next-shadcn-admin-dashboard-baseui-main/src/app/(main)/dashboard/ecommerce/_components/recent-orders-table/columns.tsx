@@ -37,16 +37,7 @@ import type { DataTableFeatures } from "@/lib/data-table-features";
 import { maskDemoPhone } from "@/lib/phone-utils";
 
 import type { OrderRow } from "./schema";
-
-const allowedStatusTransitions: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["cancelled", "pending"],
-  pushed: ["cancelled", "delivered", "returned"],
-  redex_station: ["cancelled", "delivered", "returned"],
-  shipped: ["cancelled", "delivered", "returned"],
-  cancelled: ["pending"],
-  returned: ["pending"],
-};
+import { getAvailableTransitions } from "./status-transitions";
 
 function formatOrderDate(date: string) {
   try {
@@ -90,7 +81,7 @@ function OperationalStatusBadge({
         className="border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300 font-semibold gap-1 text-[11px]"
       >
         <XCircle className="size-3" />
-        Canceled
+        ملغاة (Cancelled)
       </Badge>
     );
   }
@@ -413,11 +404,56 @@ export function createRecentOrdersColumns(
         const isTerminal = ["delivered", "deleted", "reconciled"].includes(
           (row.original.status || "").toLowerCase()
         );
-        const availableStatuses = allowedStatusTransitions[row.original.status] ?? [];
+        const availableStatuses = getAvailableTransitions(row.original);
         const isUpdating = Boolean(pendingStatusById[row.original.id]);
 
         return (
           <div className="flex w-full justify-end items-center gap-1">
+            {/* Outcome row: Received / Returned / Cancelled (ORVA status only, no courier call) */}
+            {onUpdateStatus && (
+              <div className="flex items-center gap-1 border-l pl-1 ml-0.5" role="group" aria-label="تغيير حالة الطلبية">
+                {availableStatuses.includes("delivered") && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => onUpdateStatus(row.original.id, "delivered")}
+                    disabled={isUpdating}
+                    className="h-7 gap-1 px-2 text-[11px] font-semibold text-emerald-700 border-emerald-500/40 hover:bg-emerald-500/10 dark:text-emerald-300"
+                    title="تصنيف الطلبية كمستلمة (Delivered)"
+                  >
+                    <CheckCircle2 className="size-3" />
+                    <span>مستلمة</span>
+                  </Button>
+                )}
+                {availableStatuses.includes("returned") && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => onUpdateStatus(row.original.id, "returned")}
+                    disabled={isUpdating}
+                    className="h-7 gap-1 px-2 text-[11px] font-semibold text-orange-700 border-orange-500/40 hover:bg-orange-500/10 dark:text-orange-300"
+                    title="تصنيف الطلبية كمرتجعة (Returned)"
+                  >
+                    <RotateCcw className="size-3" />
+                    <span>مرتجعة</span>
+                  </Button>
+                )}
+                {availableStatuses.includes("cancelled") && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => onUpdateStatus(row.original.id, "cancelled")}
+                    disabled={isUpdating}
+                    className="h-7 gap-1 px-2 text-[11px] font-semibold text-red-700 border-red-500/40 hover:bg-red-500/10 dark:text-red-300"
+                    title="إلغاء الطلبية (Cancelled)"
+                  >
+                    <XCircle className="size-3" />
+                    <span>إلغاء</span>
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Direct Switch Order Button in Row */}
             <Button
               size="xs"
@@ -492,19 +528,6 @@ export function createRecentOrdersColumns(
                     </DropdownMenuItem>
                   )}
 
-                  {onUpdateStatus && availableStatuses.includes("cancelled") && (
-                    <DropdownMenuItem
-                      onClick={() => onUpdateStatus(row.original.id, "cancelled")}
-                      disabled={isUpdating}
-                      className="cursor-pointer font-semibold flex items-center justify-between text-xs text-red-700 dark:text-red-300"
-                    >
-                      <div className="flex items-center gap-2">
-                        <XCircle className="size-3.5 text-red-600" />
-                        <span>إلغاء الطلبية (Cancel)</span>
-                      </div>
-                    </DropdownMenuItem>
-                  )}
-
                   {onUpdateStatus && availableStatuses.includes("pending") && (
                     <DropdownMenuItem
                       onClick={() => onUpdateStatus(row.original.id, "pending")}
@@ -518,31 +541,6 @@ export function createRecentOrdersColumns(
                     </DropdownMenuItem>
                   )}
 
-                  {onUpdateStatus && availableStatuses.includes("delivered") && (
-                    <DropdownMenuItem
-                      onClick={() => onUpdateStatus(row.original.id, "delivered")}
-                      disabled={isUpdating}
-                      className="cursor-pointer font-semibold flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-300"
-                    >
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="size-3.5 text-emerald-600" />
-                        <span>مستلمة (Received)</span>
-                      </div>
-                    </DropdownMenuItem>
-                  )}
-
-                  {onUpdateStatus && availableStatuses.includes("returned") && (
-                    <DropdownMenuItem
-                      onClick={() => onUpdateStatus(row.original.id, "returned")}
-                      disabled={isUpdating}
-                      className="cursor-pointer font-semibold flex items-center justify-between text-xs text-orange-700 dark:text-orange-300"
-                    >
-                      <div className="flex items-center gap-2">
-                        <RotateCcw className="size-3.5 text-orange-600" />
-                        <span>مرتجعة (Returned)</span>
-                      </div>
-                    </DropdownMenuItem>
-                  )}
                   {row.original.redex_tracking_code && (
                     <DropdownMenuItem
                       onClick={() => window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(row.original.redex_tracking_code!)}`, '_blank')}

@@ -63,15 +63,7 @@ import { OrderPushDialog } from "./order-push-dialog";
 import { RiskOverrideDialog } from "./risk-override-dialog";
 import { createRecentOrdersColumns } from "./recent-orders-table/columns";
 import { orderFilters, type OrderFilter, type OrderRow } from "./recent-orders-table/schema";
-
-const allowedStatusTransitions: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["cancelled", "pending"],
-  pushed: ["cancelled"],
-  redex_station: ["cancelled"],
-  cancelled: ["pending"],
-  returned: ["pending"],
-};
+import { getAvailableTransitions, STATUS_LABELS_AR } from "./recent-orders-table/status-transitions";
 
 function extractConversionsFromRemarks(remarks: any): {
   conversions: any[];
@@ -534,7 +526,7 @@ export function RecentOrders() {
   const handleUpdateStatus = React.useCallback(async (orderId: string, newStatus: string) => {
     if (pendingStatusIds.current.has(orderId)) return;
     const currentOrder = orders.find((order) => order.id === orderId);
-    if (!currentOrder || !allowedStatusTransitions[currentOrder.status]?.includes(newStatus)) {
+    if (!currentOrder || !getAvailableTransitions(currentOrder).includes(newStatus)) {
       toast.add({
         title: "الحالة غير متاحة",
         description: "لا تسمح قواعد الطلبية الحالية بهذا الانتقال.",
@@ -554,7 +546,11 @@ export function RecentOrders() {
 
       setOrders((previous) => previous.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)));
       setSelectedOrderForDetails((previous) => (previous?.id === orderId ? { ...previous, status: newStatus } : previous));
-      toast.add({ title: "تم تحديث الحالة", description: `الحالة الجديدة: ${newStatus}.`, type: "success" });
+      toast.add({
+        title: "تم تحديث الحالة",
+        description: `الحالة الجديدة: ${STATUS_LABELS_AR[newStatus] ?? newStatus}.`,
+        type: "success",
+      });
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("orva:orders-updated"));
@@ -580,7 +576,7 @@ export function RecentOrders() {
     if (isBulkUpdating) return;
     const selectedOrders = orders.filter((order) => rowSelection[order.id]);
     if (selectedOrders.length === 0) return;
-    if (selectedOrders.some((order) => !allowedStatusTransitions[order.status]?.includes(newStatus))) {
+    if (selectedOrders.some((order) => !getAvailableTransitions(order).includes(newStatus))) {
       toast.add({
         title: "تعذر تنفيذ الإجراء الجماعي",
         description: "التحديد يحتوي على طلبيات لا تسمح حالتها بالانتقال المطلوب.",
@@ -783,7 +779,7 @@ export function RecentOrders() {
                     : filter === "Returned"
                     ? "مرتجعة / رفض"
                     : filter === "Cancelled"
-                    ? "Canceled"
+                    ? "ملغاة (Cancelled)"
                     : filter === "Risk"
                     ? "المخاطر (Risk)"
                     : "المحوّلة فقط"}
@@ -922,8 +918,14 @@ export function RecentOrders() {
                   <SelectItem value="confirmed" className="text-xs">
                     تأكيد الطلبات (Confirmed not pushed)
                   </SelectItem>
+                  <SelectItem value="delivered" className="text-xs">
+                    مستلمة (Delivered)
+                  </SelectItem>
+                  <SelectItem value="returned" className="text-xs">
+                    مرتجعة (Returned)
+                  </SelectItem>
                   <SelectItem value="cancelled" className="text-xs">
-                    إلغاء الطلبات (Canceled)
+                    إلغاء الطلبات (Cancelled)
                   </SelectItem>
                   <SelectItem value="pending" className="text-xs">
                     إعادة لقيد الانتظار (Pending)
@@ -1091,4 +1093,4 @@ export function RecentOrders() {
       />
     </Card>
   );
-}
+}

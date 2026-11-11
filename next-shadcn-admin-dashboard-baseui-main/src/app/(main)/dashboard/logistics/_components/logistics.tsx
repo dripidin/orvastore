@@ -20,6 +20,7 @@ import { AlgeriaMap } from "./algeria-map";
 import { DeliveryStatsStrip } from "./delivery-stats-strip";
 import { ShipmentDetailsCard } from "./shipment-details-card";
 import { SelectedShipmentSummary } from "./selected-shipment-summary";
+import { ShipmentTrackingDetails } from "./shipment-tracking-details";
 import { ShipmentsTable } from "./shipments-table";
 
 
@@ -213,6 +214,9 @@ export function Logistics() {
       </div>
 
       {selectedOrder && <SelectedShipmentSummary order={selectedOrder} />}
+
+      {/* 4. Detailed EcoTrack tracking for the selected shipment */}
+      {selectedOrder && <ShipmentTrackingDetails order={selectedOrder} />}
 
       {/* Switch Order Dialog */}
       {orderToSwitch && (

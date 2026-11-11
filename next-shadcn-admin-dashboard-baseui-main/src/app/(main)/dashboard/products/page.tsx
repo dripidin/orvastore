@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
+import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -527,6 +528,7 @@ export default function ProductsManagementPage() {
               <Plus className="h-4 w-4" />
               إضافة منتج جديد
             </Button>
+            <PublishToStoreButton />
             <Link href="/dashboard/products/demand/">
               <Button size="sm" variant="outline" className="gap-2 font-semibold">
                 <MapPin className="h-4 w-4" />

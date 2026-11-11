@@ -1,10 +1,8 @@
 "use client";
 
-import { ShipmentTrackingPanel } from "./shipment-tracking-panel";
 import * as React from "react";
 import { format, parseISO } from "date-fns";
 import {
-  Ban,
   Calendar,
   Check,
   CheckCircle2,
@@ -15,6 +13,7 @@ import {
   Phone,
   Printer,
   RefreshCw,
+  RotateCcw,
   Truck,
   User,
   XCircle,
@@ -22,18 +21,13 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { formatDzd } from "@/lib/orva-api";
 
 import type { OrderRow } from "./recent-orders-table/schema";
+import { getAvailableTransitions } from "./recent-orders-table/status-transitions";
+import { ShipmentTrackingPanel } from "./shipment-tracking-panel";
 
 interface OrderDetailsDrawerProps {
   order: OrderRow | null;
@@ -48,8 +42,8 @@ interface OrderDetailsDrawerProps {
 function formatDate(dateStr?: string) {
   if (!dateStr) return "-";
   try {
-    const d = typeof dateStr === "string" ? parseISO(dateStr) : new Date(dateStr);
-    if (isNaN(d.getTime())) return String(dateStr);
+    const d = parseISO(dateStr);
+    if (Number.isNaN(d.getTime())) return String(dateStr);
     return format(d, "dd MMM yyyy — HH:mm");
   } catch {
     return String(dateStr);
@@ -61,14 +55,11 @@ function resolveStatusLabel(order: OrderRow): { label: string; className: string
   const cs = (order.carrier_status || "").toLowerCase();
 
   if (s === "cancelled" || s === "canceled" || s === "deleted") {
-    return {
-      label: "Canceled",
-      className: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
-    };
+    return { label: "ملغاة (Cancelled)", className: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300" };
   }
   if (s === "delivered") {
     return {
-      label: "مسلّمة (Delivered)",
+      label: "مستلمة (Delivered)",
       className: "border-green-600/30 bg-green-500/10 text-green-700 dark:text-green-300",
     };
   }
@@ -78,28 +69,37 @@ function resolveStatusLabel(order: OrderRow): { label: string; className: string
       className: "border-orange-600/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
     };
   }
-  if (s === "redex_station" || cs === "vers_station" || cs === "vers_hub") {
+  if (s === "redex_station" || cs === "vers_station" || cs === "vers_hub" || s === "shipped") {
     return {
-      label: "Redex Station",
+      label: "مشحونة (Shipped)",
       className: "border-purple-600/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
     };
   }
   if (s === "pushed" || order.in_redex || cs === "prete_a_expedier") {
     return {
-      label: "Pushed to Redex",
+      label: "مُرسلة لشركة التوصيل",
       className: "border-cyan-600/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
     };
   }
   if (s === "confirmed") {
-    return {
-      label: "Confirmed not pushed",
-      className: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    };
+    return { label: "مؤكدة (Confirmed)", className: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300" };
   }
   return {
     label: "قيد الانتظار (Pending)",
     className: "border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   };
+}
+
+function InfoRow({ icon, label, children }: { icon?: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5">
+      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="min-w-0 text-left font-medium text-foreground">{children}</span>
+    </div>
+  );
 }
 
 export function OrderDetailsDrawer({
@@ -110,276 +110,273 @@ export function OrderDetailsDrawer({
   onOpenPushDialog,
   onUpdateStatus,
 }: OrderDetailsDrawerProps) {
-  const [copiedId, setCopiedId] = React.useState(false);
-  const [copiedTracking, setCopiedTracking] = React.useState(false);
-  const [showMore, setShowMore] = React.useState(false);
+  const [copied, setCopied] = React.useState<"id" | "tracking" | null>(null);
+  const [showHistory, setShowHistory] = React.useState(false);
 
   React.useEffect(() => {
-    setShowMore(false);
+    setShowHistory(false);
   }, [open, order?.id]);
 
   if (!order) return null;
 
+  const raw = order.rawOrder as Record<string, unknown> | undefined;
   const trackingCode =
     order.redex_tracking_code ||
-    (order as any)?.tracking_code ||
-    (order as any)?.tracking_number ||
-    null;
+    (typeof raw?.tracking_code === "string" ? raw.tracking_code : null) ||
+    (typeof raw?.tracking_number === "string" ? raw.tracking_number : null);
+  const address = typeof raw?.delivery_address === "string" ? raw.delivery_address : null;
 
-  const isTerminal = ["delivered", "deleted", "reconciled"].includes(
-    (order.status || "").toLowerCase()
-  );
+  const isTerminal = ["delivered", "deleted", "reconciled"].includes((order.status || "").toLowerCase());
   const statusInfo = resolveStatusLabel(order);
+  const transitions = getAvailableTransitions(order);
+  const sentToCourier = Boolean(order.in_redex || trackingCode);
 
-  const handleCopyId = async () => {
+  const copy = async (value: string, kind: "id" | "tracking") => {
     try {
-      await navigator.clipboard.writeText(order.id);
-      setCopiedId(true);
-      toast.add({
-        title: "تم نسخ المعرّف",
-        description: `#${order.id}`,
-        type: "success",
-      });
-      setTimeout(() => setCopiedId(false), 1800);
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      toast.add({ title: kind === "id" ? "تم نسخ رقم الطلبية" : "تم نسخ كود التتبع", description: value, type: "success" });
+      setTimeout(() => setCopied(null), 1600);
     } catch {
-      // ignore
+      toast.add({ title: "تعذر النسخ", type: "error" });
     }
   };
 
-  const handleCopyTracking = async () => {
-    if (!trackingCode) return;
-    try {
-      await navigator.clipboard.writeText(trackingCode);
-      setCopiedTracking(true);
-      toast.add({
-        title: "تم نسخ كود التتبع",
-        description: trackingCode,
-        type: "success",
-      });
-      setTimeout(() => setCopiedTracking(false), 1800);
-    } catch {
-      // ignore
-    }
-  };
+  const runStatus = (status: string) => onUpdateStatus?.(order.id, status);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[92vw] sm:max-w-[25vw] sm:min-w-[360px] max-h-[88vh] overflow-y-auto text-right p-4"
-        dir="ltr"
+        className="flex max-h-[90vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 text-right sm:max-w-3xl"
+        dir="rtl"
       >
-        <DialogHeader className="text-right border-b pb-3 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <Package className="size-4 text-primary shrink-0" />
-              <DialogTitle className="text-sm font-bold font-mono text-primary">
-                {order.id}
-              </DialogTitle>
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                onClick={handleCopyId}
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                title="نسخ معرّف الطلبية"
-              >
-                {copiedId ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
-              </Button>
-            </div>
-            <Badge variant="outline" className={`font-semibold text-[11px] ${statusInfo.className}`}>
-              {statusInfo.label}
-            </Badge>
-          </div>
-          <DialogDescription className="text-[11px] text-muted-foreground flex items-center gap-1">
-            <Calendar className="size-3" />
-            <span>{formatDate(order.date)}</span>
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3 py-2 text-xs">
-          {/* Customer & Address */}
-          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <User className="size-3 text-primary" />
-                الزبون:
-              </span>
-              <span className="font-semibold text-foreground">{order.customer}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <Phone className="size-3 text-primary" />
-                الهاتف:
-              </span>
-              <a
-                href={order.phone ? `tel:${order.phone}` : undefined}
-                className="font-mono font-semibold text-foreground hover:underline"
-                dir="ltr"
-              >
-                {order.phone || "—"}
-              </a>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <MapPin className="size-3 text-primary" />
-                العنوان:
-              </span>
-              <span className="font-medium text-foreground">
-                {order.wilaya} — {order.commune}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground text-[11px]">نوع التوصيل:</span>
-              <span className="font-medium text-foreground">{order.deliveryType}</span>
-            </div>
-          </div>
-
-          {/* Product & Total */}
-          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-            <div>
-              <span className="text-muted-foreground block text-[11px]">المنتج / العرض:</span>
-              <span className="font-semibold text-foreground block mt-0.5">{order.items}</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-[11px]">
-                السعر ({formatDzd(order.priceNum)}) + الشحن ({order.shippingFee})
-              </span>
-              <span className="font-bold text-primary tabular-nums text-sm">{order.total}</span>
-            </div>
-          </div>
-
-          {/* Tracking if pushed */}
-          {trackingCode && (
-            <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-2.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <Truck className="size-3.5 text-purple-600 shrink-0" />
-                <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
-                  {trackingCode}
+        {/* Header */}
+        <DialogHeader className="space-y-1 border-b bg-muted/40 px-6 py-4 text-right">
+          <div className="flex flex-wrap items-center gap-2 pl-8">
+            <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+              <Package className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="flex items-center gap-1.5 font-bold text-base">
+                <span>تفاصيل الطلبية</span>
+                <span className="font-mono text-primary" dir="ltr">
+                  {order.id}
                 </span>
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  onClick={handleCopyTracking}
-                  className="h-5 w-5"
-                  title="نسخ كود التتبع"
+                  onClick={() => void copy(order.id, "id")}
+                  className="size-6 text-muted-foreground"
+                  aria-label="نسخ رقم الطلبية"
                 >
-                  {copiedTracking ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                  {copied === "id" ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                </Button>
+              </DialogTitle>
+              <DialogDescription className="flex items-center gap-1 text-muted-foreground text-xs">
+                <Calendar className="size-3" />
+                <span>{formatDate(order.date)}</span>
+              </DialogDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className={`font-semibold text-[11px] ${statusInfo.className}`}>
+                {statusInfo.label}
+              </Badge>
+              {order.isSwitched && (
+                <Badge variant="outline" className="border-cyan-600/30 bg-cyan-500/10 text-[11px] text-cyan-700">
+                  محوّلة (#{order.conversionCount})
+                </Badge>
+              )}
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Body */}
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 text-xs">
+          <div className="grid gap-4 md:grid-cols-2">
+            <section className="rounded-xl border p-4">
+              <h3 className="mb-2 font-bold text-foreground text-sm">الزبون والتوصيل</h3>
+              <div className="divide-y">
+                <InfoRow icon={<User className="size-3.5 text-primary" />} label="الاسم">
+                  {order.customer}
+                </InfoRow>
+                <InfoRow icon={<Phone className="size-3.5 text-primary" />} label="الهاتف">
+                  {order.phone ? (
+                    <a href={`tel:${order.phone}`} className="font-mono text-primary hover:underline" dir="ltr">
+                      {order.phone}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </InfoRow>
+                <InfoRow icon={<MapPin className="size-3.5 text-primary" />} label="الولاية / البلدية">
+                  {order.wilaya} — {order.commune}
+                </InfoRow>
+                {address && <InfoRow label="العنوان">{address}</InfoRow>}
+                <InfoRow icon={<Truck className="size-3.5 text-primary" />} label="نوع التوصيل">
+                  {order.deliveryType}
+                </InfoRow>
+              </div>
+            </section>
+
+            <section className="rounded-xl border p-4">
+              <h3 className="mb-2 font-bold text-foreground text-sm">الطلب والمبلغ</h3>
+              <div className="divide-y">
+                <InfoRow label="المنتج / العرض">{order.items}</InfoRow>
+                <InfoRow label="سعر المنتج">{formatDzd(order.priceNum)}</InfoRow>
+                <InfoRow label="مصاريف الشحن">{order.shippingFee}</InfoRow>
+              </div>
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2.5">
+                <span className="font-semibold text-muted-foreground">المبلغ عند الاستلام</span>
+                <span className="font-bold text-base text-primary tabular-nums">{order.total}</span>
+              </div>
+            </section>
+          </div>
+
+          {trackingCode && (
+            <section className="space-y-3 rounded-xl border border-purple-500/30 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Truck className="size-4 text-purple-600" />
+                  <span className="font-bold text-sm">الشحنة</span>
+                  <span className="font-mono font-bold text-purple-700 dark:text-purple-300" dir="ltr">
+                    {trackingCode}
+                  </span>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => void copy(trackingCode, "tracking")}
+                    className="size-6"
+                    aria-label="نسخ كود التتبع"
+                  >
+                    {copied === "tracking" ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                  </Button>
+                </div>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="h-7 gap-1 text-[11px]"
+                  onClick={() =>
+                    window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`, "_blank")
+                  }
+                >
+                  <Printer className="size-3" />
+                  <span>طباعة البوليصة</span>
                 </Button>
               </div>
-              <Button
-                size="xs"
-                variant="outline"
-                className="h-6 text-[11px] gap-1"
-                onClick={() =>
-                  window.open(
-                    `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(trackingCode)}`,
-                    "_blank"
-                  )
-                }
-              >
-                <Printer className="size-3" />
-                <span>PDF</span>
-              </Button>
-            </div>
+              <ShipmentTrackingPanel trackingCode={trackingCode} />
+            </section>
           )}
 
-          {trackingCode && <ShipmentTrackingPanel trackingCode={trackingCode} />}
-
-          {/* Optional Conversion History */}
           {order.conversions && order.conversions.length > 0 && (
-            <div>
-              <Button
+            <section className="rounded-xl border p-3">
+              <button
                 type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => setShowMore((v) => !v)}
-                className="w-full justify-between text-[11px] text-muted-foreground"
+                onClick={() => setShowHistory((v) => !v)}
+                className="flex w-full items-center justify-between text-muted-foreground"
               >
-                <span className="flex items-center gap-1">
-                  <History className="size-3" />
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <History className="size-3.5" />
                   سجل التحويلات ({order.conversions.length})
                 </span>
-                <span>{showMore ? "إخفاء" : "عرض"}</span>
-              </Button>
-              {showMore && (
-                <div className="mt-1.5 space-y-1.5 rounded-lg border p-2 bg-muted/10 text-[11px]">
+                <span>{showHistory ? "إخفاء" : "عرض"}</span>
+              </button>
+              {showHistory && (
+                <ol className="mt-2 space-y-2">
                   {order.conversions.map((c, i) => (
-                    <div key={i} className="border-b last:border-b-0 pb-1 last:pb-0">
+                    <li key={c.conversion_id ?? `${c.timestamp_utc}-${i}`} className="rounded-md bg-muted/30 p-2">
                       <div className="flex items-center justify-between text-muted-foreground">
                         <span>تحويل #{c.conversion_sequence || i + 1}</span>
                         <span>{formatDate(c.timestamp_utc)}</span>
                       </div>
-                      {c.reason && <div className="text-foreground mt-0.5">{c.reason}</div>}
-                    </div>
+                      {c.reason && <div className="mt-0.5 text-foreground">{c.reason}</div>}
+                    </li>
                   ))}
-                </div>
+                </ol>
               )}
-            </div>
+            </section>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="border-t pt-3 flex flex-wrap items-center justify-between gap-1.5">
-          <Button variant="outline" size="xs" onClick={() => onOpenChange(false)} className="text-xs">
-            إغلاق
-          </Button>
+        {/* Footer: one row for outcome statuses, one group for routing actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-6 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {onUpdateStatus && transitions.includes("confirmed") && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-blue-700 border-blue-500/40 hover:bg-blue-500/10"
+                onClick={() => runStatus("confirmed")}
+              >
+                <CheckCircle2 className="size-3.5" />
+                تأكيد
+              </Button>
+            )}
+            {onUpdateStatus && transitions.includes("delivered") && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-emerald-700 border-emerald-500/40 hover:bg-emerald-500/10"
+                onClick={() => runStatus("delivered")}
+              >
+                <CheckCircle2 className="size-3.5" />
+                مستلمة
+              </Button>
+            )}
+            {onUpdateStatus && transitions.includes("returned") && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-orange-700 border-orange-500/40 hover:bg-orange-500/10"
+                onClick={() => runStatus("returned")}
+              >
+                <RotateCcw className="size-3.5" />
+                مرتجعة
+              </Button>
+            )}
+            {onUpdateStatus && transitions.includes("cancelled") && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-red-700 border-red-500/40 hover:bg-red-500/10"
+                onClick={() => runStatus("cancelled")}
+              >
+                <XCircle className="size-3.5" />
+                إلغاء
+              </Button>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {onUpdateStatus && order.status === "pending" && (
-              <Button
-                size="xs"
-                variant="outline"
-                className="gap-1 text-xs text-blue-700 border-blue-500/40 hover:bg-blue-500/10"
-                onClick={() => onUpdateStatus(order.id, "confirmed")}
-              >
-                <CheckCircle2 className="size-3" />
-                <span>Confirm</span>
-              </Button>
-            )}
-
-            {onUpdateStatus && order.status !== "cancelled" && !isTerminal && (
-              <Button
-                size="xs"
-                variant="outline"
-                className="gap-1 text-xs text-destructive border-destructive/40 hover:bg-destructive/10"
-                onClick={() => onUpdateStatus(order.id, "cancelled")}
-              >
-                <XCircle className="size-3" />
-                <span>Cancel</span>
-              </Button>
-            )}
-
             {!isTerminal && onOpenSwitchDialog && (
               <Button
-                size="xs"
+                size="sm"
                 variant="outline"
-                className="gap-1 text-xs"
+                className="gap-1"
                 onClick={() => {
                   onOpenChange(false);
                   onOpenSwitchDialog(order);
                 }}
               >
-                <RefreshCw className="size-3" />
-                <span>Switch</span>
+                <RefreshCw className="size-3.5" />
+                تحويل
               </Button>
             )}
-
-            {!order.in_redex && !isTerminal && onOpenPushDialog && (
+            {!sentToCourier && !isTerminal && onOpenPushDialog && (
               <Button
-                size="xs"
-                className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                size="sm"
+                className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={() => {
                   onOpenChange(false);
                   onOpenPushDialog(order);
                 }}
               >
-                <Truck className="size-3" />
-                <span>Push</span>
+                <Truck className="size-3.5" />
+                إرسال للتوصيل
               </Button>
             )}
+            <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+              إغلاق
+            </Button>
           </div>
         </div>
       </DialogContent>

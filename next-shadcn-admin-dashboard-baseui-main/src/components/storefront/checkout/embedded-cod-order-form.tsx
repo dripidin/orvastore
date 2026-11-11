@@ -24,10 +24,11 @@ import {
   ALGERIA_58_WILAYAS,
   type CodOrderSubmission,
   calculateDeliveryTariff,
-  isStopDeskAllowed,  setLiveTariffs,
-
+  isStopDeskAllowed,
   isValidAlgerianPhone,
+  setLiveTariffs,
 } from "@/lib/types/checkout";
+import { useDeliveryOffices } from "@/lib/use-delivery-offices";
 
 interface RawCommune {
   id: number;
@@ -112,10 +113,20 @@ export function EmbeddedCodOrderForm({
     return ALGERIA_58_WILAYAS.find((w) => w.code === wilayaCode) || ALGERIA_58_WILAYAS[15];
   }, [wilayaCode]);
 
-  // Stop-Desk capability for selected Wilaya
-  const stopDeskAllowed = useMemo(() => {
-    return isStopDeskAllowed(wilayaCode);
-  }, [wilayaCode]);
+  // Delivery offices (EcoTrack stop-desks) for the selected wilaya, per commune
+  const deliveryOffices = useDeliveryOffices(wilayaCode);
+  const communeHasOffice = deliveryOffices.hasOffice(communeName);
+
+  // Stop-Desk capability: wilaya must allow it AND the selected commune must have an office
+  const wilayaStopDeskAllowed = useMemo(() => isStopDeskAllowed(wilayaCode), [wilayaCode]);
+  const stopDeskAllowed = wilayaStopDeskAllowed && communeHasOffice !== false;
+
+  // Fall back to home delivery as soon as the selected commune has no office
+  useEffect(() => {
+    if (!stopDeskAllowed && deliveryType === "STOP_DESK") {
+      setDeliveryType("DOMICILE");
+    }
+  }, [stopDeskAllowed, deliveryType]);
 
   // Live EcoTrack tariffs (falls back to the static matrix when unavailable)
   const [tariffVersion, setTariffVersion] = useState(0);
@@ -423,9 +434,16 @@ export function EmbeddedCodOrderForm({
               {availableCommunes.map((c) => (
                 <option key={c.id} value={c.commune_name_ar || c.commune_name_fr}>
                   {c.commune_name_ar} {c.commune_name_fr ? `(${c.commune_name_fr})` : ""}
+                  {deliveryOffices.hasOffice(c.commune_name_ar) ? " — مكتب التوصيل متوفر ✓" : ""}
                 </option>
               ))}
             </select>
+            {communeHasOffice === true && (
+              <p className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                <CheckCircle2 className="size-3" />
+                مكتب التوصيل متوفر في هذه البلدية
+              </p>
+            )}
             {fieldErrors.communeName && <p className="text-xs text-red-600 font-medium">{fieldErrors.communeName}</p>}
           </div>
         </div>
@@ -491,16 +509,34 @@ export function EmbeddedCodOrderForm({
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   {stopDeskAllowed
-                    ? "تستلم بنفسك من أقرب مكتب شحن في ولايتك بتكلفة أقل"
-                    : "غير متوفر في الولايات الجنوبية (49 إلى 58)"}
+                    ? "تستلم بنفسك من مكتب التوصيل في بلديتك بتكلفة أقل"
+                    : communeHasOffice === false
+                      ? "لا يوجد مكتب توصيل في هذه البلدية"
+                      : "غير متوفر في هذه الولاية"}
                 </p>
               </div>
             </button>
           </div>
-          {!stopDeskAllowed && (
-            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-              ⚠️ التوصيل للمكتب غير متوفر حالياً في ولاية {currentWilaya.nameAr}، التوصيل متاح لباب المنزل فقط.
-            </p>
+          {communeHasOffice === false && wilayaStopDeskAllowed ? (
+            <div className="text-[11px] leading-relaxed text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-1">
+              <p className="font-bold">
+                ⚠️ لا يوجد مكتب توصيل في بلدية {communeName}، لذلك سيتم التوصيل عبر رجل التوصيل إلى باب منزلك
+                ويُحتسب سعر التوصيل للمنزل.
+              </p>
+              {deliveryOffices.offices.length > 0 && (
+                <p>
+                  مكاتب التوصيل المتوفرة في ولاية {currentWilaya.nameAr}:{" "}
+                  <span className="font-semibold">{deliveryOffices.offices.map((o) => o.ar).join("، ")}</span>
+                </p>
+              )}
+            </div>
+          ) : (
+            !wilayaStopDeskAllowed && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                ⚠️ التوصيل للمكتب غير متوفر حالياً في ولاية {currentWilaya.nameAr}، سيتم التوصيل عبر رجل التوصيل
+                إلى باب المنزل.
+              </p>
+            )
           )}
         </div>
 

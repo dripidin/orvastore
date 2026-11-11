@@ -12,3 +12,4 @@ ALTER TABLE delivery_fees ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Delivery fees are readable" ON delivery_fees;
 CREATE POLICY "Delivery fees are readable" ON delivery_fees FOR SELECT USING (true);
+

@@ -13,6 +13,7 @@ import {
   normalizeAlgerianPhone,
   isValidAlgerianPhone,
   isStopDeskAllowed,
+  setLiveTariffs,
 } from '@/lib/types/checkout';
 import { fallbackOrdersStore, FallbackOrderRecord } from '@/lib/orders-store';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
@@ -180,6 +181,15 @@ export async function rerouteOrderAction(
   }
 
   // 5. Dynamic Tariff & Total Calculation
+  // A switched parcel is priced exactly like a fresh order shipped from the hub (Biskra 07):
+  // same live EcoTrack tariffs as checkout, static matrix only as a fallback.
+  try {
+    const { getDeliveryFees } = await import('@/lib/delivery-fees');
+    const live = await getDeliveryFees(false);
+    if (live.success) setLiveTariffs(live.fees);
+  } catch {
+    // fall back to the static tariff matrix
+  }
   const newShippingFee = calculateDeliveryTariff(validated.newWilayaCode, validated.newDeliveryType);
   const updatedTotal = sourceOrder.productPrice + newShippingFee;
   rerouteSequenceCounter += 1;
