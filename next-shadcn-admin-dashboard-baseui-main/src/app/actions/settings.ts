@@ -24,6 +24,11 @@ export interface AdminSettingsPayload {
     scope?: 'all' | 'selected';
     pages?: string[];
   };
+  googleTag?: {
+    enabled?: boolean;
+    containerId?: string;
+    measurementId?: string;
+  };
   telegram?: {
     botToken?: string;
     chatId?: string;
@@ -98,6 +103,18 @@ export async function saveSettingsAction(
     }
     if (payload.metaPixel.pages !== undefined) {
       fallbackSettingsStore.metaPixel.pages = payload.metaPixel.pages;
+    }
+  }
+
+  if (payload.googleTag) {
+    if (payload.googleTag.enabled !== undefined) {
+      fallbackSettingsStore.googleTag.enabled = Boolean(payload.googleTag.enabled);
+    }
+    if (payload.googleTag.containerId !== undefined) {
+      fallbackSettingsStore.googleTag.containerId = payload.googleTag.containerId.trim();
+    }
+    if (payload.googleTag.measurementId !== undefined) {
+      fallbackSettingsStore.googleTag.measurementId = payload.googleTag.measurementId.trim();
     }
   }
 
@@ -236,6 +253,11 @@ export async function saveSettingsAction(
                 enabled: fallbackRedexStore.enabled,
                 base_url: fallbackRedexStore.baseUrl,
                 api_token: fallbackRedexStore.apiToken,
+              },
+              google_tag: {
+                enabled: fallbackSettingsStore.googleTag.enabled,
+                container_id: fallbackSettingsStore.googleTag.containerId,
+                measurement_id: fallbackSettingsStore.googleTag.measurementId,
               },
             },
             updated_at: new Date().toISOString(),
@@ -493,6 +515,12 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
           if (r.enabled !== undefined) fallbackRedexStore.enabled = Boolean(r.enabled);
           if (r.base_url !== undefined) fallbackRedexStore.baseUrl = r.base_url;
           if (r.api_token !== undefined) fallbackRedexStore.apiToken = r.api_token;
+        }
+        if (data.integrations?.google_tag) {
+          const g = data.integrations.google_tag;
+          if (g.enabled !== undefined) fallbackSettingsStore.googleTag.enabled = Boolean(g.enabled);
+          if (g.container_id !== undefined) fallbackSettingsStore.googleTag.containerId = g.container_id;
+          if (g.measurement_id !== undefined) fallbackSettingsStore.googleTag.measurementId = g.measurement_id;
         }
       }
     }

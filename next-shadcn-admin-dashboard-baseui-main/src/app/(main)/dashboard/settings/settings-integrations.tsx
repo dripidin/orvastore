@@ -80,6 +80,15 @@ interface PublicSettingsPayload {
     updatedAt: string | null;
     status: string;
   };
+  googleTag?: {
+    enabled: boolean;
+    containerId: string;
+    measurementId?: string;
+    isConfigured: boolean;
+    tokenSource: string;
+    updatedAt: string | null;
+    status: string;
+  };
   store?: {
     logoUrl?: string;
     name?: string;
@@ -179,6 +188,14 @@ export function SettingsIntegrations() {
   const [metaTesting, setMetaTesting] = React.useState<boolean>(false);
   const [metaFeedback, setMetaFeedback] = React.useState<ActionFeedback | null>(null);
 
+  // Google Tag Manager / Analytics Form State
+  const [gtmEnabled, setGtmEnabled] = React.useState<boolean>(true);
+  const [gtmContainerId, setGtmContainerId] = React.useState<string>("GTM-KQNN3P49");
+  const [gtmMeasurementId, setGtmMeasurementId] = React.useState<string>("");
+  const [gtmSaving, setGtmSaving] = React.useState<boolean>(false);
+  const [gtmTesting, setGtmTesting] = React.useState<boolean>(false);
+  const [gtmFeedback, setGtmFeedback] = React.useState<ActionFeedback | null>(null);
+
   // Store Logo State
   const [storeLogoUrl, setStoreLogoUrl] = React.useState<string>("/images/orva-logo.svg");
   const [storeLogoSaving, setStoreLogoSaving] = React.useState<boolean>(false);
@@ -228,6 +245,11 @@ export function SettingsIntegrations() {
           if (Array.isArray(data.settings.metaPixel.pages) && data.settings.metaPixel.pages.length) {
             setMetaPages(data.settings.metaPixel.pages);
           }
+        }
+        if (data.settings.googleTag) {
+          setGtmEnabled(Boolean(data.settings.googleTag.enabled));
+          setGtmContainerId(data.settings.googleTag.containerId || "GTM-KQNN3P49");
+          setGtmMeasurementId(data.settings.googleTag.measurementId || "");
         }
         if (data.settings.store?.logoUrl) {
           setStoreLogoUrl(data.settings.store.logoUrl);
@@ -549,10 +571,93 @@ export function SettingsIntegrations() {
     }
   };
 
+  // ── Google Tag Manager Handlers ─────────────────────────────────────────────
+  const handleSaveGoogleTag = async () => {
+    setGtmSaving(true);
+    setGtmFeedback(null);
+    try {
+      const container = gtmContainerId.trim();
+      const ga4 = gtmMeasurementId.trim();
+
+      if (container && !/^GTM-[A-Z0-9]+$/i.test(container)) {
+        throw new Error("معرّف حاوية Google Tag Manager غير صالح (يجب أن يبدأ بـ GTM-، مثال: GTM-KQNN3P49).");
+      }
+
+      if (ga4 && !/^G-[A-Z0-9]+$/i.test(ga4)) {
+        throw new Error("معرّف قياس Google Analytics 4 غير صالح (يجب أن يبدأ بـ G-، مثال: G-XXXXXXXXXX).");
+      }
+
+      await callSettingsApi({
+        action: "save",
+        googleTag: {
+          enabled: gtmEnabled,
+          containerId: container,
+          measurementId: ga4,
+        },
+      });
+      setGtmFeedback({ type: "success", message: "تم حفظ إعدادات Google Tag Manager و Google Analytics بنجاح." });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر حفظ إعدادات Google Tag.";
+      setGtmFeedback({ type: "error", message: msg });
+    } finally {
+      setGtmSaving(false);
+    }
+  };
+
+  const handleClearGoogleTag = async () => {
+    if (!confirm("هل أنت متأكد من إزالة معرّفات Google Tag Manager من الخادم؟ سيتوقف التتبع في الموقع.")) return;
+    setGtmSaving(true);
+    try {
+      await callSettingsApi({ action: "delete", integration: "googleTag" });
+      setGtmContainerId("");
+      setGtmMeasurementId("");
+      setGtmFeedback({ type: "info", message: "تم مسح إعدادات Google Tag بنجاح." });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر مسح الإعدادات.";
+      setGtmFeedback({ type: "error", message: msg });
+    } finally {
+      setGtmSaving(false);
+    }
+  };
+
+  const handleTestGoogleTag = async () => {
+    setGtmTesting(true);
+    setGtmFeedback(null);
+    try {
+      const res = await callSettingsApi({
+        action: "test",
+        integration: "googleTag",
+        containerId: gtmContainerId,
+        measurementId: gtmMeasurementId,
+      });
+      const test = res.testResult;
+      if (test.configured) {
+        setGtmFeedback({
+          type: "success",
+          message: test.message,
+        });
+      } else {
+        setGtmFeedback({
+          type: "error",
+          message: test.message || "تكوين Google Tag غير مكتمل. يرجى إدخال معرّف GTM أو GA4 صالح.",
+        });
+      }
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "فشل فحص تكوين Google Tag.";
+      setGtmFeedback({ type: "error", message: msg });
+    } finally {
+      setGtmTesting(false);
+    }
+  };
+
   const isRedexConfigured = Boolean(serverSettings?.redex?.isConfigured);
   const isTgConfigured = Boolean(serverSettings?.telegram?.isConfigured);
   const isMetaConfigured = Boolean(serverSettings?.metaPixel?.isConfigured);
   const hasMetaCapi = Boolean(serverSettings?.metaPixel?.hasCapiToken);
+  const isGtmConfigured = Boolean(serverSettings?.googleTag?.isConfigured || gtmContainerId.trim() || gtmMeasurementId.trim());
 
   return (
     <div className="space-y-6" dir="ltr">
@@ -965,6 +1070,151 @@ export function SettingsIntegrations() {
                     >
                       <Trash2 className="size-3.5" />
                       <span>مسح CAPI Token</span>
+                    </Button>
+                  )}
+                </div>
+              </CardFooter>
+            </Card>
+
+            {/* Google Tag Manager & Google Analytics Card */}
+            <Card className="md:col-span-3">
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-base font-bold flex items-center gap-2">
+                        <Globe className="size-4 text-emerald-600" />
+                        إعدادات التحليلات — Google Tag Manager & Google Analytics (GA4)
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-[11px] font-mono">
+                        GTM & gtag.js
+                      </Badge>
+                      <StatusBadge
+                        status={serverSettings?.googleTag?.status || (isGtmConfigured ? "operational" : "not_configured")}
+                        label={isGtmConfigured ? (gtmEnabled ? "Configured & Active" : "Disabled") : "Not Configured"}
+                      />
+                    </div>
+                    <CardDescription className="text-xs">
+                      إدارة وسوم التتبع والأحداث التسويقية وإحصائيات الزوار الشاملة عبر منصة Google Tag Manager مع دعم اختياري لمعرّف قياس GA4 وتتبع مسار التنقل في كامل الموقع.
+                    </CardDescription>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs font-medium">
+                    <ShieldCheck className="size-4 text-emerald-600" />
+                    <span>تتبع نشط على كامل الموقع (Root Layout)</span>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4 text-xs">
+                {gtmFeedback && (
+                  <Alert variant={gtmFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
+                    {gtmFeedback.type === "error" ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" />}
+                    <AlertTitle className="text-xs font-bold">
+                      {gtmFeedback.type === "error" ? "تنبيه" : "نجاح العملية"}
+                    </AlertTitle>
+                    <AlertDescription className="text-xs mt-0.5">{gtmFeedback.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gtm-toggle" className="text-xs font-bold cursor-pointer">
+                      تفعيل Google Tag Manager (GTM Tracking Injection)
+                    </Label>
+                    <div className="text-[11px] text-muted-foreground">
+                      حقن سكريبتات GTM وتهيئة dataLayer تلقائياً مع أحداث التنقل بين الصفحات (Pageviews).
+                    </div>
+                  </div>
+                  <Switch
+                    id="gtm-toggle"
+                    checked={gtmEnabled}
+                    onCheckedChange={setGtmEnabled}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gtm-container-id" className="text-xs font-semibold">
+                      معرّف حاوية Google Tag Manager (GTM Container ID):
+                    </Label>
+                    <Input
+                      id="gtm-container-id"
+                      type="text"
+                      placeholder="مثال: GTM-KQNN3P49"
+                      value={gtmContainerId}
+                      onChange={(e) => setGtmContainerId(e.target.value)}
+                      className="font-mono text-xs"
+                      dir="ltr"
+                    />
+                    <div className="text-[11px] text-muted-foreground">
+                      المعرّف الأساسي للحاوية المحمّلة من googletagmanager.com/gtm.js
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gtm-measurement-id" className="text-xs font-semibold">
+                      معرّف قياس Google Analytics 4 (GA4 Measurement ID — اختياري):
+                    </Label>
+                    <Input
+                      id="gtm-measurement-id"
+                      type="text"
+                      placeholder="مثال: G-XXXXXXXXXX (اختياري)"
+                      value={gtmMeasurementId}
+                      onChange={(e) => setGtmMeasurementId(e.target.value)}
+                      className="font-mono text-xs"
+                      dir="ltr"
+                    />
+                    <div className="text-[11px] text-muted-foreground">
+                      إذا كنت تريد تهيئة gtag(&apos;config&apos;) مباشرة بجانب الحاوية.
+                    </div>
+                  </div>
+                </div>
+
+                {serverSettings?.googleTag?.updatedAt && (
+                  <div className="text-muted-foreground text-[10px]">
+                    آخر تحديث: {new Date(serverSettings.googleTag.updatedAt).toLocaleString("ar-DZ")}
+                  </div>
+                )}
+              </CardContent>
+
+              <CardFooter className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveGoogleTag}
+                    disabled={gtmSaving}
+                    className="text-xs gap-1.5 h-8"
+                  >
+                    {gtmSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    <span>حفظ إعدادات Google Tag</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestGoogleTag}
+                    disabled={gtmTesting || (!gtmContainerId.trim() && !gtmMeasurementId.trim())}
+                    className="text-xs gap-1.5 h-8"
+                  >
+                    {gtmTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
+                    <span>فحص التكوين</span>
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {isGtmConfigured && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearGoogleTag}
+                      disabled={gtmSaving}
+                      className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-8"
+                    >
+                      <Trash2 className="size-3.5" />
+                      <span>مسح معرّف GTM</span>
                     </Button>
                   )}
                 </div>

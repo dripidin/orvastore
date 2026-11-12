@@ -13,6 +13,11 @@ export interface AdminSettingsPayload {
     scope?: 'all' | 'selected';
     pages?: string[];
   };
+  googleTag?: {
+    enabled?: boolean;
+    containerId?: string;
+    measurementId?: string;
+  };
   telegram?: {
     botToken?: string;
     chatId?: string;
@@ -48,6 +53,11 @@ export interface AdminSettingsRecord {
     scope: 'all' | 'selected';
     pages: string[];
     sha256DeduplicationActive: boolean;
+  };
+  googleTag: {
+    enabled: boolean;
+    containerId: string;
+    measurementId: string;
   };
   telegram: {
     botToken: string;
@@ -85,6 +95,11 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     scope: 'all',
     pages: ['/checkout', '/pack1', '/pack2', '/pack3'],
     sha256DeduplicationActive: true,
+  },
+  googleTag: {
+    enabled: true,
+    containerId: process.env.NEXT_PUBLIC_GTM_ID || 'GTM-KQNN3P49',
+    measurementId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || '',
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',

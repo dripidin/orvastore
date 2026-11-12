@@ -181,20 +181,21 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
   },
   {
     id: "marketing-ga4",
-    name: "Google Analytics 4 (GA4)",
+    name: "Google Tag Manager & Google Analytics (GA4)",
     category: "analytics",
     categoryLabel: "Analytics & Marketing",
-    status: "not_connected",
-    statusLabel: "Not Connected (Blueprint Only)",
+    status: "connected",
+    statusLabel: "Connected & Active (GTM-KQNN3P49)",
     environmentScope: "all",
-    requiredConfiguration: "GA4 Measurement ID (e.g., G-XXXXXXXXXX), Privacy consent banner",
+    requiredConfiguration: "GTM Container ID (GTM-KQNN3P49), Optional GA4 Measurement ID",
     availableCapabilities: [
-      "Page tracking and e-commerce enhanced measurement",
-      "Event reporting (view_item, begin_checkout, purchase)",
-      "Consent mode v2 compliance"
+      "Full website container tracking (GTM web interface)",
+      "Next.js optimized script hydration (afterInteractive)",
+      "Automated pageview tracking on client route transitions",
+      "Dynamic configuration via Settings Dashboard"
     ],
-    managementMethod: "Blueprint stage — requires server environment configuration",
-    notes: "Not active in current release. Awaiting privacy & consent policy approval."
+    managementMethod: "Admin Settings Dashboard & GTM Web Container",
+    notes: "Active with fallback GTM-KQNN3P49 and dynamic settings management."
   },
 
   // ── 5. Delivery & Courier Integrations ────────────────────────────────────

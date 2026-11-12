@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   const isTgConfigured = Boolean(settings.telegram.botToken && settings.telegram.chatId);
   const isMetaConfigured = Boolean(settings.metaPixel.pixelId);
   const hasMetaCapi = Boolean(settings.metaPixel.capiToken);
+  const isGtmConfigured = Boolean(settings.googleTag?.containerId || settings.googleTag?.measurementId);
 
   return NextResponse.json({
     success: true,
@@ -33,6 +34,15 @@ export async function GET(request: NextRequest) {
         tokenSource: hasMetaCapi ? 'Server Config / Supabase' : 'Not Configured',
         status: isMetaConfigured
           ? (settings.metaPixel.enabled ? 'operational' : 'not_connected')
+          : 'not_configured',
+        updatedAt: settings.updatedAt || null,
+      },
+      googleTag: {
+        ...settings.googleTag,
+        isConfigured: isGtmConfigured,
+        tokenSource: isGtmConfigured ? 'Admin Dashboard / Environment' : 'Not Configured',
+        status: isGtmConfigured
+          ? (settings.googleTag.enabled ? 'operational' : 'not_connected')
           : 'not_configured',
         updatedAt: settings.updatedAt || null,
       },
@@ -160,6 +170,27 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (integration === 'googleTag') {
+        const settings = await getAdminSettingsAction();
+        const containerId = (body.containerId || settings.googleTag?.containerId || '').trim();
+        const measurementId = (body.measurementId || settings.googleTag?.measurementId || '').trim();
+        const validGtm = Boolean(containerId && /^GTM-[A-Z0-9]+$/i.test(containerId));
+        const validGa4 = Boolean(measurementId && /^G-[A-Z0-9]+$/i.test(measurementId));
+        const configured = validGtm || validGa4;
+
+        return NextResponse.json({
+          success: true,
+          testResult: {
+            configured,
+            containerId: containerId || undefined,
+            measurementId: measurementId || undefined,
+            message: configured
+              ? `تكوين Google Tag سليم (${validGtm ? containerId : ''}${validGtm && validGa4 ? ' + ' : ''}${validGa4 ? measurementId : ''}) وجاهز للعمل.`
+              : 'يرجى إدخال معرّف حاوية GTM صالح (مثال: GTM-KQNN3P49) أو معرّف GA4 (مثال: G-XXXXXXXXXX).',
+          },
+        });
+      }
+
       // Generic integration test fallback
       return NextResponse.json({
         success: true,
@@ -186,6 +217,14 @@ export async function POST(request: NextRequest) {
           await saveSettingsAction({ metaPixel: { pixelId: '' } });
         } else if (field === 'capiToken') {
           await saveSettingsAction({ metaPixel: { capiToken: '' } });
+        }
+      } else if (integration === 'googleTag') {
+        if (field === 'containerId') {
+          await saveSettingsAction({ googleTag: { containerId: '' } });
+        } else if (field === 'measurementId') {
+          await saveSettingsAction({ googleTag: { measurementId: '' } });
+        } else {
+          await saveSettingsAction({ googleTag: { containerId: '', measurementId: '', enabled: false } });
         }
       }
       return NextResponse.json({
