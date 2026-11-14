@@ -99,7 +99,7 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
   googleTag: {
     enabled: true,
     containerId: process.env.NEXT_PUBLIC_GTM_ID || 'GTM-KQNN3P49',
-    measurementId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || '',
+    measurementId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-M2QXF4EZKZ',
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',

@@ -36,6 +36,24 @@ function renderMetricValue(isLoading: boolean, error: string | null, value: stri
 export function VisitorsAndReports() {
   const { orders, isLoading, error, refresh } = useOrvaOrders();
   const [period, setPeriod] = React.useState<AnalyticsPeriod>("30d");
+  const [liveGa4, setLiveGa4] = React.useState<{
+    realtimeUsers: number;
+    totalSessionsToday: number;
+    pageviewsToday: number;
+    avgSessionDuration: string;
+    bounceRate: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/analytics/live", { cache: "no-store", credentials: "same-origin" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setLiveGa4(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Determine chronological anchor date for dataset
   const referenceAnchor = React.useMemo(() => {
@@ -173,6 +191,13 @@ export function VisitorsAndReports() {
           <h2 className="flex items-center gap-2 text-xl font-bold">
             <BarChart3 className="size-5 text-primary" aria-hidden="true" />
             تقارير الزيارات والحملات التسويقية
+            <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30 bg-emerald-500/5 mr-2">
+              <span className="relative flex h-1.5 w-1.5 inline-block mr-1">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
+              Google Analytics متزامن
+            </Badge>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             تحليلات حركة الزوار، أداء القنوات الإعلانية، ومؤشرات تحويل الطلبات الفعلية لمتجر ORVA.
