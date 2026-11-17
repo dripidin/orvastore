@@ -8,7 +8,12 @@ import {
   getRedexSettingsAction,
   saveSettingsAction,
 } from "@/app/actions/settings";
-import { runOrvaGeminiAgentQuery } from "@/lib/ai/store-ai-context";
+import {
+  formatGeminiUserErrorMessage,
+  probeOrvaGeminiConnection,
+  runGeminiSettingsTestReport,
+  runOrvaGeminiAgentQuery,
+} from "@/lib/ai/store-ai-context";
 
 function resolveStatus(isConfigured: boolean, enabled: boolean, fallbackWhenUnconfigured = "not_configured"): string {
   if (isConfigured) {
@@ -78,41 +83,17 @@ export async function mutateDashboardSettingsFallbackAction(body: Record<string,
   if (body.action === "test") {
     const integration = String(body.integration ?? "");
     if (integration === "geminiAi") {
-      const settings = await getAdminSettingsAction();
-      const apiKey = (
-        typeof body.apiKey === "string" && body.apiKey.trim() ? body.apiKey.trim() : settings.geminiAi.apiKey || ""
-      ).trim();
-      const model = (
-        typeof body.model === "string" && body.model.trim()
-          ? body.model.trim()
-          : settings.geminiAi.model || "gemini-flash-latest"
-      ).trim();
-      const configured = Boolean(apiKey.length >= 10);
-
-      const aiReport = await runOrvaGeminiAgentQuery({
-        userMessage:
-          "قدّم تقريراً شاملاً ومختصراً عن التقارير الأخيرة لعدد الطلبيات وتوزيع حالاتها (قيد الانتظار، المؤكدة، المشحونة، المسلّمة، المرتجعة، الملغاة) وعن التقارير العامة لأداء المتجر والمبيعات المحصّلة وأهم المنتجات.",
-        overrideApiKey: apiKey,
-        overrideModel: model,
+      const testResult = await runGeminiSettingsTestReport({
+        name: typeof body.name === "string" ? body.name : undefined,
+        projectName: typeof body.projectName === "string" ? body.projectName : undefined,
+        projectNumber: typeof body.projectNumber === "string" ? body.projectNumber : undefined,
+        apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
+        model: typeof body.model === "string" ? body.model : undefined,
       });
 
       return {
         success: true,
-        testResult: {
-          configured,
-          authenticated: configured && !aiReport.apiError,
-          agentName: (typeof body.name === "string" && body.name.trim()) || aiReport.agentName,
-          projectName: (typeof body.projectName === "string" && body.projectName.trim()) || aiReport.projectName,
-          projectNumber:
-            (typeof body.projectNumber === "string" && body.projectNumber.trim()) || aiReport.projectNumber,
-          model: aiReport.model,
-          latencyMs: aiReport.latencyMs,
-          reportText: aiReport.reply,
-          snapshot: aiReport.snapshot,
-          message: configured
-            ? `تم إجراء اختبار Orva Agent AI (${aiReport.projectName}) وتوليد التقرير الأخير لعدد الطلبيات والتقرير العام للمتجر بنجاح (${aiReport.snapshot.totalOrders} طلبية).`
-            : "يرجى إدخال مفتاح Gemini API صالح لإجراء الاختبار.",
-        },
+        testResult,
       };
     }
 
@@ -198,6 +179,16 @@ export async function mutateDashboardSettingsFallbackAction(body: Record<string,
   return saveSettingsAction(body as AdminSettingsPayload);
 }
 
+export async function probeAiChatConnectionFallbackAction(forceLiveCheck = true) {
+  const probe = await probeOrvaGeminiConnection({ forceLiveCheck });
+  return {
+    success: true,
+    ...probe,
+    disconnected: probe.configured && probe.enabled ? !probe.connected : false,
+    error: !probe.connected ? formatGeminiUserErrorMessage(probe.errorCode, probe.apiError) : undefined,
+  };
+}
+
 export async function sendAiChatMessageFallbackAction(input: {
   message: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -211,6 +202,8 @@ export async function sendAiChatMessageFallbackAction(input: {
   if (!settings.geminiAi.enabled) {
     return {
       success: false,
+      disconnected: true,
+      errorCode: "GEMINI_DISABLED",
       error: "وكيل Orva Agent AI متوقف حالياً من إعدادات لوحة التحكم.",
     };
   }
@@ -220,8 +213,25 @@ export async function sendAiChatMessageFallbackAction(input: {
     history: Array.isArray(input.history) ? input.history : [],
   });
 
+  if (!result.ok) {
+    return {
+      success: false,
+      disconnected: true,
+      errorCode: result.errorCode,
+      error: formatGeminiUserErrorMessage(result.errorCode, result.apiError),
+      apiError: result.apiError,
+      attemptedModels: result.attemptedModels,
+      agentName: result.agentName,
+      projectName: result.projectName,
+      projectNumber: result.projectNumber,
+      requestedModel: result.requestedModel,
+      latencyMs: result.latencyMs,
+    };
+  }
+
   return {
     success: true,
+    disconnected: false,
     reply: result.reply,
     matchedOrders: result.matchedOrders,
     snapshot: result.snapshot,
@@ -229,6 +239,7 @@ export async function sendAiChatMessageFallbackAction(input: {
     projectName: result.projectName,
     projectNumber: result.projectNumber,
     model: result.model,
+    requestedModel: result.requestedModel,
     latencyMs: result.latencyMs,
   };
 }

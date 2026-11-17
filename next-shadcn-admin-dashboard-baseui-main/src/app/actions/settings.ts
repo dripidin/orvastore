@@ -139,7 +139,7 @@ export async function saveSettingsAction(
       fallbackSettingsStore.geminiAi.projectNumber = payload.geminiAi.projectNumber.trim() || '347934146406';
     }
     if (payload.geminiAi.model !== undefined) {
-      fallbackSettingsStore.geminiAi.model = payload.geminiAi.model.trim() || 'gemini-flash-latest';
+      fallbackSettingsStore.geminiAi.model = payload.geminiAi.model.trim() || 'auto';
     }
     if (payload.geminiAi.apiKey !== undefined && payload.geminiAi.apiKey.trim().length > 0) {
       fallbackSettingsStore.geminiAi.apiKey = payload.geminiAi.apiKey.trim();
@@ -232,54 +232,93 @@ export async function saveSettingsAction(
   try {
     const supabase = getSupabaseServerClient() as any;
     if (supabase) {
-      // Upsert site_settings singleton
-      await supabase
+      const { data: currentRow } = await supabase
         .from('site_settings')
-        .upsert(
-          {
-            id: 1,
-            meta_pixel_id: fallbackSettingsStore.metaPixel.pixelId,
-            meta_capi_token: fallbackSettingsStore.metaPixel.capiToken,
-            meta_test_event_code: fallbackSettingsStore.metaPixel.testEventCode,
-            telegram_bot_token: fallbackSettingsStore.telegram.botToken,
-            telegram_chat_id: fallbackSettingsStore.telegram.chatId,
-            telegram_alerts_enabled: fallbackSettingsStore.telegram.enabled,
-            active_courier_provider: fallbackSettingsStore.couriers.activeProvider,
-            integrations: {
-              meta: {
-                pixel_id: fallbackSettingsStore.metaPixel.pixelId,
-                capi_enabled: fallbackSettingsStore.metaPixel.capiEnabled,
-                capi_token: fallbackSettingsStore.metaPixel.capiToken,
-                test_event_code: fallbackSettingsStore.metaPixel.testEventCode,
-              },
-              telegram: {
-                enabled: fallbackSettingsStore.telegram.enabled,
-                bot_token: fallbackSettingsStore.telegram.botToken,
-                chat_id: fallbackSettingsStore.telegram.chatId,
-              },
-              courier: {
-                active_provider: fallbackSettingsStore.couriers.activeProvider,
-                yalidine: fallbackSettingsStore.couriers.yalidine,
-                zr_express: fallbackSettingsStore.couriers.zrExpress,
-              },
-              redex: {
-                enabled: fallbackRedexStore.enabled,
-                base_url: fallbackRedexStore.baseUrl,
-                api_token: fallbackRedexStore.apiToken,
-              },
-              gemini_ai: {
-                enabled: fallbackSettingsStore.geminiAi.enabled,
-                name: fallbackSettingsStore.geminiAi.name,
-                project_name: fallbackSettingsStore.geminiAi.projectName,
-                project_number: fallbackSettingsStore.geminiAi.projectNumber,
-                model: fallbackSettingsStore.geminiAi.model,
-                api_key: fallbackSettingsStore.geminiAi.apiKey,
-              },
-            },
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'id' }
-        );
+        .select('integrations')
+        .eq('id', 1)
+        .maybeSingle();
+
+      const existingIntegrations =
+        currentRow?.integrations && typeof currentRow.integrations === 'object' ? currentRow.integrations : {};
+
+      const mergedIntegrations: Record<string, unknown> = {
+        ...existingIntegrations,
+      };
+
+      if (payload.metaPixel) {
+        mergedIntegrations.meta = {
+          ...(existingIntegrations.meta || {}),
+          pixel_id: fallbackSettingsStore.metaPixel.pixelId,
+          capi_enabled: fallbackSettingsStore.metaPixel.capiEnabled,
+          capi_token: fallbackSettingsStore.metaPixel.capiToken,
+          test_event_code: fallbackSettingsStore.metaPixel.testEventCode,
+        };
+      }
+      if (payload.telegram) {
+        mergedIntegrations.telegram = {
+          ...(existingIntegrations.telegram || {}),
+          enabled: fallbackSettingsStore.telegram.enabled,
+          bot_token: fallbackSettingsStore.telegram.botToken,
+          chat_id: fallbackSettingsStore.telegram.chatId,
+        };
+      }
+      if (payload.couriers) {
+        mergedIntegrations.courier = {
+          ...(existingIntegrations.courier || {}),
+          active_provider: fallbackSettingsStore.couriers.activeProvider,
+          yalidine: fallbackSettingsStore.couriers.yalidine,
+          zr_express: fallbackSettingsStore.couriers.zrExpress,
+        };
+      }
+      if (payload.redex) {
+        mergedIntegrations.redex = {
+          ...(existingIntegrations.redex || {}),
+          enabled: fallbackRedexStore.enabled,
+          base_url: fallbackRedexStore.baseUrl,
+          api_token: fallbackRedexStore.apiToken,
+        };
+      }
+      if (payload.geminiAi) {
+        const preservedKey =
+          fallbackSettingsStore.geminiAi.apiKey ||
+          (typeof existingIntegrations.gemini_ai?.api_key === 'string' ? existingIntegrations.gemini_ai.api_key : '');
+        fallbackSettingsStore.geminiAi.apiKey = preservedKey;
+        mergedIntegrations.gemini_ai = {
+          ...(existingIntegrations.gemini_ai || {}),
+          enabled: fallbackSettingsStore.geminiAi.enabled,
+          name: fallbackSettingsStore.geminiAi.name,
+          project_name: fallbackSettingsStore.geminiAi.projectName,
+          project_number: fallbackSettingsStore.geminiAi.projectNumber,
+          model: fallbackSettingsStore.geminiAi.model,
+          api_key: preservedKey,
+        };
+      }
+
+      const updateColumns: Record<string, unknown> = {
+        integrations: mergedIntegrations,
+        updated_at: new Date().toISOString(),
+      };
+      if (payload.metaPixel) {
+        updateColumns.meta_pixel_id = fallbackSettingsStore.metaPixel.pixelId;
+        updateColumns.meta_capi_token = fallbackSettingsStore.metaPixel.capiToken;
+        updateColumns.meta_test_event_code = fallbackSettingsStore.metaPixel.testEventCode;
+      }
+      if (payload.telegram) {
+        updateColumns.telegram_bot_token = fallbackSettingsStore.telegram.botToken;
+        updateColumns.telegram_chat_id = fallbackSettingsStore.telegram.chatId;
+        updateColumns.telegram_alerts_enabled = fallbackSettingsStore.telegram.enabled;
+      }
+      if (payload.couriers?.activeProvider) {
+        updateColumns.active_courier_provider = fallbackSettingsStore.couriers.activeProvider;
+      }
+
+      const { error: upsertErr } = currentRow
+        ? await supabase.from('site_settings').update(updateColumns).eq('id', 1)
+        : await supabase.from('site_settings').upsert({ id: 1, ...updateColumns }, { onConflict: 'id' });
+
+      if (upsertErr) {
+        console.warn('[Settings Persistence Warning]: Supabase site_settings write error:', upsertErr.message);
+      }
 
       // Upsert Redex Express courier configuration
       if (fallbackRedexStore.apiToken) {
@@ -538,7 +577,10 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
           if (g.name !== undefined) fallbackSettingsStore.geminiAi.name = g.name;
           if (g.project_name !== undefined) fallbackSettingsStore.geminiAi.projectName = g.project_name;
           if (g.project_number !== undefined) fallbackSettingsStore.geminiAi.projectNumber = g.project_number;
-          if (g.model !== undefined) fallbackSettingsStore.geminiAi.model = g.model;
+          if (g.model !== undefined) {
+            const loadedModel = String(g.model || '').trim();
+            fallbackSettingsStore.geminiAi.model = loadedModel || 'auto';
+          }
           if (typeof g.api_key === 'string' && g.api_key.trim().length > 0) {
             fallbackSettingsStore.geminiAi.apiKey = g.api_key.trim();
           } else if (!fallbackSettingsStore.geminiAi.apiKey && process.env.GEMINI_API_KEY) {

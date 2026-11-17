@@ -241,15 +241,66 @@ export async function buildStoreReportSnapshot(): Promise<{
   };
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  "hello",
+  "salam",
+  "bonjour",
+  "salut",
+  "report",
+  "reports",
+  "order",
+  "orders",
+  "store",
+  "status",
+  "redex",
+  "stock",
+  "product",
+  "products",
+  "مرحبا",
+  "السلام",
+  "عليكم",
+  "اهلا",
+  "أهلا",
+  "تقرير",
+  "تقارير",
+  "التقرير",
+  "التقارير",
+  "الاخيرة",
+  "الأخيرة",
+  "الاخير",
+  "الأخير",
+  "طلبية",
+  "طلبيات",
+  "الطلبيات",
+  "المتجر",
+  "المبيعات",
+  "المخزون",
+  "المنتجات",
+  "العامة",
+  "الشحن",
+  "شحنات",
+  "ريدكس",
+  "pack",
+  "pack1",
+  "pack2",
+  "pack3",
+  "pack4",
+  "orva",
+]);
+
 export function searchOrdersByQuery(orders: NormalizedAiOrder[], query: string): NormalizedAiOrder[] {
   const clean = query.trim().toLowerCase();
   if (!clean) return [];
 
   const digitsOnly = clean.replace(/\D/g, "");
   const tokens = clean
-    .split(/[\s,#،-]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3);
+    .split(/[\s,#،؟?!.:;"'()[\]]+/)
+    .map((t) => t.replace(/^-+|-+$/g, "").trim())
+    .filter((t) => t.length >= 3 && !SEARCH_STOP_WORDS.has(t));
+
+  if (digitsOnly.length < 4 && tokens.length === 0) {
+    return [];
+  }
 
   return orders
     .filter((order) => {
@@ -264,8 +315,9 @@ export function searchOrdersByQuery(orders: NormalizedAiOrder[], query: string):
       }
 
       for (const token of tokens) {
-        if (idLower.includes(token)) return true;
-        if (trackingLower?.includes(token)) return true;
+        if (idLower === token || (token.includes("-") && idLower.includes(token))) return true;
+        if (/^\d{4,}$/.test(token) && idLower.includes(token)) return true;
+        if (trackingLower.includes(token) && token.length >= 6) return true;
         if (customerLower.includes(token) && token.length >= 4) return true;
       }
       return false;
@@ -273,34 +325,408 @@ export function searchOrdersByQuery(orders: NormalizedAiOrder[], query: string):
     .slice(0, 8);
 }
 
-export function formatLocalStoreReportText(snapshot: StoreReportSnapshot): string {
-  const recentLines = snapshot.recentOrders
-    .slice(0, 5)
-    .map(
-      (o) =>
-        `• #${o.id} | ${o.customer} (${o.phone || "بدون هاتف"}) | ${o.wilaya} | ${o.productName} | ${o.totalDzd.toLocaleString("fr-DZ")} د.ج | الحالة: ${o.status}${o.redexTrackingId ? ` | Redex: ${o.redexTrackingId}` : ""}`,
-    )
-    .join("\n");
+export const AUTO_GEMINI_MODEL_PRIORITY = [
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+] as const;
 
-  const topProdLines = snapshot.topProducts
-    .slice(0, 4)
-    .map((p) => `• ${p.product}: ${p.count} طلبية (${p.revenueDzd.toLocaleString("fr-DZ")} د.ج محصّلة)`)
-    .join("\n");
+export type GeminiErrorCode = "MISSING_API_KEY" | "GEMINI_AUTH_ERROR" | "GEMINI_UNAVAILABLE";
 
-  return [
-    `📊 **التقرير العام للمتجر والتقارير الأخيرة للطلبيات (ORVA Store):**`,
-    `- **إجمالي الطلبيات:** ${snapshot.totalOrders} طلبية`,
-    `- **تفصيل الحالات:** قيد الانتظار (${snapshot.statusCounts.pending}) | مؤكدة (${snapshot.statusCounts.confirmed}) | مشحونة (${snapshot.statusCounts.shipped}) | مسلّمة (${snapshot.statusCounts.delivered}) | مرتجعة (${snapshot.statusCounts.returned}) | ملغاة (${snapshot.statusCounts.cancelled})`,
-    `- **المبيعات المحصّلة (Delivered):** ${snapshot.deliveredRevenueDzd.toLocaleString("fr-DZ")} د.ج`,
-    `- **إجمالي قيمة الطلبيات النشطة:** ${snapshot.totalPipelineDzd.toLocaleString("fr-DZ")} د.ج`,
-    `- **الطلبيات المربوطة بـ Redex:** ${snapshot.redexTrackedCount} شحنة`,
-    snapshot.recentOrders.length > 0 ? `\n🕒 **آخر الطلبيات المسجلة:**\n${recentLines}` : "",
-    snapshot.topProducts.length > 0 ? `\n📦 **أداء المنتجات والمخزون:**\n${topProdLines}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+interface ModelHealthState {
+  lastHealthyAt?: number;
+  lastLatencyMs?: number;
+  unhealthyUntil?: number;
+  lastError?: string;
 }
 
+const modelHealthCache = new Map<string, ModelHealthState>();
+const discoveredModelsCache = new Map<string, { expiresAt: number; models: string[] }>();
+
+const FOUR_OH_FOUR_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+const TRANSIENT_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
+const DISCOVERY_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const TOTAL_ROUTING_BUDGET_MS = 25_000;
+const PER_ATTEMPT_MAX_TIMEOUT_MS = 12_000;
+const MAX_MODEL_ATTEMPTS_PER_REQUEST = 4;
+
+const EXCLUDED_MODEL_SUBSTRINGS = [
+  "-tts",
+  "-image",
+  "nano-banana",
+  "lyria",
+  "transcribe",
+  "robotics",
+  "computer-use",
+  "deep-research",
+  "embedding",
+  "imagen",
+  "veo",
+];
+
+function isChatCapableGeminiModel(modelId: string): boolean {
+  const lower = modelId.toLowerCase();
+  if (!lower.startsWith("gemini-") && !lower.startsWith("gemma-")) {
+    return false;
+  }
+  return !EXCLUDED_MODEL_SUBSTRINGS.some((sub) => lower.includes(sub));
+}
+
+/**
+ * Discovers chat-capable generateContent models registered to the active Gemini API key.
+ */
+async function discoverAvailableGeminiModels(apiKey: string): Promise<string[]> {
+  const cacheKey = apiKey.slice(0, 12);
+  const now = Date.now();
+  const cached = discoveredModelsCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.models;
+  }
+
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+      headers: { "X-goog-api-key": apiKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return [];
+
+    const json = (await res.json().catch(() => null)) as {
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+    } | null;
+
+    const list = (json?.models ?? [])
+      .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+      .map((m) =>
+        String(m.name ?? "")
+          .replace(/^models\//, "")
+          .trim(),
+      )
+      .filter((id) => id.length > 0 && isChatCapableGeminiModel(id));
+
+    discoveredModelsCache.set(cacheKey, { expiresAt: now + DISCOVERY_TTL_MS, models: list });
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Builds an ordered list of working candidate Gemini models based on live health cache and latency.
+ */
+async function buildCandidateModels(
+  configuredModel: string,
+  apiKey: string,
+  forceDiscovery = false,
+): Promise<string[]> {
+  const now = Date.now();
+  const normalizedConfigured = configuredModel.trim();
+  const isAuto = !normalizedConfigured || normalizedConfigured.toLowerCase() === "auto";
+
+  const pool = new Set<string>();
+
+  if (!isAuto) {
+    const explicitHealth = modelHealthCache.get(normalizedConfigured);
+    if (!explicitHealth?.unhealthyUntil || explicitHealth.unhealthyUntil <= now) {
+      pool.add(normalizedConfigured);
+    }
+  }
+
+  const healthyPriority: string[] = [];
+  const unknownPriority: string[] = [];
+  const coolingPriority: string[] = [];
+
+  for (const m of AUTO_GEMINI_MODEL_PRIORITY) {
+    const h = modelHealthCache.get(m);
+    if (h?.unhealthyUntil && h.unhealthyUntil > now) {
+      coolingPriority.push(m);
+    } else if (h?.lastHealthyAt) {
+      healthyPriority.push(m);
+    } else {
+      unknownPriority.push(m);
+    }
+  }
+
+  healthyPriority.sort((a, b) => {
+    const latA = modelHealthCache.get(a)?.lastLatencyMs ?? Number.MAX_SAFE_INTEGER;
+    const latB = modelHealthCache.get(b)?.lastLatencyMs ?? Number.MAX_SAFE_INTEGER;
+    return latA - latB;
+  });
+
+  for (const m of [...healthyPriority, ...unknownPriority]) {
+    pool.add(m);
+  }
+
+  if (forceDiscovery || pool.size === 0) {
+    const discovered = await discoverAvailableGeminiModels(apiKey);
+    for (const m of discovered) {
+      const h = modelHealthCache.get(m);
+      if (!h?.unhealthyUntil || h.unhealthyUntil <= now) {
+        pool.add(m);
+      }
+    }
+  }
+
+  // Only include previously cooled-down models at the very tail if almost no healthy candidates exist
+  if (pool.size < 2) {
+    for (const m of coolingPriority) {
+      pool.add(m);
+    }
+  }
+
+  return Array.from(pool).slice(0, MAX_MODEL_ATTEMPTS_PER_REQUEST);
+}
+
+interface SingleCallResult {
+  ok: boolean;
+  text: string;
+  latencyMs: number;
+  statusCode?: number;
+  errorMessage?: string;
+  isAuthError?: boolean;
+}
+
+async function callSingleGeminiModel(options: {
+  model: string;
+  apiKey: string;
+  systemPrompt: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  userMessage: string;
+  timeoutMs: number;
+  maxOutputTokens?: number;
+}): Promise<SingleCallResult> {
+  const attemptStart = Date.now();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`;
+
+  const contents = [
+    ...(options.history ?? []).slice(-6).map((msg) => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }],
+    })),
+    {
+      role: "user",
+      parts: [{ text: options.userMessage }],
+    },
+  ];
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": options.apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          role: "system",
+          parts: [{ text: options.systemPrompt }],
+        },
+        contents,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: options.maxOutputTokens ?? 1024,
+        },
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(options.timeoutMs),
+    });
+
+    const latencyMs = Date.now() - attemptStart;
+    const json = (await response.json().catch(() => null)) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      error?: { code?: number; message?: string; status?: string };
+    } | null;
+
+    const candidateText = json?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("\n")
+      .trim();
+
+    if (response.ok && candidateText) {
+      modelHealthCache.set(options.model, {
+        lastHealthyAt: Date.now(),
+        lastLatencyMs: latencyMs,
+        unhealthyUntil: undefined,
+        lastError: undefined,
+      });
+      return { ok: true, text: candidateText, latencyMs, statusCode: response.status };
+    }
+
+    const errMsg = json?.error?.message ?? `HTTP ${response.status}`;
+    const errStatus = String(json?.error?.status ?? "").toUpperCase();
+    const isAuthError =
+      response.status === 401 ||
+      response.status === 403 ||
+      errStatus === "PERMISSION_DENIED" ||
+      errStatus === "UNAUTHENTICATED" ||
+      errMsg.toLowerCase().includes("api key not valid");
+
+    if (!isAuthError) {
+      const cooldownMs = response.status === 404 ? FOUR_OH_FOUR_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS;
+      modelHealthCache.set(options.model, {
+        lastHealthyAt: modelHealthCache.get(options.model)?.lastHealthyAt,
+        lastLatencyMs: modelHealthCache.get(options.model)?.lastLatencyMs,
+        unhealthyUntil: Date.now() + cooldownMs,
+        lastError: `${response.status}: ${errMsg}`,
+      });
+    }
+
+    return {
+      ok: false,
+      text: "",
+      latencyMs,
+      statusCode: response.status,
+      errorMessage: errMsg,
+      isAuthError,
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - attemptStart;
+    const errMsg = err instanceof Error ? err.message : "Network error";
+    modelHealthCache.set(options.model, {
+      lastHealthyAt: modelHealthCache.get(options.model)?.lastHealthyAt,
+      lastLatencyMs: modelHealthCache.get(options.model)?.lastLatencyMs,
+      unhealthyUntil: Date.now() + TRANSIENT_COOLDOWN_MS,
+      lastError: errMsg,
+    });
+    return {
+      ok: false,
+      text: "",
+      latencyMs,
+      errorMessage: errMsg,
+    };
+  }
+}
+
+/**
+ * Lightweight live health probe used by chat reconnect and GET ?mode=status.
+ */
+export async function probeOrvaGeminiConnection(options?: {
+  overrideApiKey?: string;
+  overrideModel?: string;
+  forceLiveCheck?: boolean;
+}): Promise<{
+  connected: boolean;
+  configured: boolean;
+  enabled: boolean;
+  agentName: string;
+  projectName: string;
+  projectNumber: string;
+  configuredModel: string;
+  activeModel: string | null;
+  latencyMs?: number;
+  errorCode?: GeminiErrorCode;
+  apiError?: string;
+}> {
+  const settings = await getAdminSettingsAction();
+  const gemini = settings.geminiAi;
+
+  const apiKey = (options?.overrideApiKey?.trim() || gemini.apiKey || "").trim();
+  const configuredModel = (options?.overrideModel?.trim() || gemini.model || "auto").trim() || "auto";
+  const agentName = gemini.name || "Orva Agent AI";
+  const projectName = gemini.projectName || "projects/347934146406";
+  const projectNumber = gemini.projectNumber || "347934146406";
+
+  if (!apiKey) {
+    return {
+      connected: false,
+      configured: false,
+      enabled: gemini.enabled,
+      agentName,
+      projectName,
+      projectNumber,
+      configuredModel,
+      activeModel: null,
+      errorCode: "MISSING_API_KEY",
+      apiError: "Missing Gemini API Key",
+    };
+  }
+
+  if (!options?.forceLiveCheck) {
+    const now = Date.now();
+    for (const m of AUTO_GEMINI_MODEL_PRIORITY) {
+      const h = modelHealthCache.get(m);
+      if (h?.lastHealthyAt && now - h.lastHealthyAt < 5 * 60 * 1000 && (!h.unhealthyUntil || h.unhealthyUntil <= now)) {
+        return {
+          connected: true,
+          configured: true,
+          enabled: gemini.enabled,
+          agentName,
+          projectName,
+          projectNumber,
+          configuredModel,
+          activeModel: m,
+          latencyMs: h.lastLatencyMs,
+        };
+      }
+    }
+  }
+
+  const start = Date.now();
+  const candidates = await buildCandidateModels(configuredModel, apiKey);
+  let lastErr = "All Gemini models failed";
+
+  for (const model of candidates) {
+    const res = await callSingleGeminiModel({
+      model,
+      apiKey,
+      systemPrompt: `You are ${agentName}. Reply concisely with OK.`,
+      userMessage: "OK",
+      timeoutMs: 8000,
+      maxOutputTokens: 16,
+    });
+    if (res.ok) {
+      return {
+        connected: true,
+        configured: true,
+        enabled: gemini.enabled,
+        agentName,
+        projectName,
+        projectNumber,
+        configuredModel,
+        activeModel: model,
+        latencyMs: Date.now() - start,
+      };
+    }
+    lastErr = res.errorMessage ?? lastErr;
+    if (res.isAuthError) {
+      return {
+        connected: false,
+        configured: true,
+        enabled: gemini.enabled,
+        agentName,
+        projectName,
+        projectNumber,
+        configuredModel,
+        activeModel: null,
+        latencyMs: Date.now() - start,
+        errorCode: "GEMINI_AUTH_ERROR",
+        apiError: lastErr,
+      };
+    }
+  }
+
+  return {
+    connected: false,
+    configured: true,
+    enabled: gemini.enabled,
+    agentName,
+    projectName,
+    projectNumber,
+    configuredModel,
+    activeModel: null,
+    latencyMs: Date.now() - start,
+    errorCode: "GEMINI_UNAVAILABLE",
+    apiError: lastErr,
+  };
+}
+
+/**
+ * Executes an admin chat or report query through the adaptive Gemini health router.
+ * Strictly fail-closed when Gemini cannot be reached (never dumps unrequested local reports).
+ */
 export async function runOrvaGeminiAgentQuery(options: {
   userMessage: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -312,11 +738,13 @@ export async function runOrvaGeminiAgentQuery(options: {
   matchedOrders: NormalizedAiOrder[];
   snapshot: StoreReportSnapshot;
   model: string;
+  requestedModel: string;
   agentName: string;
   projectName: string;
   projectNumber: string;
   latencyMs: number;
-  usedFallbackReport?: boolean;
+  attemptedModels: Array<{ model: string; status?: number; error?: string; latencyMs: number }>;
+  errorCode?: GeminiErrorCode;
   apiError?: string;
 }> {
   const startTime = Date.now();
@@ -324,7 +752,7 @@ export async function runOrvaGeminiAgentQuery(options: {
   const gemini = settings.geminiAi;
 
   const apiKey = (options.overrideApiKey?.trim() || gemini.apiKey || "").trim();
-  const model = (options.overrideModel?.trim() || gemini.model || "gemini-flash-latest").trim();
+  const configuredModel = (options.overrideModel?.trim() || gemini.model || "auto").trim() || "auto";
   const agentName = gemini.name || "Orva Agent AI";
   const projectName = gemini.projectName || "projects/347934146406";
   const projectNumber = gemini.projectNumber || "347934146406";
@@ -332,145 +760,209 @@ export async function runOrvaGeminiAgentQuery(options: {
   const { snapshot, allOrders } = await buildStoreReportSnapshot();
   const matchedOrders = searchOrdersByQuery(allOrders, options.userMessage);
 
-  const systemContext = [
+  if (!apiKey) {
+    return {
+      ok: false,
+      reply: "",
+      matchedOrders: [],
+      snapshot,
+      model: "",
+      requestedModel: configuredModel,
+      agentName,
+      projectName,
+      projectNumber,
+      latencyMs: Date.now() - startTime,
+      attemptedModels: [],
+      errorCode: "MISSING_API_KEY",
+      apiError: "Missing Gemini API Key",
+    };
+  }
+
+  const systemPrompt = [
     `أنت "${agentName}"، المساعد الذكي الرسمي للوحة تحكم متجر ORVA Store في الجزائر (المشروع: ${projectName} / رقم: ${projectNumber}).`,
-    `أجب دائماً باللغة العربية الواضحة والمهنية وبالأرقام الحقيقية من بيانات المتجر المرفقة أدناه.`,
-    `بيانات التقارير العامة للمتجر والتقارير الأخيرة لعدد الطلبيات الآن:`,
+    `قواعد المحادثة والإجابة:`,
+    `1. أجب دائماً بنفس لغة رسالة المستخدم (العربية، الإنجليزية، أو الفرنسية) وبأسلوب طبيعي ولطيف ومهني.`,
+    `2. إذا أرسل المستخدم تحية عامة أو دردشة قصيرة (مثل: hi، hello، مرحبا، السلام عليكم، كيف حالك)، رد بتحية ودودة ومختصرة في سطرين أو ثلاثة وعرّف بإمكانياتك (الاستعلام عن الطلبيات، البحث برقم الطلب أو الهاتف، تقارير المبيعات والمخزون، وتتبع شحنات Redex) — ولا تسرد تقارير أو جداول طلبيات غير مطلوبة.`,
+    `3. إذا طلب المستخدم تقريراً أو سأل عن طلبية أو ولاية أو منتج أو شحن، أجب بدقة وبالأرقام الحقيقية المستخلصة حصراً من البيانات الحية أدناه ولا تختلق أي رقم.`,
+    ``,
+    `البيانات الحية الحالية لمتجر ORVA Store:`,
     `- إجمالي الطلبيات: ${snapshot.totalOrders}`,
-    `- قيد الانتظار (Pending): ${snapshot.statusCounts.pending}`,
-    `- مؤكدة (Confirmed): ${snapshot.statusCounts.confirmed}`,
-    `- مشحونة (Shipped): ${snapshot.statusCounts.shipped}`,
-    `- مسلّمة (Delivered): ${snapshot.statusCounts.delivered}`,
-    `- مرتجعة (Returned): ${snapshot.statusCounts.returned}`,
-    `- ملغاة (Cancelled): ${snapshot.statusCounts.cancelled}`,
-    `- إجمالي المبيعات المحصّلة للطلبات المسلّمة: ${snapshot.deliveredRevenueDzd} د.ج`,
+    `- تفصيل الحالات: قيد الانتظار=${snapshot.statusCounts.pending}، مؤكدة=${snapshot.statusCounts.confirmed}، مشحونة=${snapshot.statusCounts.shipped}، مسلّمة=${snapshot.statusCounts.delivered}، مرتجعة=${snapshot.statusCounts.returned}، ملغاة=${snapshot.statusCounts.cancelled}`,
+    `- إجمالي المبيعات المحصّلة (Delivered): ${snapshot.deliveredRevenueDzd} د.ج`,
     `- إجمالي قيمة الطلبيات النشطة: ${snapshot.totalPipelineDzd} د.ج`,
-    `- عدد الشحنات المربوطة بـ Redex: ${snapshot.redexTrackedCount}`,
+    `- الطلبيات المربوطة بـ Redex: ${snapshot.redexTrackedCount}`,
     `- أعلى الولايات طلباً: ${JSON.stringify(snapshot.topWilayas)}`,
     `- أداء المنتجات: ${JSON.stringify(snapshot.topProducts)}`,
     `- كتالوج المنتجات والمخزون: ${JSON.stringify(snapshot.catalogSummary)}`,
     `- آخر 8 طلبيات مسجلة: ${JSON.stringify(snapshot.recentOrders)}`,
     matchedOrders.length > 0
-      ? `- نتائج البحث المطابقة لرسالة الأدمن (برقم الطلبية أو رقم الهاتف أو الاسم): ${JSON.stringify(matchedOrders)}`
-      : `- لم يتم العثور على طلبية محددة مطابقة لرقم/هاتف في نص السؤال إذا كان السؤال بحثاً خاصاً.`,
+      ? `- نتائج البحث المطابقة لرسالة الأدمن (برقم الطلبية أو الهاتف أو الاسم): ${JSON.stringify(matchedOrders)}`
+      : `- ملاحظة: لم يتضمن سؤال الأدمن رقم طلبية أو هاتف محدد للبحث المباشر.`,
   ].join("\n");
 
-  const contents = [
-    ...(options.history ?? []).slice(-6).map((msg) => ({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }],
-    })),
-    {
-      role: "user",
-      parts: [
-        {
-          text: `${systemContext}\n\nسؤال الأدمن الآن:\n${options.userMessage}`,
-        },
-      ],
-    },
-  ];
+  const deadline = startTime + TOTAL_ROUTING_BUDGET_MS;
+  const initialCandidates = await buildCandidateModels(configuredModel, apiKey, false);
+  const attemptedSet = new Set<string>();
+  const attemptedModels: Array<{ model: string; status?: number; error?: string; latencyMs: number }> = [];
+  let lastError = "Failed to reach Google Gemini API";
 
-  if (!apiKey) {
-    return {
-      ok: false,
-      reply: `مفتاح Gemini API غير مضبوط. إليك التقرير الفوري المباشر من قاعدة بيانات المتجر:\n\n${formatLocalStoreReportText(snapshot)}`,
-      matchedOrders,
-      snapshot,
-      model,
-      agentName,
-      projectName,
-      projectNumber,
-      latencyMs: Date.now() - startTime,
-      usedFallbackReport: true,
-      apiError: "Missing Gemini API Key",
-    };
-  }
+  const tryQueue = async (queue: string[]) => {
+    for (const model of queue) {
+      if (attemptedSet.has(model)) continue;
+      const remainingMs = deadline - Date.now();
+      if (remainingMs < 1500) {
+        lastError = "Total Gemini routing timeout budget exceeded";
+        return { authFailed: false, succeeded: null as { model: string; text: string } | null };
+      }
 
-  try {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({ contents }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-
-    const json = (await response.json().catch(() => null)) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      error?: { message?: string; status?: string };
-    } | null;
-
-    const candidateText = json?.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
-      .join("\n")
-      .trim();
-
-    if (response.ok && candidateText) {
-      return {
-        ok: true,
-        reply: candidateText,
-        matchedOrders,
-        snapshot,
+      attemptedSet.add(model);
+      const timeoutMs = Math.min(PER_ATTEMPT_MAX_TIMEOUT_MS, remainingMs);
+      const result = await callSingleGeminiModel({
         model,
-        agentName,
-        projectName,
-        projectNumber,
-        latencyMs: Date.now() - startTime,
-      };
+        apiKey,
+        systemPrompt,
+        history: options.history,
+        userMessage: options.userMessage,
+        timeoutMs,
+      });
+
+      if (result.ok) {
+        attemptedModels.push({ model, status: result.statusCode, latencyMs: result.latencyMs });
+        return { authFailed: false, succeeded: { model, text: result.text } };
+      }
+
+      lastError = result.errorMessage ?? lastError;
+      attemptedModels.push({
+        model,
+        status: result.statusCode,
+        error: result.errorMessage,
+        latencyMs: result.latencyMs,
+      });
+
+      if (result.isAuthError) {
+        return { authFailed: true, succeeded: null };
+      }
     }
+    return { authFailed: false, succeeded: null };
+  };
 
-    const errMsg = json?.error?.message ?? `HTTP ${response.status}`;
-    const matchedSection =
-      matchedOrders.length > 0
-        ? `\n\n🔍 **نتائج البحث المطابقة:**\n${matchedOrders
-            .map(
-              (o) =>
-                `• #${o.id} — ${o.customer} (${o.phone}) | ${o.wilaya} - ${o.commune} | ${o.productName} | ${o.totalDzd.toLocaleString("fr-DZ")} د.ج | الحالة: ${o.status}${o.redexTrackingId ? ` | Redex: ${o.redexTrackingId}` : ""}`,
-            )
-            .join("\n")}`
-        : "";
+  let passResult = await tryQueue(initialCandidates);
+  if (!passResult.succeeded && !passResult.authFailed && deadline - Date.now() >= 4000) {
+    const discoveredCandidates = await buildCandidateModels(configuredModel, apiKey, true);
+    passResult = await tryQueue(discoveredCandidates);
+  }
 
+  if (passResult.succeeded) {
     return {
       ok: true,
-      reply: `${formatLocalStoreReportText(snapshot)}${matchedSection}`,
+      reply: passResult.succeeded.text,
       matchedOrders,
       snapshot,
-      model,
+      model: passResult.succeeded.model,
+      requestedModel: configuredModel,
       agentName,
       projectName,
       projectNumber,
       latencyMs: Date.now() - startTime,
-      usedFallbackReport: true,
-      apiError: errMsg,
-    };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : "Network error";
-    const matchedSection =
-      matchedOrders.length > 0
-        ? `\n\n🔍 **نتائج البحث المطابقة:**\n${matchedOrders
-            .map(
-              (o) =>
-                `• #${o.id} — ${o.customer} (${o.phone}) | ${o.wilaya} - ${o.commune} | ${o.productName} | ${o.totalDzd.toLocaleString("fr-DZ")} د.ج | الحالة: ${o.status}${o.redexTrackingId ? ` | Redex: ${o.redexTrackingId}` : ""}`,
-            )
-            .join("\n")}`
-        : "";
-
-    return {
-      ok: true,
-      reply: `${formatLocalStoreReportText(snapshot)}${matchedSection}`,
-      matchedOrders,
-      snapshot,
-      model,
-      agentName,
-      projectName,
-      projectNumber,
-      latencyMs: Date.now() - startTime,
-      usedFallbackReport: true,
-      apiError: errMsg,
+      attemptedModels,
     };
   }
+
+  return {
+    ok: false,
+    reply: "",
+    matchedOrders: [],
+    snapshot,
+    model: "",
+    requestedModel: configuredModel,
+    agentName,
+    projectName,
+    projectNumber,
+    latencyMs: Date.now() - startTime,
+    attemptedModels,
+    errorCode: passResult.authFailed ? "GEMINI_AUTH_ERROR" : "GEMINI_UNAVAILABLE",
+    apiError: lastError,
+  };
+}
+
+/**
+ * Formats a clean, transparent Arabic disconnect message without leaking fake/local order data.
+ */
+export function formatGeminiUserErrorMessage(errorCode?: GeminiErrorCode, apiError?: string): string {
+  if (errorCode === "MISSING_API_KEY") {
+    return "تم إيقاف الدردشة مؤقتاً: مفتاح Gemini API غير مضبوط في إعدادات المتجر.";
+  }
+  if (errorCode === "GEMINI_AUTH_ERROR") {
+    return `تم إيقاف الدردشة مؤقتاً: مفتاح Gemini API غير صالح أو مرفوض من Google (${apiError ?? "401/403"}).`;
+  }
+  return `تم إيقاف الدردشة مؤقتاً: تعذّر الاتصال بجميع نماذج Google Gemini العاملة حالياً (${apiError ?? "503 / Timeout"}).`;
+}
+
+/**
+ * Shared test helper for Settings ("اختبار التقارير الأخيرة لعدد الطلبيات والتقارير العامة للمتجر").
+ */
+export async function runGeminiSettingsTestReport(input: {
+  name?: string;
+  projectName?: string;
+  projectNumber?: string;
+  apiKey?: string;
+  model?: string;
+}) {
+  const settings = await getAdminSettingsAction();
+  const apiKey = (input.apiKey?.trim() || settings.geminiAi.apiKey || "").trim();
+  const model = (input.model?.trim() || settings.geminiAi.model || "auto").trim() || "auto";
+  const configured = Boolean(apiKey.length >= 10);
+
+  if (!configured) {
+    return {
+      configured: false,
+      authenticated: false,
+      agentName: input.name?.trim() || settings.geminiAi.name || "Orva Agent AI",
+      projectName: input.projectName?.trim() || settings.geminiAi.projectName || "projects/347934146406",
+      projectNumber: input.projectNumber?.trim() || settings.geminiAi.projectNumber || "347934146406",
+      model: "",
+      latencyMs: 0,
+      reportText: "",
+      apiError: "Missing Gemini API Key",
+      message: "يرجى إدخال مفتاح Gemini API صالح لإجراء الاختبار.",
+    };
+  }
+
+  const aiReport = await runOrvaGeminiAgentQuery({
+    userMessage:
+      "قدّم تقريراً شاملاً ومختصراً عن التقارير الأخيرة لعدد الطلبيات وتوزيع حالاتها (قيد الانتظار، المؤكدة، المشحونة، المسلّمة، المرتجعة، الملغاة) وعن التقارير العامة لأداء المتجر والمبيعات المحصّلة وأهم المنتجات.",
+    overrideApiKey: apiKey,
+    overrideModel: model,
+  });
+
+  if (!aiReport.ok) {
+    return {
+      configured: true,
+      authenticated: false,
+      agentName: input.name?.trim() || aiReport.agentName,
+      projectName: input.projectName?.trim() || aiReport.projectName,
+      projectNumber: input.projectNumber?.trim() || aiReport.projectNumber,
+      model: "",
+      latencyMs: aiReport.latencyMs,
+      reportText: "",
+      snapshot: aiReport.snapshot,
+      apiError: aiReport.apiError,
+      attemptedModels: aiReport.attemptedModels,
+      message: formatGeminiUserErrorMessage(aiReport.errorCode, aiReport.apiError),
+    };
+  }
+
+  return {
+    configured: true,
+    authenticated: true,
+    agentName: input.name?.trim() || aiReport.agentName,
+    projectName: input.projectName?.trim() || aiReport.projectName,
+    projectNumber: input.projectNumber?.trim() || aiReport.projectNumber,
+    model: aiReport.model,
+    latencyMs: aiReport.latencyMs,
+    reportText: aiReport.reply,
+    snapshot: aiReport.snapshot,
+    attemptedModels: aiReport.attemptedModels,
+    message: `تم إجراء اختبار Orva Agent AI (${aiReport.projectName}) عبر النموذج العامل ${aiReport.model} (${aiReport.latencyMs}ms) وتوليد التقرير الأخير لعدد الطلبيات والتقرير العام للمتجر بنجاح (${aiReport.snapshot.totalOrders} طلبية).`,
+  };
 }

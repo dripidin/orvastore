@@ -130,7 +130,7 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     name: process.env.GEMINI_AGENT_NAME || 'Orva Agent AI',
     projectName: process.env.GEMINI_PROJECT_NAME || 'projects/347934146406',
     projectNumber: process.env.GEMINI_PROJECT_NUMBER || '347934146406',
-    model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+    model: process.env.GEMINI_MODEL || 'auto',
     apiKey: process.env.GEMINI_API_KEY || '',
   },
   updatedAt: new Date().toISOString(),

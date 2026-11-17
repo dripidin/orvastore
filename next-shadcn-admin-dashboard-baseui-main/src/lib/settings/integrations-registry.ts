@@ -14,12 +14,7 @@
  * - Zero external API calls triggered by viewing settings.
  */
 
-export type IntegrationStatus =
-  | "connected"
-  | "configured"
-  | "not_connected"
-  | "unavailable"
-  | "demo_only";
+export type IntegrationStatus = "connected" | "configured" | "not_connected" | "unavailable" | "demo_only";
 
 export type IntegrationCategory =
   | "general"
@@ -59,10 +54,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Multi-pack storefront catalog",
       "Dynamic wilaya-specific tariffs",
       "RTL Arabic default typography (Tajawal)",
-      "Standard DZD currency formatting"
+      "Standard DZD currency formatting",
     ],
     managementMethod: "Static configuration and catalog repository",
-    notes: "Maintained via product catalog and layout presets."
+    notes: "Maintained via product catalog and layout presets.",
   },
 
   // ── 2. API & Backend ──────────────────────────────────────────────────────
@@ -80,10 +75,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Delivery REST API (/api/delivery)",
       "Local Excel database persistence",
       "Dynamic Meta Pixel injection",
-      "Protected admin session gate"
+      "Protected admin session gate",
     ],
     managementMethod: "Local Node.js process runtime",
-    notes: "Primary development harness for isolated local testing."
+    notes: "Primary development harness for isolated local testing.",
   },
   {
     id: "backend-staging",
@@ -97,10 +92,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     availableCapabilities: [
       "Staging static export hosting",
       "Mock/Live toggle validation",
-      "Pre-production end-to-end testing"
+      "Pre-production end-to-end testing",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Isolated test bed prior to live production sync."
+    notes: "Isolated test bed prior to live production sync.",
   },
   {
     id: "backend-prod-php",
@@ -115,10 +110,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Order submission gateway (/api/send-order.php)",
       "Supabase order queries (/api/delivery.php)",
       "Admin password authentication (/api/auth.php)",
-      "CORS strict whitelist enforcement"
+      "CORS strict whitelist enforcement",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Protected by server-side .htaccess and direct access guards."
+    notes: "Protected by server-side .htaccess and direct access guards.",
   },
 
   // ── 3. Database & Supabase ────────────────────────────────────────────────
@@ -135,10 +130,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Orders persistence table (public.orders)",
       "Row Level Security (RLS) enforcement",
       "Real-time order subscriptions",
-      "Direct PostgreSQL connection pool failover"
+      "Direct PostgreSQL connection pool failover",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Service role key strictly kept on server; anon key used for public client reads."
+    notes: "Service role key strictly kept on server; anon key used for public client reads.",
   },
 
   // ── 4. Analytics & Marketing ──────────────────────────────────────────────
@@ -156,10 +151,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Product Views (ViewContent) telemetry",
       "Checkout events (InitiateCheckout) monitoring",
       "Geographical conversion tracking by wilaya (58 wilayas)",
-      "Africa/Algiers (UTC+1) calendar day aggregation"
+      "Africa/Algiers (UTC+1) calendar day aggregation",
     ],
     managementMethod: "Built-in first-party analytics repositories",
-    notes: "Zero external cookies or third-party trackers; strictly private."
+    notes: "Zero external cookies or third-party trackers; strictly private.",
   },
   {
     id: "marketing-meta-pixel",
@@ -174,10 +169,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "PageView event on verified storefront landing pages",
       "ViewContent event on product page visit",
       "InitiateCheckout event on purchase intent",
-      "Server-side Purchase event deduplication (shared eventID & DZD currency)"
+      "Server-side Purchase event deduplication (shared eventID & DZD currency)",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Legacy Pixel 2340414976777036 decommissioned. Live production requires merchant to input new Pixel ID."
+    notes: "Legacy Pixel 2340414976777036 decommissioned. Live production requires merchant to input new Pixel ID.",
   },
   {
     id: "analytics-vercel",
@@ -193,10 +188,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Page Views & unique route transition tracking via native browser API",
       "Session Bounce Rate calculation ((Single-Page Sessions / Total Sessions) * 100)",
       "Breakdown panels: Top Pages, Referrers, Countries, OS, Device & Browser",
-      "Automated User-Agent bot exclusion and custom event / feature flag instrumentation"
+      "Automated User-Agent bot exclusion and custom event / feature flag instrumentation",
     ],
     managementMethod: "RootLayout <Analytics /> & Vercel Web Analytics Dashboard",
-    notes: "Primary privacy-first zero-cookie telemetry engine powered by Vercel Web Analytics."
+    notes: "Primary privacy-first zero-cookie telemetry engine powered by Vercel Web Analytics.",
   },
   {
     id: "ai-orva-gemini",
@@ -204,17 +199,17 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     category: "analytics",
     categoryLabel: "Analytics & Marketing",
     status: "connected",
-    statusLabel: "Connected (Project 347934146406)",
+    statusLabel: "Connected (Auto Working-Model Router)",
     environmentScope: "all",
-    requiredConfiguration: "GEMINI_API_KEY (X-goog-api-key), Project projects/347934146406, gemini-flash-latest",
+    requiredConfiguration: "GEMINI_API_KEY (X-goog-api-key), Project projects/347934146406, Auto Working Model Router",
     availableCapabilities: [
       "Floating Spectrum UI AI Chat Card across all admin dashboard pages",
-      "Direct live lookup of orders by Order ID or customer phone number",
-      "Real-time store reports, order status counts, products & inventory insights",
-      "Automated test reports on recent orders and general store performance"
+      "Adaptive auto-routing across working Gemini models (gemini-flash-lite-latest, gemini-3.5-flash-lite, gemini-3.5-flash)",
+      "Fail-closed chat pause with reconnect probe on upstream Gemini outage",
+      "Real-time store reports, order status counts, Order ID / phone lookup & inventory insights",
     ],
     managementMethod: "Admin Settings Dashboard & /api/ai-agent",
-    notes: "Powered by Google Generative Language API (gemini-flash-latest)."
+    notes: "Powered by Google Generative Language API with adaptive working-model selection.",
   },
 
   // ── 5. Delivery & Courier Integrations ────────────────────────────────────
@@ -231,10 +226,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Controlled manual order dispatching from dashboard",
       "Side-effect-free connection verification (GET /api/v1/get/wilayas)",
       "Official provider tracking code assignment (rex.ecotrack.dz)",
-      "OrderId duplicate shipment prevention"
+      "OrderId duplicate shipment prevention",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in client. Dispatches only upon deliberate admin dashboard approval."
+    notes: "Zero secrets stored in client. Dispatches only upon deliberate admin dashboard approval.",
   },
   {
     id: "delivery-ecotrack",
@@ -249,10 +244,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Multi-carrier tracking synchronization",
       "Return and failed delivery classification (Returning / Returned)",
       "Zero mutation of internal order financials or inventory on tracking sync",
-      "Side-effect-free health checks"
+      "Side-effect-free health checks",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in localStorage. All communication routed through server-side gateway."
+    notes: "Zero secrets stored in localStorage. All communication routed through server-side gateway.",
   },
   {
     id: "delivery-yalidine",
@@ -267,10 +262,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "58 Wilayas desk & home delivery dispatch",
       "Automated tracking number generation",
       "Bordereau sticker printing",
-      "Delivery state webhook callbacks"
+      "Delivery state webhook callbacks",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation."
+    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation.",
   },
   {
     id: "delivery-zr-express",
@@ -284,10 +279,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     availableCapabilities: [
       "National express courier dispatching",
       "Real-time parcel status webhooks",
-      "Automated return tracking"
+      "Automated return tracking",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation."
+    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation.",
   },
   {
     id: "delivery-maystro",
@@ -301,10 +296,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     availableCapabilities: [
       "Algiers & national fulfillment routing",
       "API parcel generation and pickup scheduling",
-      "Cash on Delivery remittance tracking"
+      "Cash on Delivery remittance tracking",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation."
+    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation.",
   },
   {
     id: "delivery-procolis",
@@ -318,10 +313,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     availableCapabilities: [
       "Regional and national shipping parcels",
       "Status tracking webhooks",
-      "Printable dispatch slips"
+      "Printable dispatch slips",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation."
+    notes: "Zero secrets stored in localStorage. Integration blueprint ready for production activation.",
   },
 
   // ── 6. Notifications ──────────────────────────────────────────────────────
@@ -338,10 +333,10 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "5 Event Triggers (ORDER_CREATED, SHIPMENT_CREATED, SHIPMENT_FAILED, STATUS_UPDATED, ORDER_CANCELLED)",
       "Ledger-based alert deduplication (zero spam on retries)",
       "Customer phone masking (PII protection)",
-      "Non-blocking server-side dispatch"
+      "Non-blocking server-side dispatch",
     ],
     managementMethod: "Managed through server environment configuration",
-    notes: "Bot token strictly isolated on server. Real notification sending active in production only."
+    notes: "Bot token strictly isolated on server. Real notification sending active in production only.",
   },
 
   // ── 7. Security & Sessions ────────────────────────────────────────────────
@@ -358,11 +353,11 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "AdminSessionGate password barrier",
       "Isolated demo mode session storage (local development only)",
       "Strict CSRF Origin whitelist check (orva-store.com, localhost:3000, 127.0.0.1:3000)",
-      "Timing-safe password comparison (hash_equals / crypto.timingSafeEqual)"
+      "Timing-safe password comparison (hash_equals / crypto.timingSafeEqual)",
     ],
     managementMethod: "Integrated authentication gateway and session store",
-    notes: "Production builds disable demo bypass; strict server session authentication enforced."
-  }
+    notes: "Production builds disable demo bypass; strict server session authentication enforced.",
+  },
 ];
 
 export const INTEGRATIONS_REGISTRY = INTEGRATION_REGISTRY;

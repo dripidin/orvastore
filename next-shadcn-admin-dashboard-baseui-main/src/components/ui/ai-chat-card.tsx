@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import {
+  AlertCircle,
   Bot,
   Loader2,
   Package,
+  RefreshCw,
   RotateCcw,
   Search,
   SendHorizontal,
@@ -18,8 +20,10 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 
 import {
   getDashboardSettingsFallbackAction,
+  probeAiChatConnectionFallbackAction,
   sendAiChatMessageFallbackAction,
 } from "@/app/actions/ai-agent";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,18 +74,24 @@ export interface AIChatCardProps {
 export function AIChatCard({ className, onClose }: AIChatCardProps) {
   const [agentName, setAgentName] = useState("Orva Agent AI");
   const [projectNumber, setProjectNumber] = useState("347934146406");
+  const [activeModel, setActiveModel] = useState("Auto");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome-msg",
       role: "assistant",
       content:
-        "مرحباً بك في Orva Agent AI! يمكنني تزويدك بالتقارير الأخيرة لعدد الطلبيات، التقارير العامة للمتجر والمخزون، أو البحث الفوري عن أي طلبية برقمها (مثل PACK1-...) أو برقم هاتف الزبون.",
+        "مرحباً بك في Orva Agent AI! يمكنني مساعدتك في استعراض تقارير الطلبيات، البحث برقم الطلب أو الهاتف، متابعة شحنات Redex، أو الدردشة معك مباشرة.",
       timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [disconnectedError, setDisconnectedError] = useState<string | null>(null);
+  const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const isDisconnected = Boolean(disconnectedError);
 
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -91,14 +101,37 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+  }, [messages, isLoading, disconnectedError, scrollToBottom]);
+
+  const buildAuthHeaders = () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    };
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("orva_admin_token");
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    return headers;
+  };
 
   const syncSettingsMetadata = useCallback(async () => {
     try {
       const data = await getDashboardSettingsFallbackAction();
-      if (data?.settings?.geminiAi) {
-        if (data.settings.geminiAi.name) setAgentName(data.settings.geminiAi.name);
-        if (data.settings.geminiAi.projectNumber) setProjectNumber(data.settings.geminiAi.projectNumber);
+      const g = data.settings.geminiAi;
+      if (g.name) setAgentName(g.name);
+      if (g.projectNumber) setProjectNumber(g.projectNumber);
+      if (g.model) {
+        setActiveModel(g.model.toLowerCase() === "auto" ? "Auto" : g.model);
+      }
+      if (!g.enabled) {
+        setDisconnectedError("وكيل Orva Agent AI متوقف حالياً من إعدادات لوحة التحكم.");
+      } else if (!g.isConfigured) {
+        setDisconnectedError("تم إيقاف الدردشة مؤقتاً: مفتاح Gemini API غير مضبوط في الإعدادات.");
+      } else {
+        setDisconnectedError((prev) =>
+          prev?.includes("متوقف حالياً من إعدادات") || prev?.includes("مفتاح Gemini API") ? null : prev,
+        );
       }
     } catch {
       // Ignore metadata sync errors
@@ -116,35 +149,33 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
   }, [syncSettingsMetadata]);
 
   const sendMessage = useCallback(
-    async (textToSend: string) => {
+    async (textToSend: string, options?: { skipUserAppend?: boolean }) => {
       const trimmed = textToSend.trim();
       if (!trimmed || isLoading) return;
 
-      const userMsg: ChatMessage = {
-        id: `user-${Date.now()}`,
-        role: "user",
-        content: trimmed,
-        timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
-      };
+      if (!options?.skipUserAppend) {
+        const userMsg: ChatMessage = {
+          id: `user-${Date.now()}`,
+          role: "user",
+          content: trimmed,
+          timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        setInput("");
+      }
 
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
       setIsLoading(true);
+      setDisconnectedError(null);
 
       try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-        };
-        if (typeof window !== "undefined") {
-          const token = localStorage.getItem("orva_admin_token");
-          if (token) headers.Authorization = `Bearer ${token}`;
-        }
-
-        const historyPayload = messages.slice(-6).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+        const headers = buildAuthHeaders();
+        const historyPayload = messages
+          .filter((m) => m.id !== "welcome-msg" && !m.id.startsWith("welcome-"))
+          .slice(-6)
+          .map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
 
         const res = await fetch("/api/ai-agent", {
           method: "POST",
@@ -158,10 +189,12 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
 
         let data: {
           success?: boolean;
+          disconnected?: boolean;
           reply?: string;
           error?: string;
           agentName?: string;
           projectNumber?: string;
+          model?: string;
           matchedOrders?: MatchedOrderItem[];
         };
 
@@ -177,28 +210,29 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         if (data.agentName) setAgentName(data.agentName);
         if (data.projectNumber) setProjectNumber(data.projectNumber);
 
+        if (!data.success || !data.reply) {
+          const errMessage =
+            data.error ?? "تم إيقاف الدردشة مؤقتاً لتعذّر الاتصال بمحرك Google Gemini حالياً.";
+          setDisconnectedError(errMessage);
+          setLastFailedPrompt(trimmed);
+          return;
+        }
+
+        if (data.model) setActiveModel(data.model);
+        setLastFailedPrompt(null);
+
         const assistantMsg: ChatMessage = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          content:
-            data.success && data.reply
-              ? data.reply
-              : (data.error ?? "تعذر الحصول على رد من Orva Agent AI حالياً."),
+          content: data.reply,
           timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
-          matchedOrders: data.matchedOrders,
+          matchedOrders: data.matchedOrders && data.matchedOrders.length > 0 ? data.matchedOrders : undefined,
         };
 
         setMessages((prev) => [...prev, assistantMsg]);
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `err-${Date.now()}`,
-            role: "assistant",
-            content: "تعذر الاتصال بخادم Orva Agent AI. يرجى التحقق من الشبكة والمحاولة مرة أخرى.",
-            timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
-          },
-        ]);
+        setDisconnectedError("تم إيقاف الدردشة مؤقتاً: تعذّر الاتصال بخادم Orva Agent AI. تحقق من الشبكة ثم أعد المحاولة.");
+        setLastFailedPrompt(trimmed);
       } finally {
         setIsLoading(false);
       }
@@ -206,8 +240,49 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
     [isLoading, messages],
   );
 
+  const handleReconnect = async () => {
+    if (isReconnecting || isLoading) return;
+    setIsReconnecting(true);
+    try {
+      const headers = buildAuthHeaders();
+      const res = await fetch("/api/ai-agent?mode=probe", {
+        method: "GET",
+        headers,
+        credentials: "same-origin",
+      });
+
+      const probe =
+        res.status === 401 || res.status === 403
+          ? await probeAiChatConnectionFallbackAction(true)
+          : ((await res.json()) as {
+              connected?: boolean;
+              activeModel?: string | null;
+              error?: string;
+              enabled?: boolean;
+            });
+
+      if (probe.connected && probe.enabled !== false) {
+        setDisconnectedError(null);
+        if (probe.activeModel) setActiveModel(probe.activeModel);
+        const pendingPrompt = lastFailedPrompt;
+        setIsReconnecting(false);
+        if (pendingPrompt) {
+          await sendMessage(pendingPrompt, { skipUserAppend: true });
+        }
+        return;
+      }
+
+      setDisconnectedError(probe.error ?? "لا يزال الاتصال بمحرك Google Gemini متعذراً حالياً.");
+    } catch {
+      setDisconnectedError("تعذّر التحقق من الاتصال بمحرك Google Gemini حالياً.");
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isDisconnected) return;
     void sendMessage(input);
   };
 
@@ -217,37 +292,70 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         id: `welcome-${Date.now()}`,
         role: "assistant",
         content:
-          "تمت إعادة تعيين المحادثة. اكتب رقم طلبية، رقم هاتف زبون، أو اطلب التقرير الأخير للطلبيات والتقرير العام للمتجر.",
+          "تمت إعادة تعيين المحادثة. اكتب أي سؤال، أو ابحث برقم طلبية أو هاتف زبون، أو اطلب التقرير العام للمتجر.",
         timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
       },
     ]);
     setInput("");
+    setDisconnectedError(null);
+    setLastFailedPrompt(null);
+    void syncSettingsMetadata();
   };
 
   return (
     <Card
       dir="rtl"
       className={cn(
-        "flex h-[540px] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-emerald-500/30 bg-card/95 shadow-2xl backdrop-blur-xl",
+        "flex h-[540px] w-full max-w-md flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl",
+        isDisconnected ? "border-destructive/40" : "border-emerald-500/30",
         className,
       )}
     >
       {/* Spectrum UI AI Chat Card Header */}
-      <CardHeader className="border-b bg-gradient-to-l from-emerald-500/10 via-primary/5 to-transparent px-4 py-3">
+      <CardHeader
+        className={cn(
+          "border-b bg-gradient-to-l px-4 py-3",
+          isDisconnected
+            ? "from-destructive/10 via-destructive/5 to-transparent"
+            : "from-emerald-500/10 via-primary/5 to-transparent",
+        )}
+      >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <div className="relative flex size-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/30">
+            <div
+              className={cn(
+                "relative flex size-9 items-center justify-center rounded-xl ring-1",
+                isDisconnected
+                  ? "bg-destructive/15 text-destructive ring-destructive/30"
+                  : "bg-emerald-500/15 text-emerald-500 ring-emerald-500/30",
+              )}
+            >
               <Sparkles className="size-4" />
               <span className="absolute -top-0.5 -right-0.5 flex size-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+                {!isDisconnected && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={cn(
+                    "relative inline-flex size-2.5 rounded-full",
+                    isDisconnected ? "bg-destructive" : "bg-emerald-500",
+                  )}
+                />
               </span>
             </div>
             <div>
               <CardTitle className="flex items-center gap-1.5 font-bold text-sm">
                 <span>{agentName}</span>
-                <Badge variant="outline" className="border-emerald-500/30 px-1.5 py-0 font-mono text-[10px] text-emerald-500">
-                  Gemini Flash
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "px-1.5 py-0 font-mono text-[10px]",
+                    isDisconnected
+                      ? "border-destructive/40 text-destructive"
+                      : "border-emerald-500/30 text-emerald-500",
+                  )}
+                >
+                  {isDisconnected ? "متوقف مؤقتاً" : activeModel}
                 </Badge>
               </CardTitle>
               <p className="font-mono text-[10px] text-muted-foreground" dir="ltr">
@@ -365,8 +473,41 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         {isLoading && (
           <div className="flex items-center gap-2 rounded-2xl border bg-muted/40 px-3.5 py-2.5 text-muted-foreground text-xs w-fit">
             <Loader2 className="size-3.5 animate-spin text-emerald-500" />
-            <span>جاري تحليل بيانات الطلبيات والمتجر...</span>
+            <span>جاري الاتصال بمحرك Google Gemini وتحليل الرد...</span>
           </div>
+        )}
+
+        {disconnectedError && (
+          <Alert variant="destructive" className="rounded-xl border-destructive/40 bg-destructive/10 py-3">
+            <AlertCircle className="size-4" />
+            <AlertTitle className="font-bold text-xs">تم إيقاف الدردشة مؤقتاً (انقطاع اتصال Gemini)</AlertTitle>
+            <AlertDescription className="mt-1 space-y-2.5 text-xs">
+              <p className="leading-relaxed">{disconnectedError}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => void handleReconnect()}
+                  disabled={isReconnecting}
+                  className="h-7 gap-1.5 text-[11px]"
+                >
+                  <RefreshCw className={cn("size-3", isReconnecting && "animate-spin")} />
+                  <span>{isReconnecting ? "جارٍ فحص الاتصال..." : "إعادة المحاولة الآن"}</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  render={<Link prefetch={false} href="/dashboard/settings?tab=gemini" onClick={onClose} />}
+                  className="h-7 gap-1 text-[11px]"
+                >
+                  <Settings2 className="size-3" />
+                  <span>إعدادات Gemini</span>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
         )}
       </CardContent>
 
@@ -377,9 +518,9 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
             <button
               key={item.label}
               type="button"
-              disabled={isLoading}
+              disabled={isLoading || isDisconnected}
               onClick={() => void sendMessage(item.prompt)}
-              className="shrink-0 cursor-pointer rounded-full border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 disabled:opacity-50"
+              className="shrink-0 cursor-pointer rounded-full border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {item.label}
             </button>
@@ -392,15 +533,19 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="ابحث برقم طلبية، هاتف زبون، أو اطلب تقريراً..."
-              disabled={isLoading}
+              placeholder={
+                isDisconnected
+                  ? "الدردشة متوقفة مؤقتاً حتى عودة الاتصال بـ Gemini..."
+                  : "ابحث برقم طلبية، هاتف زبون، أو اكتب رسالتك..."
+              }
+              disabled={isLoading || isDisconnected}
               className="h-9 pr-8 text-xs"
             />
           </div>
           <Button
             type="submit"
             size="icon-sm"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || isDisconnected || !input.trim()}
             className="size-9 shrink-0 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
             aria-label="إرسال"
           >

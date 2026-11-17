@@ -223,7 +223,8 @@ export function SettingsIntegrations() {
   const [geminiName, setGeminiName] = React.useState<string>("Orva Agent AI");
   const [geminiProjectName, setGeminiProjectName] = React.useState<string>("projects/347934146406");
   const [geminiProjectNumber, setGeminiProjectNumber] = React.useState<string>("347934146406");
-  const [geminiModel, setGeminiModel] = React.useState<string>("gemini-flash-latest");
+  const [geminiModel, setGeminiModel] = React.useState<string>("auto");
+  const [geminiResolvedModel, setGeminiResolvedModel] = React.useState<string | null>(null);
   const [geminiApiKey, setGeminiApiKey] = React.useState<string>("");
   const [showGeminiKey, setShowGeminiKey] = React.useState<boolean>(false);
   const [geminiSaving, setGeminiSaving] = React.useState<boolean>(false);
@@ -275,7 +276,7 @@ export function SettingsIntegrations() {
       setGeminiName(settings.geminiAi.name || "Orva Agent AI");
       setGeminiProjectName(settings.geminiAi.projectName || "projects/347934146406");
       setGeminiProjectNumber(settings.geminiAi.projectNumber || "347934146406");
-      setGeminiModel(settings.geminiAi.model || "gemini-flash-latest");
+      setGeminiModel(settings.geminiAi.model || "auto");
       if (settings.geminiAi.apiKey) {
         setGeminiApiKey(settings.geminiAi.apiKey);
       }
@@ -650,7 +651,7 @@ export function SettingsIntegrations() {
         name: geminiName.trim() || "Orva Agent AI",
         projectName: geminiProjectName.trim() || "projects/347934146406",
         projectNumber: geminiProjectNumber.trim() || "347934146406",
-        model: geminiModel.trim() || "gemini-flash-latest",
+        model: geminiModel.trim() || "auto",
       };
       if (geminiApiKey.trim()) {
         payload.apiKey = geminiApiKey.trim();
@@ -681,6 +682,7 @@ export function SettingsIntegrations() {
     setGeminiFeedback(null);
     setGeminiTestReport(null);
     setGeminiTestSnapshot(null);
+    setGeminiResolvedModel(null);
     try {
       const res = await callSettingsApi({
         action: "test",
@@ -689,10 +691,13 @@ export function SettingsIntegrations() {
         projectName: geminiProjectName,
         projectNumber: geminiProjectNumber,
         apiKey: geminiApiKey.trim(),
-        model: geminiModel || "gemini-flash-latest",
+        model: geminiModel || "auto",
       });
       const test = res.testResult;
-      if (test?.configured) {
+      if (test?.configured && test?.authenticated) {
+        if (test.model) {
+          setGeminiResolvedModel(test.model);
+        }
         setGeminiFeedback({
           type: "success",
           message: test.message,
@@ -709,7 +714,7 @@ export function SettingsIntegrations() {
       } else {
         setGeminiFeedback({
           type: "error",
-          message: test?.message || "يرجى إدخال مفتاح API صالح.",
+          message: test?.message || "تعذّر الاتصال بمحرك Google Gemini أو المفتاح غير صالح.",
         });
       }
       await fetchSettings();
@@ -725,10 +730,16 @@ export function SettingsIntegrations() {
     if (!confirm("هل أنت متأكد من رغبتك في مسح مفتاح Gemini API Key من الخادم؟")) return;
     setGeminiSaving(true);
     setGeminiFeedback(null);
+    setGeminiTestReport(null);
+    setGeminiTestSnapshot(null);
+    setGeminiResolvedModel(null);
     try {
       await callSettingsApi({ action: "delete", integration: "geminiAi", field: "apiKey" });
       setGeminiApiKey("");
       setGeminiFeedback({ type: "info", message: "تم مسح مفتاح Gemini API Key بنجاح." });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("orva:gemini-settings-updated"));
+      }
       await fetchSettings();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "تعذر مسح مفتاح API.";
@@ -738,7 +749,10 @@ export function SettingsIntegrations() {
     }
   };
 
-  const geminiCurlSnippet = `curl "https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent" \\
+  const effectivePreviewModel =
+    geminiModel && geminiModel !== "auto" ? geminiModel : geminiResolvedModel || "gemini-flash-lite-latest";
+
+  const geminiCurlSnippet = `curl "https://generativelanguage.googleapis.com/v1beta/models/${effectivePreviewModel}:generateContent" \\
   -H 'Content-Type: application/json' \\
   -H 'X-goog-api-key: ${showGeminiKey && geminiApiKey ? geminiApiKey : "YOUR_GEMINI_API_KEY"}' \\
   -X POST \\
@@ -755,7 +769,7 @@ export function SettingsIntegrations() {
   }'`;
 
   const handleCopyCurl = () => {
-    const rawCurl = `curl "https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent" \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-goog-api-key: ${geminiApiKey || "YOUR_GEMINI_API_KEY"}' \\\n  -X POST \\\n  -d '{\n    "contents": [\n      {\n        "parts": [\n          {\n            "text": "Explain how AI works in a few words"\n          }\n        ]\n      }\n    ]\n  }'`;
+    const rawCurl = `curl "https://generativelanguage.googleapis.com/v1beta/models/${effectivePreviewModel}:generateContent" \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-goog-api-key: ${geminiApiKey || "YOUR_GEMINI_API_KEY"}' \\\n  -X POST \\\n  -d '{\n    "contents": [\n      {\n        "parts": [\n          {\n            "text": "Explain how AI works in a few words"\n          }\n        ]\n      }\n    ]\n  }'`;
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(rawCurl);
       setCopiedCurl(true);
@@ -831,7 +845,7 @@ export function SettingsIntegrations() {
           <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground font-mono" dir="ltr">
             <span>{geminiProjectName || "projects/347934146406"}</span>
             <Badge variant="secondary" className="text-[10px] font-mono">
-              {geminiModel || "gemini-flash-latest"}
+              {geminiModel === "auto" ? "Auto Router" : geminiModel || "Auto Router"}
             </Badge>
           </div>
         </div>
@@ -1053,7 +1067,7 @@ export function SettingsIntegrations() {
                         <span>نظام تكامل الذكاء الاصطناعي — {geminiName || "Orva Agent AI"} (Google Gemini API)</span>
                       </CardTitle>
                       <Badge variant="secondary" className="text-[11px] font-mono">
-                        {geminiModel || "gemini-flash-latest"}
+                        {geminiModel === "auto" ? `Auto (${geminiResolvedModel || "Live Working Model"})` : geminiModel}
                       </Badge>
                       <StatusBadge
                         status={serverSettings?.geminiAi?.status || (isGeminiConfigured ? "operational" : "not_configured")}
@@ -1061,7 +1075,7 @@ export function SettingsIntegrations() {
                       />
                     </div>
                     <CardDescription className="text-xs">
-                      إدارة كاملة لمحرك Google Gemini API المرتبط ببطاقة المحادثة الذكية (Spectrum UI AI Chat Card) للبحث الفوري في الطلبيات، متابعة الشحن، وتوليد التقارير العامة للمتجر.
+                      إدارة كاملة لمحرك Google Gemini API المرتبط ببطاقة المحادثة الذكية (Spectrum UI AI Chat Card) مع توجيه تلقائي لأسرع نموذج شغال وتوقف آمن عند الانقطاع.
                     </CardDescription>
                   </div>
 
@@ -1156,10 +1170,12 @@ export function SettingsIntegrations() {
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       dir="ltr"
                     >
-                      <option value="gemini-flash-latest">gemini-flash-latest (Recommended)</option>
-                      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                      <option value="auto">auto (الاختيار التلقائي الذكي لأسرع نموذج شغال — موصى به)</option>
+                      <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Fast Live ~1.2s)</option>
+                      <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Live ~3.2s)</option>
+                      <option value="gemini-3.5-flash">gemini-3.5-flash (Live ~7.4s)</option>
+                      <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                     </select>
                   </div>
                 </div>
@@ -1212,12 +1228,14 @@ export function SettingsIntegrations() {
                     <Input
                       type="text"
                       readOnly
-                      value={`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent`}
+                      value={`https://generativelanguage.googleapis.com/v1beta/models/${effectivePreviewModel}:generateContent`}
                       className="font-mono text-[11px] bg-muted/40 text-muted-foreground"
                       dir="ltr"
                     />
                     <div className="text-[11px] text-muted-foreground">
-                      بوابة الوكيل الداخلية في المتجر: <code className="font-mono">POST /api/ai-agent</code>
+                      {geminiModel === "auto"
+                        ? "الوضع التلقائي يجرب أسرع نموذج عامل ويتخطى أي نموذج متعطل تلقائياً."
+                        : "بوابة الوكيل الداخلية في المتجر: POST /api/ai-agent"}
                     </div>
                   </div>
                 </div>
@@ -1226,9 +1244,15 @@ export function SettingsIntegrations() {
                 {(geminiTestSnapshot || geminiTestReport) && (
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3" dir="rtl">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-bold text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                      <div className="font-bold text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 flex-wrap">
                         <Zap className="size-4" />
                         <span>نتيجة الاختبار المباشر: التقارير الأخيرة لعدد الطلبيات والتقرير العام للمتجر</span>
+                        {geminiResolvedModel && (
+                          <Badge variant="outline" className="font-mono text-[10px] border-emerald-500/40">
+                            {geminiResolvedModel}
+                            {geminiTestSnapshot?.latencyMs ? ` • ${geminiTestSnapshot.latencyMs}ms` : ""}
+                          </Badge>
+                        )}
                       </div>
                       {geminiTestReport && (
                         <Button
@@ -1659,176 +1683,6 @@ export function SettingsIntegrations() {
                   يعتمد المتجر كلياً على تحليلات Vercel Web Analytics المدمجة مع البنية التحتية للمنصة دون أي أدوات تتبع خارجية أو ملفات تعريف ارتباط.
                 </p>
               </CardContent>
-            </Card>
-
-            {/* Orva Agent AI — Google Gemini Integration Card */}
-            <Card className="md:col-span-3 border-emerald-500/30">
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base font-bold flex items-center gap-2">
-                        <Zap className="size-4 text-emerald-600" />
-                        إعدادات الذكاء الاصطناعي — {geminiName || "Orva Agent AI"} (Google Gemini)
-                      </CardTitle>
-                      <Badge variant="secondary" className="text-[11px] font-mono">
-                        gemini-flash-latest
-                      </Badge>
-                      <StatusBadge
-                        status={serverSettings?.geminiAi?.status || (isGeminiConfigured ? "operational" : "not_configured")}
-                        label={isGeminiConfigured ? (geminiEnabled ? "Connected & Active" : "Disabled") : "Not Configured"}
-                      />
-                    </div>
-                    <CardDescription className="text-xs">
-                      إعدادات ربط بطاقة المحادثة الذكية العائمة (Spectrum UI AI Chat Card) بمحرك Google Gemini للرد على استفسارات الطلبيات والمخزون والتقارير العامة للمتجر.
-                    </CardDescription>
-                  </div>
-
-                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs font-medium font-mono">
-                    <span>Project: {geminiProjectNumber || "347934146406"}</span>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 text-xs">
-                {geminiFeedback && (
-                  <Alert variant={geminiFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
-                    {geminiFeedback.type === "error" ? (
-                      <AlertCircle className="size-4" />
-                    ) : (
-                      <CheckCircle2 className="size-4" />
-                    )}
-                    <AlertTitle className="text-xs font-bold">
-                      {geminiFeedback.type === "error" ? "تنبيه" : "نتيجة العملية"}
-                    </AlertTitle>
-                    <AlertDescription className="text-xs mt-0.5">{geminiFeedback.message}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="gemini-toggle" className="text-xs font-bold cursor-pointer">
-                      تفعيل وكيل الذكاء الاصطناعي ({geminiName || "Orva Agent AI"})
-                    </Label>
-                    <div className="text-[11px] text-muted-foreground">
-                      إظهار بطاقة المحادثة الذكية العائمة في لوحة التحكم وتمكين البحث الفوري في الطلبيات والتقارير.
-                    </div>
-                  </div>
-                  <Switch id="gemini-toggle" checked={geminiEnabled} onCheckedChange={setGeminiEnabled} />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="gemini-name" className="text-xs font-semibold">
-                      اسم الوكيل (Name):
-                    </Label>
-                    <Input
-                      id="gemini-name"
-                      type="text"
-                      value={geminiName}
-                      onChange={(e) => setGeminiName(e.target.value)}
-                      placeholder="Orva Agent AI"
-                      className="text-xs font-medium"
-                      dir="ltr"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="gemini-project-name" className="text-xs font-semibold">
-                      اسم المشروع (Project Name):
-                    </Label>
-                    <Input
-                      id="gemini-project-name"
-                      type="text"
-                      value={geminiProjectName}
-                      onChange={(e) => setGeminiProjectName(e.target.value)}
-                      placeholder="projects/347934146406"
-                      className="font-mono text-xs"
-                      dir="ltr"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="gemini-project-number" className="text-xs font-semibold">
-                      رقم المشروع (Project Number):
-                    </Label>
-                    <Input
-                      id="gemini-project-number"
-                      type="text"
-                      value={geminiProjectNumber}
-                      onChange={(e) => setGeminiProjectNumber(e.target.value)}
-                      placeholder="347934146406"
-                      className="font-mono text-xs"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="gemini-api-key" className="text-xs font-semibold">
-                    مفتاح Gemini API Key (X-goog-api-key):
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="gemini-api-key"
-                      type={showGeminiKey ? "text" : "password"}
-                      value={geminiApiKey}
-                      onChange={(e) => setGeminiApiKey(e.target.value)}
-                      placeholder="AQ.Ab8RN6..."
-                      className="font-mono text-xs flex-1"
-                      dir="ltr"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => setShowGeminiKey((prev) => !prev)}
-                      title={showGeminiKey ? "إخفاء المفتاح" : "إظهار المفتاح"}
-                    >
-                      {showGeminiKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                    </Button>
-                  </div>
-                </div>
-
-                {geminiTestReport && (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 space-y-1.5" dir="rtl">
-                    <div className="font-bold text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                      <Zap className="size-3.5" />
-                      <span>تقرير الاختبار المباشر (التقارير الأخيرة لعدد الطلبيات والتقرير العام للمتجر):</span>
-                    </div>
-                    <div className="whitespace-pre-wrap text-xs leading-relaxed text-foreground font-sans">
-                      {geminiTestReport}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-
-              <CardFooter className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleSaveGeminiAi}
-                    disabled={geminiSaving}
-                    className="text-xs gap-1.5 h-8"
-                  >
-                    {geminiSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                    <span>حفظ إعدادات Orva Agent AI</span>
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestGeminiAiReport}
-                    disabled={geminiTesting || (!isGeminiConfigured && !geminiApiKey.trim())}
-                    className="text-xs gap-1.5 h-8 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
-                  >
-                    {geminiTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
-                    <span>اختبار التقارير الأخيرة لعدد الطلبيات والتقارير العامة للمتجر</span>
-                  </Button>
-                </div>
-              </CardFooter>
             </Card>
           </div>
         </TabsContent>

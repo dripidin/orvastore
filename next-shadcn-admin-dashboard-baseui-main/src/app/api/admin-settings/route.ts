@@ -10,7 +10,7 @@ import {
 } from '@/app/actions/settings';
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
 import { verifyAdminSession } from '@/lib/auth/admin-auth';
-import { runOrvaGeminiAgentQuery } from '@/lib/ai/store-ai-context';
+import { runGeminiSettingsTestReport } from '@/lib/ai/store-ai-context';
 
 export async function GET(request: NextRequest) {
   if (!await verifyAdminSession(request)) {
@@ -173,34 +173,17 @@ export async function POST(request: NextRequest) {
       }
 
       if (integration === 'geminiAi') {
-        const settings = await getAdminSettingsAction();
-        const apiKey = (body.apiKey?.trim() || settings.geminiAi?.apiKey || '').trim();
-        const model = (body.model?.trim() || settings.geminiAi?.model || 'gemini-flash-latest').trim();
-        const configured = Boolean(apiKey.length >= 10);
-
-        const aiReport = await runOrvaGeminiAgentQuery({
-          userMessage:
-            'قدّم تقريراً شاملاً ومختصراً عن التقارير الأخيرة لعدد الطلبيات وتوزيع حالاتها (قيد الانتظار، المؤكدة، المشحونة، المسلّمة، المرتجعة، الملغاة) وعن التقارير العامة لأداء المتجر والمبيعات المحصّلة وأهم المنتجات.',
-          overrideApiKey: apiKey,
-          overrideModel: model,
+        const testResult = await runGeminiSettingsTestReport({
+          name: body.name,
+          projectName: body.projectName,
+          projectNumber: body.projectNumber,
+          apiKey: body.apiKey,
+          model: body.model,
         });
 
         return NextResponse.json({
           success: true,
-          testResult: {
-            configured,
-            authenticated: configured && !aiReport.apiError,
-            agentName: body.name || aiReport.agentName,
-            projectName: body.projectName || aiReport.projectName,
-            projectNumber: body.projectNumber || aiReport.projectNumber,
-            model: aiReport.model,
-            latencyMs: aiReport.latencyMs,
-            reportText: aiReport.reply,
-            snapshot: aiReport.snapshot,
-            message: configured
-              ? `تم إجراء اختبار Orva Agent AI (${aiReport.projectName}) وتوليد التقرير الأخير لعدد الطلبيات والتقرير العام للمتجر بنجاح (${aiReport.snapshot.totalOrders} طلبية).`
-              : 'يرجى إدخال مفتاح Gemini API صالح لإجراء الاختبار.',
-          },
+          testResult,
         });
       }
 
