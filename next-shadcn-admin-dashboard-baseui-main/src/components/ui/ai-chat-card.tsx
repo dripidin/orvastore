@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Bot,
   Loader2,
@@ -7,6 +8,7 @@ import {
   RotateCcw,
   Search,
   SendHorizontal,
+  Settings2,
   Sparkles,
   Truck,
   User,
@@ -14,6 +16,10 @@ import {
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  getDashboardSettingsFallbackAction,
+  sendAiChatMessageFallbackAction,
+} from "@/app/actions/ai-agent";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,6 +93,28 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
 
+  const syncSettingsMetadata = useCallback(async () => {
+    try {
+      const data = await getDashboardSettingsFallbackAction();
+      if (data?.settings?.geminiAi) {
+        if (data.settings.geminiAi.name) setAgentName(data.settings.geminiAi.name);
+        if (data.settings.geminiAi.projectNumber) setProjectNumber(data.settings.geminiAi.projectNumber);
+      }
+    } catch {
+      // Ignore metadata sync errors
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncSettingsMetadata();
+    if (typeof window !== "undefined") {
+      const handler = () => void syncSettingsMetadata();
+      window.addEventListener("orva:gemini-settings-updated", handler);
+      return () => window.removeEventListener("orva:gemini-settings-updated", handler);
+    }
+    return undefined;
+  }, [syncSettingsMetadata]);
+
   const sendMessage = useCallback(
     async (textToSend: string) => {
       const trimmed = textToSend.trim();
@@ -128,7 +156,7 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
           }),
         });
 
-        const data = (await res.json()) as {
+        let data: {
           success?: boolean;
           reply?: string;
           error?: string;
@@ -137,6 +165,15 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
           matchedOrders?: MatchedOrderItem[];
         };
 
+        if (res.status === 401 || res.status === 403) {
+          data = await sendAiChatMessageFallbackAction({
+            message: trimmed,
+            history: historyPayload,
+          });
+        } else {
+          data = (await res.json()) as typeof data;
+        }
+
         if (data.agentName) setAgentName(data.agentName);
         if (data.projectNumber) setProjectNumber(data.projectNumber);
 
@@ -144,7 +181,7 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           content:
-            res.ok && data.success && data.reply
+            data.success && data.reply
               ? data.reply
               : (data.error ?? "تعذر الحصول على رد من Orva Agent AI حالياً."),
           timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
@@ -220,6 +257,16 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
           </div>
 
           <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              render={<Link prefetch={false} href="/dashboard/settings?tab=gemini" onClick={onClose} />}
+              title="إعدادات تكامل Gemini API"
+              aria-label="إعدادات تكامل Gemini API"
+            >
+              <Settings2 className="size-3.5" />
+            </Button>
             <Button
               type="button"
               variant="ghost"

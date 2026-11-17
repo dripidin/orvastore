@@ -4,13 +4,13 @@ import {
   Forklift,
   Gauge,
   Globe,
-  LayoutDashboard,
   LayoutTemplate,
+  type LucideIcon,
   MapPin,
   Package,
   Settings2,
   ShoppingBag,
-  type LucideIcon,
+  Sparkles,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -86,6 +86,13 @@ export const sidebarItems: NavGroup[] = [
         title: "Settings & Carriers",
         url: "/dashboard/settings",
         icon: Settings2,
+      },
+      {
+        id: "gemini-ai-settings",
+        title: "Gemini AI Integration",
+        url: "/dashboard/settings?tab=gemini",
+        icon: Sparkles,
+        badge: "new",
       },
     ],
   },

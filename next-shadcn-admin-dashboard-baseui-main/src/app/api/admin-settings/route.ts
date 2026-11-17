@@ -6,6 +6,7 @@ import {
   getAdminSettingsAction,
   getRedexSettingsAction,
   deleteRedexTokenAction,
+  deleteGeminiApiKeyAction,
 } from '@/app/actions/settings';
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
 import { verifyAdminSession } from '@/lib/auth/admin-auth';
@@ -173,8 +174,8 @@ export async function POST(request: NextRequest) {
 
       if (integration === 'geminiAi') {
         const settings = await getAdminSettingsAction();
-        const apiKey = (body.apiKey ?? settings.geminiAi?.apiKey ?? '').trim();
-        const model = (body.model ?? settings.geminiAi?.model ?? 'gemini-flash-latest').trim();
+        const apiKey = (body.apiKey?.trim() || settings.geminiAi?.apiKey || '').trim();
+        const model = (body.model?.trim() || settings.geminiAi?.model || 'gemini-flash-latest').trim();
         const configured = Boolean(apiKey.length >= 10);
 
         const aiReport = await runOrvaGeminiAgentQuery({
@@ -231,7 +232,7 @@ export async function POST(request: NextRequest) {
           await saveSettingsAction({ metaPixel: { capiToken: '' } });
         }
       } else if (integration === 'geminiAi') {
-        await saveSettingsAction({ geminiAi: { apiKey: '' } });
+        await deleteGeminiApiKeyAction();
       }
       return NextResponse.json({
         success: true,

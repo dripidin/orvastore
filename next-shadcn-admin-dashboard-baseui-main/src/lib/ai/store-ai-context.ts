@@ -323,8 +323,8 @@ export async function runOrvaGeminiAgentQuery(options: {
   const settings = await getAdminSettingsAction();
   const gemini = settings.geminiAi;
 
-  const apiKey = (options.overrideApiKey ?? gemini.apiKey).trim();
-  const model = (options.overrideModel ?? gemini.model).trim() || "gemini-flash-latest";
+  const apiKey = (options.overrideApiKey?.trim() || gemini.apiKey || "").trim();
+  const model = (options.overrideModel?.trim() || gemini.model || "gemini-flash-latest").trim();
   const agentName = gemini.name || "Orva Agent AI";
   const projectName = gemini.projectName || "projects/347934146406";
   const projectNumber = gemini.projectNumber || "347934146406";

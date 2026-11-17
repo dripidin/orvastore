@@ -1,11 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   BarChart3,
   Bell,
+  Bot,
+  Check,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   Globe,
@@ -18,12 +22,17 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
+  Terminal,
   Trash2,
   Truck,
   Upload,
   Zap,
 } from "lucide-react";
 
+import {
+  getDashboardSettingsFallbackAction,
+  mutateDashboardSettingsFallbackAction,
+} from "@/app/actions/ai-agent";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -149,8 +158,20 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
 }
 
 export function SettingsIntegrations() {
-  const [activeTab, setActiveTab] = React.useState<string>("general");
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams?.get("tab");
+  const [activeTab, setActiveTab] = React.useState<string>(
+    requestedTab && ["general", "gemini", "analytics", "delivery", "notifications"].includes(requestedTab)
+      ? requestedTab
+      : "general",
+  );
   const repoMode = typeof window !== "undefined" ? getAppRepositoryMode() : "mock";
+
+  React.useEffect(() => {
+    if (requestedTab && ["general", "gemini", "analytics", "delivery", "notifications"].includes(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   // Dynamic Settings State loaded from server
   const [loading, setLoading] = React.useState<boolean>(false);
@@ -202,14 +223,66 @@ export function SettingsIntegrations() {
   const [geminiName, setGeminiName] = React.useState<string>("Orva Agent AI");
   const [geminiProjectName, setGeminiProjectName] = React.useState<string>("projects/347934146406");
   const [geminiProjectNumber, setGeminiProjectNumber] = React.useState<string>("347934146406");
+  const [geminiModel, setGeminiModel] = React.useState<string>("gemini-flash-latest");
   const [geminiApiKey, setGeminiApiKey] = React.useState<string>("");
   const [showGeminiKey, setShowGeminiKey] = React.useState<boolean>(false);
   const [geminiSaving, setGeminiSaving] = React.useState<boolean>(false);
   const [geminiTesting, setGeminiTesting] = React.useState<boolean>(false);
   const [geminiFeedback, setGeminiFeedback] = React.useState<ActionFeedback | null>(null);
   const [geminiTestReport, setGeminiTestReport] = React.useState<string | null>(null);
+  const [geminiTestSnapshot, setGeminiTestSnapshot] = React.useState<{
+    totalOrders: number;
+    statusCounts: {
+      pending: number;
+      confirmed: number;
+      shipped: number;
+      delivered: number;
+      returned: number;
+      cancelled: number;
+    };
+    deliveredRevenueDzd: number;
+    totalPipelineDzd: number;
+    redexTrackedCount: number;
+    latencyMs?: number;
+  } | null>(null);
+  const [copiedCurl, setCopiedCurl] = React.useState<boolean>(false);
+  const [copiedReport, setCopiedReport] = React.useState<boolean>(false);
 
-  // Fetch settings from server
+  const applyServerSettings = React.useCallback((settings: PublicSettingsPayload) => {
+    setServerSettings(settings);
+    if (settings.redex) {
+      setRedexEnabled(Boolean(settings.redex.enabled));
+      setRedexBaseUrl(settings.redex.baseUrl || "https://redex.ecotrack.dz");
+    }
+    if (settings.telegram) {
+      setTgEnabled(Boolean(settings.telegram.enabled));
+      setTgChatId(settings.telegram.chatId || "");
+    }
+    if (settings.metaPixel) {
+      setMetaEnabled(Boolean(settings.metaPixel.enabled));
+      setMetaCapiEnabled(settings.metaPixel.capiEnabled !== false);
+      setMetaPixelId(settings.metaPixel.pixelId || "");
+      setMetaScope(settings.metaPixel.scope === "selected" ? "selected" : "all");
+      if (Array.isArray(settings.metaPixel.pages) && settings.metaPixel.pages.length) {
+        setMetaPages(settings.metaPixel.pages);
+      }
+    }
+    if (settings.store?.logoUrl) {
+      setStoreLogoUrl(settings.store.logoUrl);
+    }
+    if (settings.geminiAi) {
+      setGeminiEnabled(Boolean(settings.geminiAi.enabled));
+      setGeminiName(settings.geminiAi.name || "Orva Agent AI");
+      setGeminiProjectName(settings.geminiAi.projectName || "projects/347934146406");
+      setGeminiProjectNumber(settings.geminiAi.projectNumber || "347934146406");
+      setGeminiModel(settings.geminiAi.model || "gemini-flash-latest");
+      if (settings.geminiAi.apiKey) {
+        setGeminiApiKey(settings.geminiAi.apiKey);
+      }
+    }
+  }, []);
+
+  // Fetch settings from server (with seamless Server Action fallback for demo/local sessions)
   const fetchSettings = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -228,56 +301,37 @@ export function SettingsIntegrations() {
         credentials: "same-origin",
       });
 
-      if (!res.ok) {
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && data.settings) {
+          applyServerSettings(data.settings as PublicSettingsPayload);
+          return;
+        }
       }
 
-      const data = await res.json();
-      if (data && data.success && data.settings) {
-        setServerSettings(data.settings);
-        // Sync local form states
-        if (data.settings.redex) {
-          setRedexEnabled(Boolean(data.settings.redex.enabled));
-          setRedexBaseUrl(data.settings.redex.baseUrl || "https://redex.ecotrack.dz");
-        }
-        if (data.settings.telegram) {
-          setTgEnabled(Boolean(data.settings.telegram.enabled));
-          setTgChatId(data.settings.telegram.chatId || "");
-        }
-        if (data.settings.metaPixel) {
-          setMetaEnabled(Boolean(data.settings.metaPixel.enabled));
-          setMetaCapiEnabled(data.settings.metaPixel.capiEnabled !== false);
-          setMetaPixelId(data.settings.metaPixel.pixelId || "");
-          setMetaScope(data.settings.metaPixel.scope === "selected" ? "selected" : "all");
-          if (Array.isArray(data.settings.metaPixel.pages) && data.settings.metaPixel.pages.length) {
-            setMetaPages(data.settings.metaPixel.pages);
-          }
-        }
-        if (data.settings.store?.logoUrl) {
-          setStoreLogoUrl(data.settings.store.logoUrl);
-        }
-        if (data.settings.geminiAi) {
-          setGeminiEnabled(Boolean(data.settings.geminiAi.enabled));
-          setGeminiName(data.settings.geminiAi.name || "Orva Agent AI");
-          setGeminiProjectName(data.settings.geminiAi.projectName || "projects/347934146406");
-          setGeminiProjectNumber(data.settings.geminiAi.projectNumber || "347934146406");
-          if (data.settings.geminiAi.apiKey) {
-            setGeminiApiKey(data.settings.geminiAi.apiKey);
-          }
-        }
+      const fallbackData = await getDashboardSettingsFallbackAction();
+      if (fallbackData?.success && fallbackData.settings) {
+        applyServerSettings(fallbackData.settings as PublicSettingsPayload);
       }
     } catch {
-      // Graceful fallback for mock mode
+      try {
+        const fallbackData = await getDashboardSettingsFallbackAction();
+        if (fallbackData?.success && fallbackData.settings) {
+          applyServerSettings(fallbackData.settings as PublicSettingsPayload);
+        }
+      } catch {
+        // Graceful fallback
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyServerSettings]);
 
   React.useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
 
-  // Generic API caller
+  // Generic API caller with Server Action fallback
   const callSettingsApi = async (body: Record<string, unknown>) => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -294,6 +348,10 @@ export function SettingsIntegrations() {
       credentials: "same-origin",
       body: JSON.stringify(body),
     });
+
+    if (res.status === 401 || res.status === 403) {
+      return await mutateDashboardSettingsFallbackAction(body);
+    }
 
     const data = await res.json().catch(() => null);
     if (!res.ok) {
@@ -587,21 +645,28 @@ export function SettingsIntegrations() {
     setGeminiSaving(true);
     setGeminiFeedback(null);
     try {
+      const payload: Record<string, unknown> = {
+        enabled: geminiEnabled,
+        name: geminiName.trim() || "Orva Agent AI",
+        projectName: geminiProjectName.trim() || "projects/347934146406",
+        projectNumber: geminiProjectNumber.trim() || "347934146406",
+        model: geminiModel.trim() || "gemini-flash-latest",
+      };
+      if (geminiApiKey.trim()) {
+        payload.apiKey = geminiApiKey.trim();
+      }
+
       await callSettingsApi({
         action: "save",
-        geminiAi: {
-          enabled: geminiEnabled,
-          name: geminiName.trim() || "Orva Agent AI",
-          projectName: geminiProjectName.trim() || "projects/347934146406",
-          projectNumber: geminiProjectNumber.trim() || "347934146406",
-          model: "gemini-flash-latest",
-          apiKey: geminiApiKey.trim(),
-        },
+        geminiAi: payload,
       });
       setGeminiFeedback({
         type: "success",
-        message: "تم حفظ إعدادات Orva Agent AI (Google Gemini) بنجاح.",
+        message: "تم حفظ إعدادات Orva Agent AI (Google Gemini API) وتحديث النظام بنجاح.",
       });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("orva:gemini-settings-updated"));
+      }
       await fetchSettings();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "تعذر حفظ إعدادات Orva Agent AI.";
@@ -615,6 +680,7 @@ export function SettingsIntegrations() {
     setGeminiTesting(true);
     setGeminiFeedback(null);
     setGeminiTestReport(null);
+    setGeminiTestSnapshot(null);
     try {
       const res = await callSettingsApi({
         action: "test",
@@ -622,8 +688,8 @@ export function SettingsIntegrations() {
         name: geminiName,
         projectName: geminiProjectName,
         projectNumber: geminiProjectNumber,
-        apiKey: geminiApiKey,
-        model: "gemini-flash-latest",
+        apiKey: geminiApiKey.trim(),
+        model: geminiModel || "gemini-flash-latest",
       });
       const test = res.testResult;
       if (test?.configured) {
@@ -633,6 +699,12 @@ export function SettingsIntegrations() {
         });
         if (test.reportText) {
           setGeminiTestReport(test.reportText);
+        }
+        if (test.snapshot) {
+          setGeminiTestSnapshot({
+            ...test.snapshot,
+            latencyMs: test.latencyMs,
+          });
         }
       } else {
         setGeminiFeedback({
@@ -646,6 +718,57 @@ export function SettingsIntegrations() {
       setGeminiFeedback({ type: "error", message: msg });
     } finally {
       setGeminiTesting(false);
+    }
+  };
+
+  const handleClearGeminiKey = async () => {
+    if (!confirm("هل أنت متأكد من رغبتك في مسح مفتاح Gemini API Key من الخادم؟")) return;
+    setGeminiSaving(true);
+    setGeminiFeedback(null);
+    try {
+      await callSettingsApi({ action: "delete", integration: "geminiAi", field: "apiKey" });
+      setGeminiApiKey("");
+      setGeminiFeedback({ type: "info", message: "تم مسح مفتاح Gemini API Key بنجاح." });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر مسح مفتاح API.";
+      setGeminiFeedback({ type: "error", message: msg });
+    } finally {
+      setGeminiSaving(false);
+    }
+  };
+
+  const geminiCurlSnippet = `curl "https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent" \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-goog-api-key: ${showGeminiKey && geminiApiKey ? geminiApiKey : "YOUR_GEMINI_API_KEY"}' \\
+  -X POST \\
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "أعطني التقرير الأخير لعدد الطلبيات والتقرير العام لأداء متجر ORVA Store"
+          }
+        ]
+      }
+    ]
+  }'`;
+
+  const handleCopyCurl = () => {
+    const rawCurl = `curl "https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent" \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-goog-api-key: ${geminiApiKey || "YOUR_GEMINI_API_KEY"}' \\\n  -X POST \\\n  -d '{\n    "contents": [\n      {\n        "parts": [\n          {\n            "text": "Explain how AI works in a few words"\n          }\n        ]\n      }\n    ]\n  }'`;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(rawCurl);
+      setCopiedCurl(true);
+      setTimeout(() => setCopiedCurl(false), 2000);
+    }
+  };
+
+  const handleCopyReport = () => {
+    if (!geminiTestReport) return;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(geminiTestReport);
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2000);
     }
   };
 
@@ -663,11 +786,11 @@ export function SettingsIntegrations() {
           <Info className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div className="space-y-1 text-xs">
             <div className="font-bold text-blue-950 dark:text-blue-200">
-              إدارة الإعدادات والتكاملات المركزية (Secure Dynamic Integration Management)
+              إدارة الإعدادات، الذكاء الاصطناعي (Gemini AI)، والتكاملات المركزية (Secure Dynamic Integration Management)
             </div>
             <p className="text-blue-800 dark:text-blue-300 leading-relaxed">
-              يمكنك إدارة وتحديث رموز الربط (API Tokens) لشركات الشحن، بوت تيليجرام، وMeta Pixel مباشرة من هذه اللوحة.
-              يتم تشفير كافة الأسرار على الخادم بنظام <strong>AES-256-GCM</strong>، مع عزلها التام عن المتصفح وتأكيد استمراريتها عبر إعادة تشغيل الخادم.
+              يمكنك إدارة وتحديث إعدادات وكيل الذكاء الاصطناعي <strong>Orva Agent AI (Google Gemini API)</strong>، رموز الربط لشركات الشحن (Redex)، بوت تيليجرام، وMeta Pixel مباشرة من هذه اللوحة.
+              يتم حفظ الأسرار بأمان على الخادم وفي قاعدة بيانات Supabase مع استمراريتها الكاملة.
             </p>
           </div>
         </div>
@@ -683,6 +806,106 @@ export function SettingsIntegrations() {
         </Button>
       </div>
 
+      {/* Active Integrations Status & Quick-Jump Strip */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" dir="rtl">
+        <div
+          onClick={() => setActiveTab("gemini")}
+          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+            activeTab === "gemini"
+              ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30"
+              : "border-emerald-500/30 bg-card hover:border-emerald-500/60"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                <Bot className="size-4" />
+              </div>
+              <span>{geminiName || "Orva Agent AI"}</span>
+            </div>
+            <StatusBadge
+              status={isGeminiConfigured ? (geminiEnabled ? "operational" : "not_connected") : "not_configured"}
+              label={isGeminiConfigured ? (geminiEnabled ? "متصل ونشط" : "متوقف") : "غير مهيأ"}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground font-mono" dir="ltr">
+            <span>{geminiProjectName || "projects/347934146406"}</span>
+            <Badge variant="secondary" className="text-[10px] font-mono">
+              {geminiModel || "gemini-flash-latest"}
+            </Badge>
+          </div>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("delivery")}
+          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+            activeTab === "delivery" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Truck className="size-4" />
+              </div>
+              <span>Redex Express DZ</span>
+            </div>
+            <StatusBadge
+              status={serverSettings?.redex?.status || "not_configured"}
+              label={isRedexConfigured ? "متصل ونشط" : "غير مهيأ"}
+            />
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            بوابة الشحن والتوصيل عبر 58 ولاية
+          </div>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("analytics")}
+          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+            activeTab === "analytics" ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20" : "bg-card"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                <BarChart3 className="size-4" />
+              </div>
+              <span>Meta Pixel & Vercel</span>
+            </div>
+            <StatusBadge
+              status={serverSettings?.metaPixel?.status || "not_configured"}
+              label={isMetaConfigured ? "متصل ونشط" : "غير مهيأ"}
+            />
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            تتبع الحملات الإعلانية وتحليلات الزوار
+          </div>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("notifications")}
+          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+            activeTab === "notifications" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Bell className="size-4" />
+              </div>
+              <span>Telegram Bot Alerts</span>
+            </div>
+            <StatusBadge
+              status={serverSettings?.telegram?.status || "not_configured"}
+              label={isTgConfigured ? "متصل ونشط" : "غير مهيأ"}
+            />
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            إشعارات الطلبيات الفورية لقناة الإدارة
+          </div>
+        </div>
+      </div>
+
       {/* Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="overflow-x-auto pb-1">
@@ -690,6 +913,10 @@ export function SettingsIntegrations() {
             <TabsTrigger value="general" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <Globe className="size-3.5" />
               <span>General Settings</span>
+            </TabsTrigger>
+            <TabsTrigger value="gemini" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
+              <Sparkles className="size-3.5 text-emerald-500" />
+              <span>Gemini AI Integration (Orva Agent AI)</span>
             </TabsTrigger>
             <TabsTrigger value="analytics" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <BarChart3 className="size-3.5" />
@@ -811,6 +1038,334 @@ export function SettingsIntegrations() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── 1B. Gemini AI Integration (Orva Agent AI) ─────────────────────── */}
+        <TabsContent value="gemini" className="space-y-4 pt-2">
+          <div className="grid grid-cols-1 gap-4">
+            <Card className="border-emerald-500/30 shadow-xs">
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-base font-bold flex items-center gap-2">
+                        <Bot className="size-4 text-emerald-600" />
+                        <span>نظام تكامل الذكاء الاصطناعي — {geminiName || "Orva Agent AI"} (Google Gemini API)</span>
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-[11px] font-mono">
+                        {geminiModel || "gemini-flash-latest"}
+                      </Badge>
+                      <StatusBadge
+                        status={serverSettings?.geminiAi?.status || (isGeminiConfigured ? "operational" : "not_configured")}
+                        label={isGeminiConfigured ? (geminiEnabled ? "Connected & Active" : "Disabled") : "Not Configured"}
+                      />
+                    </div>
+                    <CardDescription className="text-xs">
+                      إدارة كاملة لمحرك Google Gemini API المرتبط ببطاقة المحادثة الذكية (Spectrum UI AI Chat Card) للبحث الفوري في الطلبيات، متابعة الشحن، وتوليد التقارير العامة للمتجر.
+                    </CardDescription>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs font-medium font-mono">
+                    <ShieldCheck className="size-4 text-emerald-600" />
+                    <span>Project: {geminiProjectNumber || "347934146406"}</span>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4 text-xs">
+                {geminiFeedback && (
+                  <Alert variant={geminiFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
+                    {geminiFeedback.type === "error" ? (
+                      <AlertCircle className="size-4" />
+                    ) : (
+                      <CheckCircle2 className="size-4" />
+                    )}
+                    <AlertTitle className="text-xs font-bold">
+                      {geminiFeedback.type === "error" ? "تنبيه" : "نتيجة العملية"}
+                    </AlertTitle>
+                    <AlertDescription className="text-xs mt-0.5">{geminiFeedback.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex items-center justify-between p-3.5 rounded-xl border bg-muted/20">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gemini-tab-toggle" className="text-xs font-bold cursor-pointer">
+                      تفعيل وكيل الذكاء الاصطناعي ({geminiName || "Orva Agent AI"}) في لوحة التحكم
+                    </Label>
+                    <div className="text-[11px] text-muted-foreground">
+                      إظهار بطاقة المحادثة الذكية العائمة وتمكين الاستعلام المباشر عن الطلبيات والتقارير عبر Google Gemini API.
+                    </div>
+                  </div>
+                  <Switch id="gemini-tab-toggle" checked={geminiEnabled} onCheckedChange={setGeminiEnabled} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gemini-tab-name" className="text-xs font-semibold">
+                      اسم الوكيل (Name):
+                    </Label>
+                    <Input
+                      id="gemini-tab-name"
+                      type="text"
+                      value={geminiName}
+                      onChange={(e) => setGeminiName(e.target.value)}
+                      placeholder="Orva Agent AI"
+                      className="text-xs font-medium"
+                      dir="ltr"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gemini-tab-project-name" className="text-xs font-semibold">
+                      اسم المشروع (Project Name):
+                    </Label>
+                    <Input
+                      id="gemini-tab-project-name"
+                      type="text"
+                      value={geminiProjectName}
+                      onChange={(e) => setGeminiProjectName(e.target.value)}
+                      placeholder="projects/347934146406"
+                      className="font-mono text-xs"
+                      dir="ltr"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gemini-tab-project-number" className="text-xs font-semibold">
+                      رقم المشروع (Project Number):
+                    </Label>
+                    <Input
+                      id="gemini-tab-project-number"
+                      type="text"
+                      value={geminiProjectNumber}
+                      onChange={(e) => setGeminiProjectNumber(e.target.value)}
+                      placeholder="347934146406"
+                      className="font-mono text-xs"
+                      dir="ltr"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gemini-tab-model" className="text-xs font-semibold">
+                      نموذج Gemini المعتمد (Model):
+                    </Label>
+                    <select
+                      id="gemini-tab-model"
+                      value={geminiModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      dir="ltr"
+                    >
+                      <option value="gemini-flash-latest">gemini-flash-latest (Recommended)</option>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="gemini-tab-api-key" className="text-xs font-semibold">
+                        مفتاح Gemini API Key (X-goog-api-key):
+                      </Label>
+                      {isGeminiConfigured && (
+                        <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
+                          🔒 محفوظ ومحمي على الخادم
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="gemini-tab-api-key"
+                        type={showGeminiKey ? "text" : "password"}
+                        value={geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        placeholder={
+                          isGeminiConfigured
+                            ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)"
+                            : "أدخل مفتاح Gemini API (مثال: AQ.Ab8RN6...)"
+                        }
+                        className="font-mono text-xs flex-1"
+                        dir="ltr"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        onClick={() => setShowGeminiKey((prev) => !prev)}
+                        title={showGeminiKey ? "إخفاء المفتاح" : "إظهار المفتاح"}
+                      >
+                        {showGeminiKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      </Button>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      يُرسل عبر ترويسة <code className="font-mono">X-goog-api-key</code> من الخادم فقط، ويُحفظ في Supabase وبيئة الخادم.
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">
+                      نقطة النهاية النشطة (Active Gemini Endpoint):
+                    </Label>
+                    <Input
+                      type="text"
+                      readOnly
+                      value={`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel || "gemini-flash-latest"}:generateContent`}
+                      className="font-mono text-[11px] bg-muted/40 text-muted-foreground"
+                      dir="ltr"
+                    />
+                    <div className="text-[11px] text-muted-foreground">
+                      بوابة الوكيل الداخلية في المتجر: <code className="font-mono">POST /api/ai-agent</code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Test Snapshot & Full Report Display */}
+                {(geminiTestSnapshot || geminiTestReport) && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3" dir="rtl">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-bold text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                        <Zap className="size-4" />
+                        <span>نتيجة الاختبار المباشر: التقارير الأخيرة لعدد الطلبيات والتقرير العام للمتجر</span>
+                      </div>
+                      {geminiTestReport && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCopyReport}
+                          className="h-7 text-[11px] gap-1"
+                        >
+                          {copiedReport ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                          <span>{copiedReport ? "تم نسخ التقرير" : "نسخ التقرير"}</span>
+                        </Button>
+                      )}
+                    </div>
+
+                    {geminiTestSnapshot && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">إجمالي الطلبيات</div>
+                          <div className="font-extrabold text-sm font-mono">{geminiTestSnapshot.totalOrders}</div>
+                        </div>
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">مسلّمة (Delivered)</div>
+                          <div className="font-extrabold text-sm font-mono text-emerald-600">
+                            {geminiTestSnapshot.statusCounts.delivered}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">قيد الانتظار / مؤكدة</div>
+                          <div className="font-extrabold text-sm font-mono text-amber-600">
+                            {geminiTestSnapshot.statusCounts.pending + geminiTestSnapshot.statusCounts.confirmed}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">مشحونة (Shipped)</div>
+                          <div className="font-extrabold text-sm font-mono text-blue-600">
+                            {geminiTestSnapshot.statusCounts.shipped}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">المبيعات المحصّلة</div>
+                          <div className="font-extrabold text-sm font-mono text-emerald-600">
+                            {geminiTestSnapshot.deliveredRevenueDzd.toLocaleString("fr-DZ")} د.ج
+                          </div>
+                        </div>
+                        <div className="rounded-lg border bg-background/80 p-2.5">
+                          <div className="text-[10px] text-muted-foreground">شحنات Redex</div>
+                          <div className="font-extrabold text-sm font-mono">
+                            {geminiTestSnapshot.redexTrackedCount}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {geminiTestReport && (
+                      <div className="rounded-lg border bg-background/90 p-3.5 whitespace-pre-wrap text-xs leading-relaxed text-foreground font-sans">
+                        {geminiTestReport}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+
+              <CardFooter className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveGeminiAi}
+                    disabled={geminiSaving}
+                    className="text-xs gap-1.5 h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {geminiSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    <span>حفظ إعدادات Orva Agent AI</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestGeminiAiReport}
+                    disabled={geminiTesting || (!isGeminiConfigured && !geminiApiKey.trim())}
+                    className="text-xs gap-1.5 h-8 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                  >
+                    {geminiTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
+                    <span>اختبار التقارير الأخيرة لعدد الطلبيات والتقارير العامة للمتجر</span>
+                  </Button>
+                </div>
+
+                {isGeminiConfigured && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearGeminiKey}
+                    disabled={geminiSaving}
+                    className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-8"
+                  >
+                    <Trash2 className="size-3.5" />
+                    <span>مسح مفتاح API</span>
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+
+            {/* cURL & REST API Reference Blueprint Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <CardTitle className="text-sm font-bold flex items-center gap-2">
+                      <Terminal className="size-4 text-emerald-600" />
+                      <span>مرجع الاتصال المباشر بـ Google Gemini REST API (cURL Blueprint)</span>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      أمر الاتصال المعتمد لمشروع <code className="font-mono">{geminiProjectName || "projects/347934146406"}</code> باستخدام الترويسة الرسمية <code className="font-mono">X-goog-api-key</code>.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyCurl}
+                    className="h-8 text-xs gap-1.5"
+                  >
+                    {copiedCurl ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+                    <span>{copiedCurl ? "تم النسخ" : "نسخ أمر cURL"}</span>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <pre className="overflow-x-auto rounded-xl bg-slate-950 p-3.5 font-mono text-[11px] leading-relaxed text-emerald-300" dir="ltr">
+                  {geminiCurlSnippet}
+                </pre>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* ── 2. Analytics & Marketing ──────────────────────────────────────── */}
@@ -1266,7 +1821,7 @@ export function SettingsIntegrations() {
                     variant="outline"
                     size="sm"
                     onClick={handleTestGeminiAiReport}
-                    disabled={geminiTesting || !geminiApiKey.trim()}
+                    disabled={geminiTesting || (!isGeminiConfigured && !geminiApiKey.trim())}
                     className="text-xs gap-1.5 h-8 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
                   >
                     {geminiTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}

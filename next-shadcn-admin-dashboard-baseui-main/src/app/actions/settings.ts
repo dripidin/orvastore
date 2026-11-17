@@ -141,7 +141,7 @@ export async function saveSettingsAction(
     if (payload.geminiAi.model !== undefined) {
       fallbackSettingsStore.geminiAi.model = payload.geminiAi.model.trim() || 'gemini-flash-latest';
     }
-    if (payload.geminiAi.apiKey !== undefined) {
+    if (payload.geminiAi.apiKey !== undefined && payload.geminiAi.apiKey.trim().length > 0) {
       fallbackSettingsStore.geminiAi.apiKey = payload.geminiAi.apiKey.trim();
     }
   }
@@ -539,12 +539,20 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
           if (g.project_name !== undefined) fallbackSettingsStore.geminiAi.projectName = g.project_name;
           if (g.project_number !== undefined) fallbackSettingsStore.geminiAi.projectNumber = g.project_number;
           if (g.model !== undefined) fallbackSettingsStore.geminiAi.model = g.model;
-          if (g.api_key !== undefined) fallbackSettingsStore.geminiAi.apiKey = g.api_key;
+          if (typeof g.api_key === 'string' && g.api_key.trim().length > 0) {
+            fallbackSettingsStore.geminiAi.apiKey = g.api_key.trim();
+          } else if (!fallbackSettingsStore.geminiAi.apiKey && process.env.GEMINI_API_KEY) {
+            fallbackSettingsStore.geminiAi.apiKey = process.env.GEMINI_API_KEY.trim();
+          }
         }
       }
     }
   } catch (err) {
     console.info('[GetSettings Info]: Supabase query fallback to in-memory store', err);
+  }
+
+  if (!fallbackSettingsStore.geminiAi.apiKey && process.env.GEMINI_API_KEY) {
+    fallbackSettingsStore.geminiAi.apiKey = process.env.GEMINI_API_KEY.trim();
   }
 
   return fallbackSettingsStore;
@@ -617,4 +625,48 @@ export async function deleteRedexTokenAction(): Promise<{ success: boolean; mess
   }
 
   return { success: true, message: 'تم مسح رمز RedEx بنجاح.' };
+}
+
+/**
+ * 7. Delete Gemini API Key Action
+ * Resets Gemini API Key in local memory and database.
+ */
+export async function deleteGeminiApiKeyAction(): Promise<{ success: boolean; message: string }> {
+  fallbackSettingsStore.geminiAi.apiKey = '';
+  fallbackSettingsStore.updatedAt = new Date().toISOString();
+
+  try {
+    const supabase = getSupabaseServerClient() as any;
+    if (supabase) {
+      const { data } = await supabase
+        .from('site_settings')
+        .select('integrations')
+        .eq('id', 1)
+        .maybeSingle();
+
+      const existingIntegrations = data?.integrations || {};
+      await supabase
+        .from('site_settings')
+        .update({
+          integrations: {
+            ...existingIntegrations,
+            gemini_ai: {
+              ...(existingIntegrations.gemini_ai || {}),
+              enabled: fallbackSettingsStore.geminiAi.enabled,
+              name: fallbackSettingsStore.geminiAi.name,
+              project_name: fallbackSettingsStore.geminiAi.projectName,
+              project_number: fallbackSettingsStore.geminiAi.projectNumber,
+              model: fallbackSettingsStore.geminiAi.model,
+              api_key: '',
+            },
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', 1);
+    }
+  } catch (dbErr) {
+    console.info('[Settings Delete Gemini Key Info]: Local storage cleared', dbErr);
+  }
+
+  return { success: true, message: 'تم مسح مفتاح Gemini API بنجاح.' };
 }
