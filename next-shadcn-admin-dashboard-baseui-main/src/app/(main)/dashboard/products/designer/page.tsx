@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
@@ -189,7 +190,7 @@ export default function ProductPageDesigner() {
         const saved = await layoutRepo.publishLayoutConfig(currentConfig);
         setSavedConfig(saved);
         setCurrentConfig(JSON.parse(JSON.stringify(saved)));
-        await fetch("/api/store-publish", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+        await orvaFetch("/api/store-publish", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
         setFeedback({
           type: "success",
           text: `تم تطبيق التصميم الموحد ونشره على جميع صفحات المنتجات (${products.length} صفحة).`,

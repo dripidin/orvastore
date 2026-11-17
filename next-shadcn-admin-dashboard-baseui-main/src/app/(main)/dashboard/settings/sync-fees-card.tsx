@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 
@@ -12,7 +13,7 @@ export function SyncFeesCard() {
   const [syncedAt, setSyncedAt] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    fetch("/api/delivery-fees", { cache: "no-store" })
+    orvaFetch("/api/delivery-fees", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setSyncedAt(d?.syncedAt ?? null))
       .catch(() => undefined);
@@ -22,7 +23,7 @@ export function SyncFeesCard() {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/delivery-fees", { method: "POST", credentials: "same-origin" });
+      const res = await orvaFetch("/api/delivery-fees", { method: "POST", credentials: "same-origin" });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.success) {
         setOk(true);

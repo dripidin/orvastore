@@ -18,6 +18,7 @@ import {
   generateOrderNumber,
 } from '@/lib/orders-store';
 import { computeCanonicalPayloadHash } from '@/lib/payload-hash';
+import { buildFbcFromFbclid } from '@/lib/analytics/attribution-tracker';
 
 export type { FallbackOrderRecord };
 
@@ -83,6 +84,8 @@ async function triggerTelegramAlert(params: {
   shippingFee?: number;
   quantity?: number;
   total: number;
+  attributionSource?: string;
+  utmCampaign?: string;
 }) {
   try {
     let token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -171,6 +174,11 @@ async function triggerTelegramAlert(params: {
 
     lines.push(`━━━━━━━━━━━━━━━━━━`);
     lines.push(`💰 <b>المجموع الكلي (COD):</b> <b>${params.total} د.ج</b>`);
+    if (params.attributionSource || params.utmCampaign) {
+      const sourceText = params.attributionSource || 'direct';
+      const campaignText = params.utmCampaign ? ` — الحملة: <code>${escapeHtml(params.utmCampaign)}</code>` : '';
+      lines.push(`📣 <b>المصدر:</b> <code>${escapeHtml(sourceText)}</code>${campaignText}`);
+    }
     lines.push(`📅 <b>التاريخ:</b> ${formattedDate}`);
     lines.push(`━━━━━━━━━━━━━━━━━━`);
     lines.push(`📌 <i>الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</i>`);
@@ -210,6 +218,7 @@ async function triggerMetaCapiPurchase(params: {
   productName: string;
   total: number;
   packId: string;
+  fbclid?: string;
 }) {
   const pixelId = process.env.META_PIXEL_ID;
   const capiToken = process.env.META_CAPI_TOKEN;
@@ -224,6 +233,8 @@ async function triggerMetaCapiPurchase(params: {
     .update(params.customerName.toLowerCase().trim())
     .digest('hex');
 
+  const fbc = buildFbcFromFbclid(params.fbclid);
+
   const payload = {
     data: [
       {
@@ -234,6 +245,7 @@ async function triggerMetaCapiPurchase(params: {
         user_data: {
           ph: [hashedPhone],
           fn: [hashedName],
+          ...(fbc ? { fbc } : {}),
         },
         custom_data: {
           currency: 'DZD',
@@ -474,51 +486,91 @@ async function executeCodOrderSubmission(
           : 'توصيل للمكتب (Stop Desk)';
       const wilayaFull = `${validated.wilayaCode} - ${validated.wilayaName} — ${validated.communeName}`;
 
-      const { data: orderData, error: orderErr } = await supabase
+      const attributionPayload = {
+        fb_campaign_id: validated.fbCampaignId?.trim() || null,
+        fb_adset_id: validated.fbAdsetId?.trim() || null,
+        fb_ad_id: validated.fbAdId?.trim() || null,
+        fbclid: validated.fbclid?.trim() || null,
+        utm_campaign: validated.utmCampaign?.trim() || null,
+        attribution_source: validated.attributionSource?.trim() || 'direct',
+        redex_tracking_id: null as string | null,
+      };
+
+      const baseOrderRow = {
+        order_id: orderNumber,
+        order_number: orderNumber,
+        idempotency_key: validated.idempotencyKey,
+        payload_hash: payloadHash,
+        store_id: 'orvastore',
+        full_name: validated.customerName,
+        customer_name: validated.customerName,
+        phone: normalizedPhone,
+        customer_phone: normalizedPhone,
+        wilaya: wilayaFull,
+        delivery_wilaya: wilayaFull,
+        wilaya_code: validated.wilayaCode,
+        wilaya_name: validated.wilayaName,
+        commune: validated.communeName,
+        commune_name: validated.communeName,
+        delivery_commune: validated.communeName,
+        delivery_address: address,
+        delivery_type: deliveryLabel,
+        delivery_method: validated.deliveryType,
+        delivery_time: '24 - 48 H',
+        quantity: 1,
+        product_name: validated.productName,
+        product_title: validated.productName,
+        pack_id: validated.packId,
+        subtotal: validated.productPrice,
+        delivery_fee: validated.shippingFee,
+        total: validated.totalPayable,
+        total_payable: validated.totalPayable,
+        product_total: `${validated.productPrice.toLocaleString()} د.ج`,
+        shipping_fee: `${validated.shippingFee.toLocaleString()} د.ج`,
+        price_num: validated.totalPayable,
+        grand_total: `${validated.totalPayable.toLocaleString()} د.ج`,
+        status: 'pending',
+        in_redex: false,
+        notes: address,
+        risk_score: 0,
+        risk_level: 'LOW',
+        risk_decision: 'ALLOW',
+        courier: 'REDEX',
+        metadata: {
+          packId: validated.packId,
+          productName: validated.productName,
+          attribution: attributionPayload,
+        },
+      };
+
+      let { data: orderData, error: orderErr } = await supabase
         .from('orders')
         .insert({
-          order_id: orderNumber,
-          order_number: orderNumber,
-          idempotency_key: validated.idempotencyKey,
-          payload_hash: payloadHash,
-          store_id: 'orvastore',
-          full_name: validated.customerName,
-          customer_name: validated.customerName,
-          phone: normalizedPhone,
-          customer_phone: normalizedPhone,
-          wilaya: wilayaFull,
-          delivery_wilaya: wilayaFull,
-          wilaya_code: validated.wilayaCode,
-          wilaya_name: validated.wilayaName,
-          commune: validated.communeName,
-          commune_name: validated.communeName,
-          delivery_commune: validated.communeName,
-          delivery_address: address,
-          delivery_type: deliveryLabel,
-          delivery_method: validated.deliveryType,
-          delivery_time: '24 - 48 H',
-          quantity: 1,
-          product_name: validated.productName,
-          product_title: validated.productName,
-          pack_id: validated.packId,
-          subtotal: validated.productPrice,
-          delivery_fee: validated.shippingFee,
-          total: validated.totalPayable,
-          total_payable: validated.totalPayable,
-          product_total: `${validated.productPrice.toLocaleString()} د.ج`,
-          shipping_fee: `${validated.shippingFee.toLocaleString()} د.ج`,
-          price_num: validated.totalPayable,
-          grand_total: `${validated.totalPayable.toLocaleString()} د.ج`,
-          status: 'pending',
-          in_redex: false,
-          notes: address,
-          risk_score: 0,
-          risk_level: 'LOW',
-          risk_decision: 'ALLOW',
-          courier: 'REDEX',
+          ...baseOrderRow,
+          ...attributionPayload,
         })
         .select('id, order_id')
         .single();
+
+      // Pre-migration attribution column fallback: retry with metadata JSONB before checking legacy schema
+      const isMissingAttributionColumn = Boolean(
+        orderErr &&
+          (orderErr.code === 'PGRST204' || orderErr.message?.includes('column')) &&
+          /(fb_campaign_id|fb_adset_id|fb_ad_id|fbclid|utm_campaign|attribution_source|redex_tracking_id)/.test(
+            orderErr.message || ''
+          )
+      );
+
+      if (isMissingAttributionColumn) {
+        console.warn('[Pre-Migration Notice]: Attribution columns not in DB yet; persisting in metadata JSONB.');
+        const retryRes = await supabase
+          .from('orders')
+          .insert(baseOrderRow)
+          .select('id, order_id')
+          .single();
+        orderData = retryRes.data;
+        orderErr = retryRes.error;
+      }
 
       if (!orderErr && orderData?.id) {
         persistedToDatabase = true;
@@ -650,6 +702,13 @@ async function executeCodOrderSubmission(
               createdAt: new Date().toISOString(),
               idempotencyKey: validated.idempotencyKey,
               payloadHash,
+              fbCampaignId: validated.fbCampaignId?.trim() || undefined,
+              fbAdsetId: validated.fbAdsetId?.trim() || undefined,
+              fbAdId: validated.fbAdId?.trim() || undefined,
+              fbclid: validated.fbclid?.trim() || undefined,
+              utmCampaign: validated.utmCampaign?.trim() || undefined,
+              attributionSource: validated.attributionSource?.trim() || 'direct',
+              redexTrackingId: null,
             });
           } else if (legacyErr) {
             persistenceErrorMessage = legacyErr.message;
@@ -746,6 +805,13 @@ async function executeCodOrderSubmission(
           createdAt: new Date().toISOString(),
           idempotencyKey: validated.idempotencyKey,
           payloadHash,
+          fbCampaignId: validated.fbCampaignId?.trim() || undefined,
+          fbAdsetId: validated.fbAdsetId?.trim() || undefined,
+          fbAdId: validated.fbAdId?.trim() || undefined,
+          fbclid: validated.fbclid?.trim() || undefined,
+          utmCampaign: validated.utmCampaign?.trim() || undefined,
+          attributionSource: validated.attributionSource?.trim() || 'direct',
+          redexTrackingId: null,
         });
       } else {
         console.error(
@@ -778,6 +844,8 @@ async function executeCodOrderSubmission(
         shippingFee: validated.shippingFee,
         quantity: 1,
         total: validated.totalPayable,
+        attributionSource: validated.attributionSource?.trim() || 'direct',
+        utmCampaign: validated.utmCampaign?.trim() || undefined,
       }),
       triggerMetaCapiPurchase({
         orderNumber: finalOrderNumber,
@@ -786,6 +854,7 @@ async function executeCodOrderSubmission(
         productName: validated.productName,
         total: validated.totalPayable,
         packId: validated.packId,
+        fbclid: validated.fbclid?.trim() || undefined,
       }),
     ]);
 

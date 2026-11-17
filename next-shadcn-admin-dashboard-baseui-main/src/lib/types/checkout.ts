@@ -24,6 +24,12 @@ export interface CodOrderSubmission {
   totalPayable: number;
   honeypot?: string;
   idempotencyKey?: string;
+  fbCampaignId?: string;
+  fbAdsetId?: string;
+  fbAdId?: string;
+  fbclid?: string;
+  utmCampaign?: string;
+  attributionSource?: string;
 }
 
 export interface CodOrderResult {
@@ -254,6 +260,12 @@ export const codOrderSubmissionSchema = z
       .min(10, 'Clé d\'idempotence invalide (au moins 10 caractères)')
       .max(128, 'Clé d\'idempotence trop longue')
       .regex(/^[a-zA-Z0-9_\-]+$/, 'Caractères non autorisés dans la clé d\'idempotence'),
+    fbCampaignId: z.string().trim().max(255).optional(),
+    fbAdsetId: z.string().trim().max(255).optional(),
+    fbAdId: z.string().trim().max(255).optional(),
+    fbclid: z.string().trim().max(255).optional(),
+    utmCampaign: z.string().trim().max(255).optional(),
+    attributionSource: z.string().trim().max(100).optional(),
   })
   .superRefine((data, ctx) => {
     // 1. Honeypot Bot Detection

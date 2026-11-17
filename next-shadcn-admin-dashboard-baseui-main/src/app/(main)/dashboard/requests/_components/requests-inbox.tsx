@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import { Inbox, Lightbulb, MapPin, Phone, RefreshCw, Trash2 } from "lucide-react";
 
@@ -38,7 +39,7 @@ export function RequestsInbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/product-requests", { credentials: "same-origin", cache: "no-store" });
+      const res = await orvaFetch("/api/product-requests", { credentials: "same-origin", cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) throw new Error(d?.error || "تعذر تحميل الطلبات.");
       const list = d.data as ProductRequest[];
@@ -47,7 +48,7 @@ export function RequestsInbox() {
       if (markRead && unread.length > 0) {
         // Opening the inbox clears the notification badge; new rows stay highlighted for this visit.
         setFreshIds(new Set(unread));
-        await fetch("/api/product-requests", {
+        await orvaFetch("/api/product-requests", {
           method: "PATCH",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
@@ -68,7 +69,7 @@ export function RequestsInbox() {
 
   const remove = async (id: string) => {
     if (!window.confirm("حذف هذا الطلب؟")) return;
-    const res = await fetch(`/api/product-requests?id=${encodeURIComponent(id)}`, {
+    const res = await orvaFetch(`/api/product-requests?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
       credentials: "same-origin",
     });
@@ -121,7 +122,9 @@ export function RequestsInbox() {
         <Alert variant="destructive">
           <AlertTitle>تعذر تحميل الطلبات</AlertTitle>
           <AlertDescription>
-            {error} — تأكد من تشغيل ملف 20261111_000004_product_requests.sql في Supabase.
+            {/unauthorized/i.test(error)
+              ? "انتهت جلسة الدخول، أعد تحميل الصفحة أو سجّل الدخول من جديد."
+              : error}
           </AlertDescription>
         </Alert>
       )}

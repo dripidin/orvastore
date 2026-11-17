@@ -17,6 +17,13 @@ export interface OrvaOrder {
   quantity: number | null;
   inRedex: boolean;
   redexTrackingCode: string | null;
+  redexTrackingId?: string | null;
+  fbCampaignId?: string | null;
+  fbAdsetId?: string | null;
+  fbAdId?: string | null;
+  fbclid?: string | null;
+  utmCampaign?: string | null;
+  attributionSource?: string | null;
   carrierStatus?: string | null;
   carrierStatusAr?: string | null;
   remarks: unknown[];
@@ -130,6 +137,27 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     }
   }
 
+  const rawMeta =
+    raw.metadata && typeof raw.metadata === "object" && !Array.isArray(raw.metadata)
+      ? (raw.metadata as Record<string, unknown>)
+      : null;
+  const attrMeta =
+    rawMeta?.attribution && typeof rawMeta.attribution === "object" && !Array.isArray(rawMeta.attribution)
+      ? (rawMeta.attribution as RawOrvaOrder)
+      : ({} as RawOrvaOrder);
+
+  const resolvedTracking = readOptionalString(
+    raw,
+    "redex_tracking_id",
+    "redexTrackingId",
+    "redex_tracking_code",
+    "redexTrackingCode",
+    "tracking_code",
+    "trackingCode",
+    "tracking_number",
+    "trackingNumber"
+  );
+
   return {
 
     id,
@@ -170,7 +198,14 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     })(),
     quantity: readQuantity(raw.quantity ?? raw.qty),
     inRedex: raw.in_redex === true || raw.inRedex === true,
-    redexTrackingCode: readOptionalString(raw, "redex_tracking_code", "redexTrackingCode"),
+    redexTrackingCode: resolvedTracking,
+    redexTrackingId: resolvedTracking,
+    fbCampaignId: readOptionalString(raw, "fb_campaign_id", "fbCampaignId") || readOptionalString(attrMeta, "fb_campaign_id", "fbCampaignId"),
+    fbAdsetId: readOptionalString(raw, "fb_adset_id", "fbAdsetId") || readOptionalString(attrMeta, "fb_adset_id", "fbAdsetId"),
+    fbAdId: readOptionalString(raw, "fb_ad_id", "fbAdId") || readOptionalString(attrMeta, "fb_ad_id", "fbAdId"),
+    fbclid: readOptionalString(raw, "fbclid") || readOptionalString(attrMeta, "fbclid"),
+    utmCampaign: readOptionalString(raw, "utm_campaign", "utmCampaign") || readOptionalString(attrMeta, "utm_campaign", "utmCampaign"),
+    attributionSource: readOptionalString(raw, "attribution_source", "attributionSource") || readOptionalString(attrMeta, "attribution_source", "attributionSource") || "direct",
     carrierStatus: readOptionalString(raw, "carrier_status", "carrierStatus") || ((raw.in_redex === true || raw.inRedex === true) ? "prete_a_expedier" : null),
     carrierStatusAr: readOptionalString(raw, "carrier_status_ar", "carrierStatusAr") || ((raw.in_redex === true || raw.inRedex === true) ? "جاهز للإرسال" : null),
     remarks,

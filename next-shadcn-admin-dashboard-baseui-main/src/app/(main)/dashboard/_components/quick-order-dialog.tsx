@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import { CheckCircle2, Loader2, ShoppingBag } from "lucide-react";
 
@@ -44,6 +45,8 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [commune, setCommune] = React.useState("");
   const [deliveryType, setDeliveryType] = React.useState<"DOMICILE" | "STOP_DESK">("DOMICILE");
   const [address, setAddress] = React.useState("");
+  const [attributionSource, setAttributionSource] = React.useState("manual_admin");
+  const [utmCampaign, setUtmCampaign] = React.useState("");
   const [tariffVersion, setTariffVersion] = React.useState(0);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -51,7 +54,7 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
   React.useEffect(() => {
     if (!open) return;
     setError(null);
-    fetch("/api/store-products", { credentials: "same-origin", cache: "no-store" })
+    orvaFetch("/api/store-products", { credentials: "same-origin", cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         const list = ((d?.data ?? []) as Product[]).filter((p) => p.status === "active");
@@ -59,7 +62,7 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
         setProductId((cur) => cur || list[0]?.id || "");
       })
       .catch(() => setError("تعذر تحميل المنتجات."));
-    fetch("/api/delivery-fees", { cache: "no-store" })
+    orvaFetch("/api/delivery-fees", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success && d.fees) {
@@ -116,6 +119,8 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
         shippingFee: shipping,
         totalPayable: price + shipping,
         idempotencyKey: newIdempotencyKey(),
+        attributionSource,
+        utmCampaign: utmCampaign.trim() || undefined,
       });
       if (!result.success) throw new Error(result.error || "تعذر إنشاء الطلبية.");
       toast.add({ title: "تم إنشاء الطلبية", description: result.orderNumber ?? "", type: "success" });
@@ -123,6 +128,8 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
       setName("");
       setPhone("");
       setAddress("");
+      setUtmCampaign("");
+      setAttributionSource("manual_admin");
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر إنشاء الطلبية.");
@@ -221,6 +228,32 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
                 <Input id="qo-address" value={address} onChange={(e) => setAddress(e.target.value)} className="h-9" />
               </div>
             )}
+            <div className="space-y-1.5">
+              <Label htmlFor="qo-source">مصدر الطلب (Attribution)</Label>
+              <select
+                id="qo-source"
+                className={selectCls}
+                value={attributionSource}
+                onChange={(e) => setAttributionSource(e.target.value)}
+              >
+                <option value="manual_admin">إدخال يدوي (Admin)</option>
+                <option value="whatsapp">واتساب (WhatsApp)</option>
+                <option value="phone_call">مكالمة هاتفية</option>
+                <option value="facebook_ads">رسائل فيسبوك (Meta)</option>
+                <option value="instagram_ads">رسائل إنستغرام</option>
+                <option value="tiktok_ads">تيك توك (TikTok)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="qo-campaign">اسم الحملة (اختياري)</Label>
+              <Input
+                id="qo-campaign"
+                value={utmCampaign}
+                onChange={(e) => setUtmCampaign(e.target.value)}
+                placeholder="مثال: promo_ramadan"
+                className="h-9"
+              />
+            </div>
             {error && <p className="font-medium text-destructive text-sm sm:col-span-2">{error}</p>}
           </div>
 

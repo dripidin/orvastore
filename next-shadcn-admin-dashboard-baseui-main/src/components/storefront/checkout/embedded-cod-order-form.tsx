@@ -42,6 +42,7 @@ interface RawCommune {
 }
 
 import { CheckoutKeyLifecycle } from "@/lib/idempotency-lifecycle";
+import { captureAttributionFromUrl, getStoredAttribution } from "@/lib/analytics/attribution-tracker";
 
 const communesData = communesRawData as RawCommune[];
 
@@ -231,6 +232,8 @@ export function EmbeddedCodOrderForm({
       setFormIdempotencyKey(activeIdempotencyKey);
     }
 
+    const attribution = captureAttributionFromUrl() ?? getStoredAttribution();
+
     const submission: CodOrderSubmission = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
@@ -247,6 +250,12 @@ export function EmbeddedCodOrderForm({
       totalPayable,
       honeypot: honeypot.trim() || undefined,
       idempotencyKey: activeIdempotencyKey,
+      fbCampaignId: attribution?.fbCampaignId,
+      fbAdsetId: attribution?.fbAdsetId,
+      fbAdId: attribution?.fbAdId,
+      fbclid: attribution?.fbclid,
+      utmCampaign: attribution?.utmCampaign,
+      attributionSource: attribution?.attributionSource || "direct",
     };
 
     startTransition(async () => {

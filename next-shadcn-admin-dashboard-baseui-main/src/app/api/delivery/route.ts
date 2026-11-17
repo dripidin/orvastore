@@ -630,7 +630,11 @@ export async function GET(request: NextRequest) {
                 : `Pack ${row.metadata.packId.replace('PACK', '')}`
               : 'Pack ORVA');
 
-          const resolvedTracking = row.tracking_code || row.redex_tracking_code || null;
+          const resolvedTracking = row.redex_tracking_id || row.tracking_code || row.redex_tracking_code || null;
+          const attrMeta =
+            row.metadata && typeof row.metadata === 'object' && row.metadata.attribution
+              ? row.metadata.attribution
+              : {};
           const deliveryInfo = deliveriesMap.get(id) || (resolvedTracking ? deliveriesMap.get(resolvedTracking) : null);
 
           // Operational status only
@@ -660,9 +664,16 @@ export async function GET(request: NextRequest) {
             grandTotal: row.grand_total ? String(row.grand_total) : `${Number(row.total_payable || row.total_price || row.total || 5450)} د.ج`,
             status: opStatus,
             in_redex: Boolean(row.in_redex) || Boolean(resolvedTracking),
+            redex_tracking_id: resolvedTracking,
             redex_tracking_code: resolvedTracking,
             tracking_code: resolvedTracking,
             tracking_number: resolvedTracking,
+            fb_campaign_id: row.fb_campaign_id || attrMeta.fb_campaign_id || null,
+            fb_adset_id: row.fb_adset_id || attrMeta.fb_adset_id || null,
+            fb_ad_id: row.fb_ad_id || attrMeta.fb_ad_id || null,
+            fbclid: row.fbclid || attrMeta.fbclid || null,
+            utm_campaign: row.utm_campaign || attrMeta.utm_campaign || null,
+            attribution_source: row.attribution_source || attrMeta.attribution_source || 'direct',
             carrier_status: deliveryInfo?.carrier_status || (resolvedTracking ? 'prete_a_expedier' : null),
             carrier_status_ar: deliveryInfo?.carrier_status_ar || (resolvedTracking ? 'جاهز للإرسال' : null),
             created_at: row.created_at || new Date().toISOString(),
@@ -687,7 +698,7 @@ export async function GET(request: NextRequest) {
       if (seenIds.has(id)) continue;
       seenIds.add(id);
 
-      const resolvedTracking = (fb as any).redex_tracking_code || (fb as any).tracking_code || null;
+      const resolvedTracking = (fb as any).redexTrackingId || (fb as any).redex_tracking_id || (fb as any).redex_tracking_code || (fb as any).tracking_code || null;
 
       combinedOrders.push({
         orderId: id,
@@ -705,9 +716,16 @@ export async function GET(request: NextRequest) {
         grandTotal: `${fb.totalPayable} د.ج`,
         status: (fb.status || 'pending').toLowerCase(),
         in_redex: Boolean((fb as any).in_redex) || Boolean(resolvedTracking),
+        redex_tracking_id: resolvedTracking,
         redex_tracking_code: resolvedTracking,
         tracking_code: resolvedTracking,
         tracking_number: resolvedTracking,
+        fb_campaign_id: fb.fbCampaignId || null,
+        fb_adset_id: fb.fbAdsetId || null,
+        fb_ad_id: fb.fbAdId || null,
+        fbclid: fb.fbclid || null,
+        utm_campaign: fb.utmCampaign || null,
+        attribution_source: fb.attributionSource || 'direct',
         carrier_status: resolvedTracking ? 'prete_a_expedier' : null,
         carrier_status_ar: resolvedTracking ? 'جاهز للإرسال' : null,
         created_at: fb.createdAt,
@@ -1736,18 +1754,33 @@ export async function POST(request: NextRequest) {
       // 7. Update Supabase orders table: Mark in_redex and tracking codes, transition to PUSHED (ORVA: "Pushed to Redex")
       let orderUpdateSuccess = false;
       try {
-        const { data: updatedOrderRows, error: orderUpdateErr } = await supabase
+        const baseDispatchUpdate = {
+          in_redex: true,
+          redex_tracking_code: trackingCode,
+          tracking_code: trackingCode,
+          courier: 'REDEX',
+          status: 'PUSHED',
+          updated_at: new Date().toISOString(),
+        };
+
+        let { data: updatedOrderRows, error: orderUpdateErr } = await supabase
           .from('orders')
           .update({
-            in_redex: true,
-            redex_tracking_code: trackingCode,
-            tracking_code: trackingCode,
-            courier: 'REDEX',
-            status: 'PUSHED',
-            updated_at: new Date().toISOString(),
+            ...baseDispatchUpdate,
+            redex_tracking_id: trackingCode,
           })
           .or(buildOrderIdFilter(orderId))
           .select('id, status');
+
+        if (orderUpdateErr && (orderUpdateErr.code === 'PGRST204' || orderUpdateErr.message?.includes('redex_tracking_id'))) {
+          const retryUpdate = await supabase
+            .from('orders')
+            .update(baseDispatchUpdate)
+            .or(buildOrderIdFilter(orderId))
+            .select('id, status');
+          updatedOrderRows = retryUpdate.data;
+          orderUpdateErr = retryUpdate.error;
+        }
 
         orderUpdateSuccess = !orderUpdateErr && Array.isArray(updatedOrderRows) && updatedOrderRows.length > 0;
         if (orderUpdateErr) {
@@ -1766,6 +1799,8 @@ export async function POST(request: NextRequest) {
         if (fb.id === orderId || fb.orderNumber === orderId) {
           fb.status = 'PUSHED' as any;
           (fb as any).in_redex = true;
+          fb.redexTrackingId = trackingCode;
+          (fb as any).redex_tracking_id = trackingCode;
           (fb as any).redex_tracking_code = trackingCode;
           (fb as any).tracking_code = trackingCode;
           (fb as any).carrier_status = 'prete_a_expedier';
@@ -1807,6 +1842,7 @@ export async function POST(request: NextRequest) {
         success: true,
         trackingCode,
         trackingNumber: trackingCode,
+        redexTrackingId: trackingCode,
         status: 'prete_a_expedier',
         carrierStatus: 'prete_a_expedier',
         carrierStatusAr: 'جاهز للإرسال',

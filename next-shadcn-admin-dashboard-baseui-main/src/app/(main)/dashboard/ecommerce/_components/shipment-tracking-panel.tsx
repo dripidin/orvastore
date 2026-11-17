@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import { Loader2, MapPin, RefreshCw, Truck } from "lucide-react";
 
@@ -32,7 +33,7 @@ export function ShipmentTrackingPanel({ trackingCode }: { trackingCode: string }
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/delivery?action=track&tracking=${encodeURIComponent(trackingCode)}`, {
+      const res = await orvaFetch(`/api/delivery?action=track&tracking=${encodeURIComponent(trackingCode)}`, {
         cache: "no-store",
         credentials: "same-origin",
       });

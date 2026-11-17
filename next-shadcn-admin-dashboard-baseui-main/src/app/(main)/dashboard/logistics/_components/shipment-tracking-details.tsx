@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import {
   AlertCircle,
@@ -100,7 +101,7 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
   const load = React.useCallback(async (code: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/delivery?action=track&tracking=${encodeURIComponent(code)}`, {
+      const res = await orvaFetch(`/api/delivery?action=track&tracking=${encodeURIComponent(code)}`, {
         cache: "no-store",
         credentials: "same-origin",
       });

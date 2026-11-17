@@ -23,6 +23,8 @@ import {
   Trash2,
   SlidersHorizontal,
   Truck,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
 } from "lucide-react";
@@ -56,6 +58,11 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ALGERIA_WILAYAS } from "@/data/algeria-locations";
 import { dataTableFeatures } from "@/lib/data-table-features";
+import {
+  isOrderSoundMuted,
+  playNewOrderNotificationSound,
+  setOrderSoundMuted,
+} from "@/lib/notifications/order-sound-notifier";
 import { fetchOrvaOrders, formatDzd, getOrdersRepository, orvaRequestJson } from "@/lib/orva-api";
 
 import { OrderDetailsDrawer } from "./order-details-drawer";
@@ -152,7 +159,13 @@ function exportOrdersToCsv(ordersToExport: OrderRow[], filenamePrefix = "orva-or
     "الحالة التشغيلية",
     "حالة التحويل",
     "عدد التحويلات",
-    "كود تتبع Redex",
+    "كود تتبع Redex (redex_tracking_id)",
+    "مصدر الطلب (attribution_source)",
+    "الحملة (utm_campaign)",
+    "معرف الحملة (fb_campaign_id)",
+    "المجموعة الإعلانية (fb_adset_id)",
+    "الإعلان (fb_ad_id)",
+    "معرف النقرة (fbclid)",
   ];
 
   const rows = ordersToExport.map((o) => [
@@ -169,7 +182,13 @@ function exportOrdersToCsv(ordersToExport: OrderRow[], filenamePrefix = "orva-or
     `"${o.status}"`,
     `"${o.isSwitched ? "محوّل" : "أصلي"}"`,
     `"${o.conversionCount}"`,
-    `"${o.redex_tracking_code || ""}"`,
+    `"${o.redex_tracking_id || o.redex_tracking_code || ""}"`,
+    `"${(o.attribution_source || "direct").replace(/"/g, '""')}"`,
+    `"${(o.utm_campaign || "").replace(/"/g, '""')}"`,
+    `"${(o.fb_campaign_id || "").replace(/"/g, '""')}"`,
+    `"${(o.fb_adset_id || "").replace(/"/g, '""')}"`,
+    `"${(o.fb_ad_id || "").replace(/"/g, '""')}"`,
+    `"${(o.fbclid || "").replace(/"/g, '""')}"`,
   ]);
 
   const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
@@ -209,6 +228,30 @@ export function RecentOrders() {
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isSyncingRedex, setIsSyncingRedex] = React.useState(false);
+  const [soundMuted, setSoundMuted] = React.useState(false);
+
+  React.useEffect(() => {
+    setSoundMuted(isOrderSoundMuted());
+  }, []);
+
+  const handleToggleSound = () => {
+    const nextMuted = !soundMuted;
+    setSoundMuted(nextMuted);
+    setOrderSoundMuted(nextMuted);
+    if (!nextMuted) {
+      playNewOrderNotificationSound();
+      toast.add({
+        title: "تم تفعيل التنبيه الصوتي للطلبيات الجديدة",
+        description: "سيعمل الصوت عند وصول طلبية جديدة فقط دون التشغيل على الطلبيات السابقة عند تسجيل الدخول.",
+        type: "success",
+      });
+    } else {
+      toast.add({
+        title: "تم كتم التنبيه الصوتي للطلبيات الجديدة",
+        type: "info",
+      });
+    }
+  };
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "date", desc: true }]);
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
@@ -238,7 +281,14 @@ export function RecentOrders() {
             priceNum: order.priceDzd,
             shippingFee: formatDzd(order.shippingDzd),
             in_redex: order.inRedex,
+            redex_tracking_id: order.redexTrackingId || order.redexTrackingCode,
             redex_tracking_code: order.redexTrackingCode,
+            fb_campaign_id: order.fbCampaignId ?? null,
+            fb_adset_id: order.fbAdsetId ?? null,
+            fb_ad_id: order.fbAdId ?? null,
+            fbclid: order.fbclid ?? null,
+            utm_campaign: order.utmCampaign ?? null,
+            attribution_source: order.attributionSource ?? "direct",
             carrier_status: order.carrierStatus || (order.inRedex ? "prete_a_expedier" : null),
             carrier_status_ar: order.carrierStatusAr || (order.inRedex ? "جاهز للإرسال" : null),
             remarks: order.remarks,
@@ -286,7 +336,7 @@ export function RecentOrders() {
           }
         };
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Visibility-aware soft poll (classic panel used 20s; keep quieter)
     const pollId = window.setInterval(() => {
@@ -299,7 +349,7 @@ export function RecentOrders() {
       if (channel) {
         try {
           channel.close();
-        } catch (_) {}
+        } catch (_) { }
       }
       window.removeEventListener("orva:orders-updated", handleSync);
       window.removeEventListener("orva:repository-mode-changed", handleSync);
@@ -767,6 +817,27 @@ export function RecentOrders() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* New Order Sound Notification Toggle */}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleToggleSound}
+              className="gap-1.5 text-xs h-8 font-medium"
+              title={
+                soundMuted
+                  ? "تفعيل التنبيه الصوتي عند وصول طلبية جديدة"
+                  : "التنبيه الصوتي للطلبيات الجديدة مفعّل (انقر للكتم)"
+              }
+            >
+              {soundMuted ? (
+                <VolumeX className="size-3.5 text-muted-foreground" />
+              ) : (
+                <Volume2 className="size-3.5 text-emerald-500" />
+              )}
+              <span>{soundMuted ? "الصوت مكتوم" : "تنبيه صوتي للطلبيات"}</span>
+            </Button>
+
             {/* Sync with Redex Button */}
             <Button
               size="sm"
@@ -832,39 +903,37 @@ export function RecentOrders() {
                   setActiveFilter(filter);
                   table.setPageIndex(0);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                  isActive
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${isActive
                     ? "bg-primary text-primary-foreground shadow-xs font-semibold"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                  }`}
               >
                 <span>
                   {filter === "All"
                     ? "الكل"
                     : filter === "Pending"
-                    ? "قيد الانتظار (Pending)"
-                    : filter === "Confirmed"
-                    ? "Confirmed not pushed"
-                    : filter === "Pushed to Redex"
-                    ? "Pushed to Redex"
-                    : filter === "Shipped"
-                    ? "مشحونة"
-                    : filter === "Delivered"
-                    ? "مسلّمة"
-                    : filter === "Returned"
-                    ? "مرتجعة / رفض"
-                    : filter === "Cancelled"
-                    ? "ملغاة (Cancelled)"
-                    : filter === "Risk"
-                    ? "المخاطر (Risk)"
-                    : "المحوّلة فقط"}
+                      ? "قيد الانتظار (Pending)"
+                      : filter === "Confirmed"
+                        ? "Confirmed not pushed"
+                        : filter === "Pushed to Redex"
+                          ? "Pushed to Redex"
+                          : filter === "Shipped"
+                            ? "مشحونة"
+                            : filter === "Delivered"
+                              ? "مسلّمة"
+                              : filter === "Returned"
+                                ? "مرتجعة / رفض"
+                                : filter === "Cancelled"
+                                  ? "ملغاة (Cancelled)"
+                                  : filter === "Risk"
+                                    ? "المخاطر (Risk)"
+                                    : "المحوّلة فقط"}
                 </span>
                 <span
-                  className={`text-[10px] tabular-nums px-1.5 py-0.2 rounded-full ${
-                    isActive
+                  className={`text-[10px] tabular-nums px-1.5 py-0.2 rounded-full ${isActive
                       ? "bg-primary-foreground/20 text-primary-foreground"
                       : "bg-background text-muted-foreground"
-                  }`}
+                    }`}
                 >
                   {count}
                 </span>
@@ -1195,4 +1264,4 @@ export function RecentOrders() {
       />
     </Card>
   );
-}
+}

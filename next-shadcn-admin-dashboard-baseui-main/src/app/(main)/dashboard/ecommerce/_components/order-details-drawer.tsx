@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { formatDzd } from "@/lib/orva-api";
+import { formatAttributionSourceLabel } from "@/lib/analytics/campaign-profitability";
 
 import type { OrderRow } from "./recent-orders-table/schema";
 import { getAvailableTransitions } from "./recent-orders-table/status-transitions";
@@ -121,10 +122,18 @@ export function OrderDetailsDrawer({
 
   const raw = order.rawOrder as Record<string, unknown> | undefined;
   const trackingCode =
+    order.redex_tracking_id ||
     order.redex_tracking_code ||
+    (typeof raw?.redex_tracking_id === "string" ? raw.redex_tracking_id : null) ||
     (typeof raw?.tracking_code === "string" ? raw.tracking_code : null) ||
     (typeof raw?.tracking_number === "string" ? raw.tracking_number : null);
   const address = typeof raw?.delivery_address === "string" ? raw.delivery_address : null;
+  const attributionSource = order.attribution_source || (typeof raw?.attribution_source === "string" ? raw.attribution_source : "direct");
+  const utmCampaign = order.utm_campaign || (typeof raw?.utm_campaign === "string" ? raw.utm_campaign : null);
+  const fbCampaignId = order.fb_campaign_id || (typeof raw?.fb_campaign_id === "string" ? raw.fb_campaign_id : null);
+  const fbAdsetId = order.fb_adset_id || (typeof raw?.fb_adset_id === "string" ? raw.fb_adset_id : null);
+  const fbAdId = order.fb_ad_id || (typeof raw?.fb_ad_id === "string" ? raw.fb_ad_id : null);
+  const fbclid = order.fbclid || (typeof raw?.fbclid === "string" ? raw.fbclid : null);
 
   const isTerminal = ["delivered", "deleted", "reconciled"].includes((order.status || "").toLowerCase());
   const statusInfo = resolveStatusLabel(order);
@@ -266,6 +275,47 @@ export function OrderDetailsDrawer({
               <ShipmentTrackingPanel trackingCode={trackingCode} />
             </section>
           )}
+
+          <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+            <h3 className="mb-2 font-bold text-foreground text-sm">تتبع الحملة والمصدر (Attribution &amp; Redex)</h3>
+            <div className="divide-y">
+              <InfoRow label="مصدر الطلب (attribution_source)">
+                <Badge variant="outline" className="text-[11px]">
+                  {formatAttributionSourceLabel(attributionSource)} ({attributionSource})
+                </Badge>
+              </InfoRow>
+              {utmCampaign && (
+                <InfoRow label="الحملة (utm_campaign)">
+                  <span className="font-mono">{utmCampaign}</span>
+                </InfoRow>
+              )}
+              {fbCampaignId && (
+                <InfoRow label="معرف الحملة (fb_campaign_id)">
+                  <span className="font-mono" dir="ltr">{fbCampaignId}</span>
+                </InfoRow>
+              )}
+              {fbAdsetId && (
+                <InfoRow label="المجموعة الإعلانية (fb_adset_id)">
+                  <span className="font-mono" dir="ltr">{fbAdsetId}</span>
+                </InfoRow>
+              )}
+              {fbAdId && (
+                <InfoRow label="الإعلان (fb_ad_id)">
+                  <span className="font-mono" dir="ltr">{fbAdId}</span>
+                </InfoRow>
+              )}
+              {fbclid && (
+                <InfoRow label="معرف النقرة (fbclid)">
+                  <span className="max-w-[220px] truncate font-mono text-[11px]" dir="ltr" title={fbclid}>
+                    {fbclid}
+                  </span>
+                </InfoRow>
+              )}
+              <InfoRow label="مطابقة التوصيل (redex_tracking_id)">
+                <span className="font-mono" dir="ltr">{trackingCode || "لم يُربط بعد"}</span>
+              </InfoRow>
+            </div>
+          </section>
 
           {order.conversions && order.conversions.length > 0 && (
             <section className="rounded-xl border p-3">

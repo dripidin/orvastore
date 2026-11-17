@@ -1,104 +1,304 @@
 "use client";
 
-import {
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Package,
-  RotateCcw,
-  ShoppingBag,
-  Truck,
-  XCircle,
-} from "lucide-react";
+import { format, parse } from "date-fns";
+import { ArrowUpRight, DollarSign, PackageCheck, ReceiptText, RotateCcw, ShoppingBag, Users } from "lucide-react";
+import { Area, Bar, CartesianGrid, ComposedChart, XAxis, YAxis } from "recharts";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useOrvaOrders } from "@/lib/use-orva-orders";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+
+const revenueBucketRanges = ["01-05", "06-10", "11-15", "16-20", "21-25", "26-31"] as const;
+const profitMultipliers = [0.24, 0.28, 0.26] as const;
+
+const revenueBucketValues = [
+  [4820, 5150, 5060, 5520, 5990, 6880],
+  [5140, 5360, 5520, 5860, 6120, 6720],
+  [4920, 4680, 5150, 5360, 5720, 6150],
+  [5480, 5920, 5660, 6180, 6340, 6660],
+  [5840, 6220, 6480, 6110, 6680, 7230],
+  [6280, 6740, 6960, 7120, 6780, 7240],
+  [6820, 7240, 7680, 7410, 7920, 7810],
+  [6040, 6420, 6150, 6860, 7080, 7090],
+  [5860, 6120, 6340, 6080, 6620, 6900],
+  [6520, 6840, 7060, 7420, 7160, 8280],
+  [6980, 7320, 7640, 7160, 8040, 8620],
+  [6900, 7400, 8100, 8600, 8200, 9360],
+] as const;
+
+const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+
+function getRollingRevenueBuckets() {
+  const currentMonth = new Date();
+  currentMonth.setDate(1);
+
+  return revenueBucketValues.map((values, index) => {
+    const monthDate = new Date(currentMonth);
+    monthDate.setMonth(currentMonth.getMonth() - (revenueBucketValues.length - 1 - index));
+
+    return {
+      month: `${monthFormatter.format(monthDate)} ${String(monthDate.getFullYear()).slice(-2)}`,
+      values,
+    };
+  });
+}
+
+const revenueOverviewData = getRollingRevenueBuckets().flatMap(({ month, values }) =>
+  values.map((revenue, index) => ({
+    period: `${month} ${revenueBucketRanges[index]}`,
+    profit: Math.round(revenue * profitMultipliers[index % profitMultipliers.length]),
+    revenue,
+  })),
+);
+
+const revenueOverviewConfig = {
+  revenue: {
+    label: "Revenue",
+    color: "var(--foreground)",
+  },
+  profit: {
+    label: "Profit",
+    color: "var(--muted-foreground)",
+  },
+} satisfies ChartConfig;
+
+function formatMonthTick(value: string) {
+  const parts = value.split(" ");
+  const range = parts.at(-1);
+  const month = parts.slice(0, -1).join(" ");
+
+  return range === "11-15" ? month : "";
+}
+
+function formatTooltipLabel(value: string) {
+  const parts = value.split(" ");
+  const range = parts.at(-1);
+  const month = parse(parts.slice(0, -1).join(" "), "MMM yy", new Date());
+  const [start, end] = String(range).split("-");
+  const lastDayOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const startDate = new Date(month.getFullYear(), month.getMonth(), Number(start));
+  const endDate = new Date(month.getFullYear(), month.getMonth(), Math.min(Number(end), lastDayOfMonth));
+
+  return `${format(month, "MMM")} ${format(startDate, "do")} - ${format(endDate, "do")}, ${format(month, "yyyy")}`;
+}
+
+function formatCurrencyTooltipValue(value: unknown) {
+  return typeof value === "number" ? `$${value.toLocaleString()}` : String(value ?? "");
+}
 
 export function KpiStrip() {
-  const { orders, isLoading, error, refresh } = useOrvaOrders();
-  const delivered = orders.filter((order) => order.status === "delivered");
-  const switchedCount = orders.filter((order) =>
-    order.remarks.some((remark) => {
-      if (typeof remark === "string") return remark.includes("ORDER_CONVERSION");
-      if (!remark || typeof remark !== "object") return false;
-      const event = "event" in remark ? remark.event : undefined;
-      const status = "switch_status" in remark ? remark.switch_status : undefined;
-      return event === "ORDER_CONVERSION" || status === "switched";
-    }),
-  ).length;
-
-  const count = (predicate: (status: string) => boolean) => orders.filter((order) => predicate(order.status)).length;
-  const value = (countValue: number) => (isLoading ? "…" : error ? "—" : countValue.toLocaleString("fr-DZ"));
-
-  const kpis = [
-    { title: "إجمالي الطلبات", sub: "All orders", value: value(orders.length), icon: ShoppingBag },
-    { title: "قيد الانتظار", sub: "Pending", value: value(count((status) => status === "pending")), icon: Clock },
-    { title: "طلبات مؤكدة", sub: "Confirmed", value: value(count((status) => status === "confirmed")), icon: CheckCircle2 },
-    { title: "طلبات مشحونة", sub: "Shipped", value: value(count((status) => status === "shipped")), icon: Truck },
-    { title: "طلبات مسلّمة", sub: "Delivered", value: value(delivered.length), icon: Package },
-    {
-      title: "طلبات ملغاة",
-      sub: "Cancelled",
-      value: value(count((status) => status === "cancelled" || status === "deleted")),
-      icon: XCircle,
-    },
-  ];
-
   return (
-    <div className="flex flex-col gap-4 xl:col-span-12" dir="ltr">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle aria-hidden="true" />
-          <AlertTitle>ملخص الطلبات غير متاح</AlertTitle>
-          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            <span>{error}</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => void refresh()} disabled={isLoading}>
-              إعادة المحاولة
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-1 gap-4">
-        <Card className="border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-background shadow-xs">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
-                <RotateCcw aria-hidden="true" data-icon="inline-start" />
-                الطلبيات المحوّلة
-              </span>
-              <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-cyan-800 dark:text-cyan-200">
-                سجل الطلبات
-              </span>
-            </div>
-            <CardTitle className="pt-1 text-3xl font-extrabold tabular-nums tracking-tight text-cyan-700 dark:text-cyan-300">
-              {value(switchedCount)}
-            </CardTitle>
-            <CardDescription className="text-xs">يُحتسب كل رقم طلب مرة واحدة، حتى عند وجود أكثر من عملية تحويل.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-          return (
-            <Card key={kpi.title} className="border shadow-xs transition-colors hover:border-primary/40">
-              <CardContent className="flex flex-col gap-2 p-3.5">
-                <span className="grid size-8 place-items-center rounded-lg bg-muted/60 text-primary">
-                  <Icon aria-hidden="true" />
-                </span>
-                <div>
-                  <div className="text-2xl font-bold tabular-nums tracking-tight">{kpi.value}</div>
-                  <div className="mt-0.5 text-xs font-semibold">{kpi.title}</div>
-                  <div className="font-mono text-[10px] text-muted-foreground">{kpi.sub}</div>
+    <div className="h-full overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 xl:col-span-12">
+      <div>
+        <div className="grid grid-cols-1 xl:grid-cols-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-3 xl:col-span-5 xl:border-r">
+            <Card className="h-full rounded-none border-0 border-border border-b ring-0 md:border-r">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Total Sales</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  $48,560.00
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <DollarSign className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-green-700 dark:text-green-300">+15.8%</span>
+                  <span className="text-muted-foreground"> vs last week</span>
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
+
+            <Card className="h-full rounded-none border-0 border-border border-b ring-0">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Total Orders</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  379
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <ShoppingBag className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-green-700 dark:text-green-300">+8.3%</span>
+                  <span className="text-muted-foreground"> vs last week</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="h-full rounded-none border-0 border-border border-b ring-0 md:border-r">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Customer Growth</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  820
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <Users className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-green-700 dark:text-green-300">+12.5%</span>
+                  <span className="text-muted-foreground"> vs last month</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="h-full rounded-none border-0 border-border border-b ring-0">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Average Order</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  $128
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <ReceiptText className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-destructive">-$4.20</span>
+                  <span className="text-muted-foreground"> vs last week</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="h-full rounded-none border-0 border-border border-b ring-0 md:border-r md:border-b-0">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Return Requests</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  18
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <RotateCcw className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-destructive">+0.6%</span>
+                  <span className="text-muted-foreground"> vs last month</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="h-full rounded-none border-0 ring-0">
+              <CardHeader>
+                <CardTitle className="font-normal text-sm">Stock Accuracy</CardTitle>
+                <CardDescription className="text-3xl text-foreground tabular-nums leading-none tracking-tight">
+                  97%
+                </CardDescription>
+                <CardAction className="grid size-6 place-items-center rounded-sm bg-muted">
+                  <PackageCheck className="size-3 text-foreground" />
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm">
+                  <span className="text-green-700 dark:text-green-300">+2.4 pts</span>
+                  <span className="text-muted-foreground"> vs last audit</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="h-full rounded-none border-0 ring-0 xl:col-span-7">
+            <CardHeader>
+              <CardTitle className="font-normal">Sales Overview</CardTitle>
+              <CardAction>
+                <ArrowUpRight className="size-4" />
+              </CardAction>
+            </CardHeader>
+
+            <CardContent>
+              <ChartContainer config={revenueOverviewConfig} className="h-74 w-full">
+                <ComposedChart
+                  accessibilityLayer
+                  data={revenueOverviewData}
+                  margin={{ bottom: 0, left: 0, right: 0, top: 0 }}
+                >
+                  <defs>
+                    <filter id="sales-line-glow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feFlood floodColor="var(--color-revenue)" floodOpacity="0.35" />
+                      <feComposite in2="blur" operator="in" />
+                      <feMerge>
+                        <feMergeNode />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  <CartesianGrid yAxisId="profit" vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    axisLine={false}
+                    height={30}
+                    interval={0}
+                    minTickGap={0}
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => formatMonthTick(String(value))}
+                  />
+                  <YAxis yAxisId="revenue" hide domain={[3000, 10_000]} />
+                  <YAxis yAxisId="profit" hide domain={[0, 6000]} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        className="w-40"
+                        labelFormatter={(value) => formatTooltipLabel(String(value))}
+                        formatter={(value, name, item) => (
+                          <>
+                            <div
+                              className="size-2.5 shrink-0 rounded-[2px]"
+                              style={{
+                                backgroundColor: item.color,
+                              }}
+                            />
+                            <div className="flex flex-1 items-center justify-between leading-none">
+                              <span className="text-muted-foreground">{String(name ?? "")}</span>
+                              <span className="font-medium font-mono text-foreground tabular-nums">
+                                {formatCurrencyTooltipValue(value)}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      />
+                    }
+                    cursor={{
+                      stroke: "var(--border)",
+                      strokeDasharray: "4 4",
+                    }}
+                  />
+                  <Bar
+                    yAxisId="profit"
+                    barSize={4}
+                    dataKey="profit"
+                    fill="var(--color-profit)"
+                    name="Profit"
+                    opacity={0.18}
+                    radius={[6, 6, 0, 0]}
+                  />
+                  <Area
+                    yAxisId="revenue"
+                    dataKey="revenue"
+                    fill="none"
+                    filter="url(#sales-line-glow)"
+                    name="Revenue"
+                    stroke="var(--color-revenue)"
+                    strokeWidth={1.8}
+                    type="linear"
+                    activeDot={{
+                      r: 4,
+                      fill: "var(--background)",
+                      stroke: "var(--color-revenue)",
+                      strokeWidth: 2,
+                    }}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

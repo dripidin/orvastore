@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 import { CheckCircle2, ExternalLink, Globe, Loader2, Rocket, XCircle } from "lucide-react";
 
@@ -37,7 +38,7 @@ export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" 
   React.useEffect(() => {
     if (!open) return;
     setResult(null);
-    fetch("/api/store-publish", { credentials: "same-origin", cache: "no-store" })
+    orvaFetch("/api/store-publish", { credentials: "same-origin", cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         setPublishedAt(d?.publishedAt ?? null);
@@ -50,7 +51,7 @@ export function PublishToStoreButton({ size = "sm" }: { size?: "sm" | "default" 
     setPublishing(true);
     setResult(null);
     try {
-      const res = await fetch("/api/store-publish", { method: "POST", credentials: "same-origin" });
+      const res = await orvaFetch("/api/store-publish", { method: "POST", credentials: "same-origin" });
       const d = await res.json().catch(() => null);
       if (!res.ok || !d?.success) throw new Error(d?.error || "فشل النشر");
       setPublishedAt(d.publishedAt);

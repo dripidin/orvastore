@@ -13,11 +13,6 @@ export interface AdminSettingsPayload {
     scope?: 'all' | 'selected';
     pages?: string[];
   };
-  googleTag?: {
-    enabled?: boolean;
-    containerId?: string;
-    measurementId?: string;
-  };
   telegram?: {
     botToken?: string;
     chatId?: string;
@@ -41,6 +36,14 @@ export interface AdminSettingsPayload {
     brandName?: string;
     customerPhone?: string;
   };
+  geminiAi?: {
+    enabled?: boolean;
+    name?: string;
+    projectName?: string;
+    projectNumber?: string;
+    model?: string;
+    apiKey?: string;
+  };
 }
 
 export interface AdminSettingsRecord {
@@ -53,11 +56,6 @@ export interface AdminSettingsRecord {
     scope: 'all' | 'selected';
     pages: string[];
     sha256DeduplicationActive: boolean;
-  };
-  googleTag: {
-    enabled: boolean;
-    containerId: string;
-    measurementId: string;
   };
   telegram: {
     botToken: string;
@@ -82,6 +80,14 @@ export interface AdminSettingsRecord {
     brandName: string;
     customerPhone: string;
   };
+  geminiAi: {
+    enabled: boolean;
+    name: string;
+    projectName: string;
+    projectNumber: string;
+    model: string;
+    apiKey: string;
+  };
   updatedAt: string;
 }
 
@@ -95,11 +101,6 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     scope: 'all',
     pages: ['/checkout', '/pack1', '/pack2', '/pack3'],
     sha256DeduplicationActive: true,
-  },
-  googleTag: {
-    enabled: true,
-    containerId: process.env.NEXT_PUBLIC_GTM_ID || 'GTM-KQNN3P49',
-    measurementId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-M2QXF4EZKZ',
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
@@ -123,6 +124,14 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     logoUrl: '/images/orva-logo.svg',
     brandName: 'ORVA Store',
     customerPhone: '0798282495',
+  },
+  geminiAi: {
+    enabled: true,
+    name: process.env.GEMINI_AGENT_NAME || 'Orva Agent AI',
+    projectName: process.env.GEMINI_PROJECT_NAME || 'projects/347934146406',
+    projectNumber: process.env.GEMINI_PROJECT_NUMBER || '347934146406',
+    model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+    apiKey: process.env.GEMINI_API_KEY || '',
   },
   updatedAt: new Date().toISOString(),
 };

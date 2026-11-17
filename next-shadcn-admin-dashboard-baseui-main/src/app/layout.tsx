@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 
+import { AttributionCapture } from "@/components/analytics/attribution-capture";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { APP_CONFIG } from "@/config/app-config";
@@ -9,10 +11,6 @@ import { fontVars } from "@/lib/fonts/registry";
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ThemeBootScript } from "@/scripts/theme-boot";
 import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";
-import { Analytics } from "@vercel/analytics/next";
-import { GoogleTagManager } from "@/components/analytics/google-tag-manager";
-import { getAdminSettingsAction } from "@/app/actions/settings";
-import { fallbackSettingsStore } from "@/lib/settings/settings-store";
 
 import "./globals.css";
 
@@ -24,19 +22,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { theme_mode, theme_preset, content_layout, navbar_style, sidebar_variant, sidebar_collapsible, font } =
     PREFERENCE_DEFAULTS;
-
-  let gtmSettings = fallbackSettingsStore.googleTag;
-  try {
-    const settings = await getAdminSettingsAction();
-    if (settings?.googleTag) {
-      gtmSettings = settings.googleTag;
-    }
-  } catch {
-    // Use fallback settings store
-  }
 
   return (
     <html
@@ -63,11 +51,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </PreferencesStoreProvider>
         </TooltipProvider>
         <Analytics />
-        <GoogleTagManager
-          containerId={gtmSettings.containerId}
-          measurementId={gtmSettings.measurementId}
-          enabled={gtmSettings.enabled}
-        />
+        <AttributionCapture />
       </body>
     </html>
   );

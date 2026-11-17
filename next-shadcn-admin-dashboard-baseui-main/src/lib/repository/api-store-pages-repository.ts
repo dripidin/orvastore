@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 /**
  * Store pages + landing layouts backed by the server catalog.
  * A store page is simply a product's public landing page: published == product status "active".
@@ -91,7 +92,7 @@ export class ApiStorePagesRepository implements IStorePagesRepository {
   /** Publishing = making the product visible in the store (and refreshing the storefront cache). */
   async publishPage(pageId: string): Promise<StorePage> {
     const p = await this.products.updateProduct(productIdFromPage(pageId), { status: "active" });
-    await fetch("/api/store-publish", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+    await orvaFetch("/api/store-publish", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
     return toPage(p);
   }
 

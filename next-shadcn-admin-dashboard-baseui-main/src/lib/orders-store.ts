@@ -32,6 +32,13 @@ export interface FallbackOrderRecord {
   sourceOrderId?: string;
   idempotencyKey?: string;
   payloadHash?: string;
+  fbCampaignId?: string;
+  fbAdsetId?: string;
+  fbAdId?: string;
+  fbclid?: string;
+  utmCampaign?: string;
+  attributionSource?: string;
+  redexTrackingId?: string | null;
 }
 
 interface GlobalOrdersStorage {

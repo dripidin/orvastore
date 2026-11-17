@@ -13,6 +13,8 @@ import { AdminSessionGate } from "./_components/admin-session-gate";
 import { LayoutControls } from "./_components/header/layout-controls";
 import { SearchDialog } from "./_components/header/search-dialog";
 import { ThemeSwitcher } from "./_components/header/theme-switcher";
+import { FloatingAIChat } from "./_components/floating-ai-chat";
+import { OrderSoundWatcher } from "./_components/order-sound-watcher";
 import { AdminLocaleProvider } from "@/lib/i18n/admin-locale";
 
 export default function Layout({ children }: Readonly<{ children: ReactNode }>) {
@@ -38,6 +40,8 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
   return (
     <AdminLocaleProvider>
       <AdminSessionGate>
+        <OrderSoundWatcher />
+        <FloatingAIChat />
         <SidebarProvider
           defaultOpen={true}
           style={

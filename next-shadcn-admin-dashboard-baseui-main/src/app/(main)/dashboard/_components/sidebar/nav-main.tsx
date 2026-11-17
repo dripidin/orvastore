@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
 
 import Link from "next/link";
@@ -93,7 +94,7 @@ function useUnreadRequests(): number {
   React.useEffect(() => {
     let active = true;
     const load = () =>
-      fetch("/api/product-requests?count=1", { credentials: "same-origin", cache: "no-store" })
+      orvaFetch("/api/product-requests?count=1", { credentials: "same-origin", cache: "no-store" })
         .then((r) => r.json())
         .then((d) => {
           if (active && d?.success) setUnread(Number(d.unread) || 0);

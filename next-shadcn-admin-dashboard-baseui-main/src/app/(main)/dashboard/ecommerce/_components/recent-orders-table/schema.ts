@@ -42,7 +42,14 @@ export type OrderRow = {
   priceNum: number | null;
   shippingFee: string;
   in_redex?: boolean;
+  redex_tracking_id?: string | null;
   redex_tracking_code?: string | null;
+  fb_campaign_id?: string | null;
+  fb_adset_id?: string | null;
+  fb_ad_id?: string | null;
+  fbclid?: string | null;
+  utm_campaign?: string | null;
+  attribution_source?: string | null;
   carrier_status?: string | null;
   carrier_status_ar?: string | null;
   remarks?: any[];

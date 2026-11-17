@@ -180,22 +180,41 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     notes: "Legacy Pixel 2340414976777036 decommissioned. Live production requires merchant to input new Pixel ID."
   },
   {
-    id: "marketing-ga4",
-    name: "Google Tag Manager & Google Analytics (GA4)",
+    id: "analytics-vercel",
+    name: "Vercel Web Analytics",
     category: "analytics",
     categoryLabel: "Analytics & Marketing",
     status: "connected",
-    statusLabel: "Connected & Active (GTM-KQNN3P49)",
+    statusLabel: "Connected (@vercel/analytics/next)",
     environmentScope: "all",
-    requiredConfiguration: "GTM Container ID (GTM-KQNN3P49), Optional GA4 Measurement ID",
+    requiredConfiguration: "@vercel/analytics/next (<Analytics /> in RootLayout)",
     availableCapabilities: [
-      "Full website container tracking (GTM web interface)",
-      "Next.js optimized script hydration (afterInteractive)",
-      "Automated pageview tracking on client route transitions",
-      "Dynamic configuration via Settings Dashboard"
+      "Privacy-first cookie-less visitor tracking (daily rotating request hash)",
+      "Page Views & unique route transition tracking via native browser API",
+      "Session Bounce Rate calculation ((Single-Page Sessions / Total Sessions) * 100)",
+      "Breakdown panels: Top Pages, Referrers, Countries, OS, Device & Browser",
+      "Automated User-Agent bot exclusion and custom event / feature flag instrumentation"
     ],
-    managementMethod: "Admin Settings Dashboard & GTM Web Container",
-    notes: "Active with fallback GTM-KQNN3P49 and dynamic settings management."
+    managementMethod: "RootLayout <Analytics /> & Vercel Web Analytics Dashboard",
+    notes: "Primary privacy-first zero-cookie telemetry engine powered by Vercel Web Analytics."
+  },
+  {
+    id: "ai-orva-gemini",
+    name: "Orva Agent AI — Google Gemini",
+    category: "analytics",
+    categoryLabel: "Analytics & Marketing",
+    status: "connected",
+    statusLabel: "Connected (Project 347934146406)",
+    environmentScope: "all",
+    requiredConfiguration: "GEMINI_API_KEY (X-goog-api-key), Project projects/347934146406, gemini-flash-latest",
+    availableCapabilities: [
+      "Floating Spectrum UI AI Chat Card across all admin dashboard pages",
+      "Direct live lookup of orders by Order ID or customer phone number",
+      "Real-time store reports, order status counts, products & inventory insights",
+      "Automated test reports on recent orders and general store performance"
+    ],
+    managementMethod: "Admin Settings Dashboard & /api/ai-agent",
+    notes: "Powered by Google Generative Language API (gemini-flash-latest)."
   },
 
   // ── 5. Delivery & Courier Integrations ────────────────────────────────────

@@ -152,7 +152,14 @@ CREATE TABLE IF NOT EXISTS public.orders (
     payment_status TEXT DEFAULT 'UNPAID' CHECK (payment_status IN ('UNPAID', 'PAID')),
     tracking_code TEXT,
     redex_tracking_code TEXT,
+    redex_tracking_id TEXT,
     tracking_url TEXT,
+    fb_campaign_id TEXT,
+    fb_adset_id TEXT,
+    fb_ad_id TEXT,
+    fbclid TEXT,
+    utm_campaign TEXT,
+    attribution_source TEXT DEFAULT 'direct',
     in_redex BOOLEAN DEFAULT false,
     courier TEXT DEFAULT 'REDEX',
     courier_provider TEXT DEFAULT 'REDEX',
@@ -204,6 +211,10 @@ BEGIN
     NEW.total_payable := COALESCE(NEW.total_payable, NEW.total, NEW.price_num, 0);
     NEW.subtotal := COALESCE(NEW.subtotal, 0);
     NEW.delivery_fee := COALESCE(NEW.delivery_fee, 0);
+    NEW.redex_tracking_id := COALESCE(NEW.redex_tracking_id, NEW.redex_tracking_code, NEW.tracking_code);
+    NEW.redex_tracking_code := COALESCE(NEW.redex_tracking_code, NEW.redex_tracking_id, NEW.tracking_code);
+    NEW.tracking_code := COALESCE(NEW.tracking_code, NEW.redex_tracking_id, NEW.redex_tracking_code);
+    NEW.attribution_source := COALESCE(NULLIF(trim(NEW.attribution_source), ''), 'direct');
     NEW.updated_at := now();
     RETURN NEW;
 END;

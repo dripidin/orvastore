@@ -24,11 +24,6 @@ export interface AdminSettingsPayload {
     scope?: 'all' | 'selected';
     pages?: string[];
   };
-  googleTag?: {
-    enabled?: boolean;
-    containerId?: string;
-    measurementId?: string;
-  };
   telegram?: {
     botToken?: string;
     chatId?: string;
@@ -56,6 +51,14 @@ export interface AdminSettingsPayload {
     enabled?: boolean;
     baseUrl?: string;
     apiToken?: string;
+  };
+  geminiAi?: {
+    enabled?: boolean;
+    name?: string;
+    projectName?: string;
+    projectNumber?: string;
+    model?: string;
+    apiKey?: string;
   };
   action?: string;
   integration?: string;
@@ -106,17 +109,6 @@ export async function saveSettingsAction(
     }
   }
 
-  if (payload.googleTag) {
-    if (payload.googleTag.enabled !== undefined) {
-      fallbackSettingsStore.googleTag.enabled = Boolean(payload.googleTag.enabled);
-    }
-    if (payload.googleTag.containerId !== undefined) {
-      fallbackSettingsStore.googleTag.containerId = payload.googleTag.containerId.trim();
-    }
-    if (payload.googleTag.measurementId !== undefined) {
-      fallbackSettingsStore.googleTag.measurementId = payload.googleTag.measurementId.trim();
-    }
-  }
 
   if (payload.telegram) {
     if (payload.telegram.botToken !== undefined) {
@@ -130,6 +122,27 @@ export async function saveSettingsAction(
     }
     if (payload.telegram.templates !== undefined) {
       fallbackSettingsStore.telegram.templates = payload.telegram.templates;
+    }
+  }
+
+  if (payload.geminiAi) {
+    if (payload.geminiAi.enabled !== undefined) {
+      fallbackSettingsStore.geminiAi.enabled = Boolean(payload.geminiAi.enabled);
+    }
+    if (payload.geminiAi.name !== undefined) {
+      fallbackSettingsStore.geminiAi.name = payload.geminiAi.name.trim() || 'Orva Agent AI';
+    }
+    if (payload.geminiAi.projectName !== undefined) {
+      fallbackSettingsStore.geminiAi.projectName = payload.geminiAi.projectName.trim() || 'projects/347934146406';
+    }
+    if (payload.geminiAi.projectNumber !== undefined) {
+      fallbackSettingsStore.geminiAi.projectNumber = payload.geminiAi.projectNumber.trim() || '347934146406';
+    }
+    if (payload.geminiAi.model !== undefined) {
+      fallbackSettingsStore.geminiAi.model = payload.geminiAi.model.trim() || 'gemini-flash-latest';
+    }
+    if (payload.geminiAi.apiKey !== undefined) {
+      fallbackSettingsStore.geminiAi.apiKey = payload.geminiAi.apiKey.trim();
     }
   }
 
@@ -254,10 +267,13 @@ export async function saveSettingsAction(
                 base_url: fallbackRedexStore.baseUrl,
                 api_token: fallbackRedexStore.apiToken,
               },
-              google_tag: {
-                enabled: fallbackSettingsStore.googleTag.enabled,
-                container_id: fallbackSettingsStore.googleTag.containerId,
-                measurement_id: fallbackSettingsStore.googleTag.measurementId,
+              gemini_ai: {
+                enabled: fallbackSettingsStore.geminiAi.enabled,
+                name: fallbackSettingsStore.geminiAi.name,
+                project_name: fallbackSettingsStore.geminiAi.projectName,
+                project_number: fallbackSettingsStore.geminiAi.projectNumber,
+                model: fallbackSettingsStore.geminiAi.model,
+                api_key: fallbackSettingsStore.geminiAi.apiKey,
               },
             },
             updated_at: new Date().toISOString(),
@@ -516,11 +532,14 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
           if (r.base_url !== undefined) fallbackRedexStore.baseUrl = r.base_url;
           if (r.api_token !== undefined) fallbackRedexStore.apiToken = r.api_token;
         }
-        if (data.integrations?.google_tag) {
-          const g = data.integrations.google_tag;
-          if (g.enabled !== undefined) fallbackSettingsStore.googleTag.enabled = Boolean(g.enabled);
-          if (g.container_id !== undefined) fallbackSettingsStore.googleTag.containerId = g.container_id;
-          if (g.measurement_id !== undefined) fallbackSettingsStore.googleTag.measurementId = g.measurement_id;
+        if (data.integrations?.gemini_ai) {
+          const g = data.integrations.gemini_ai;
+          if (g.enabled !== undefined) fallbackSettingsStore.geminiAi.enabled = Boolean(g.enabled);
+          if (g.name !== undefined) fallbackSettingsStore.geminiAi.name = g.name;
+          if (g.project_name !== undefined) fallbackSettingsStore.geminiAi.projectName = g.project_name;
+          if (g.project_number !== undefined) fallbackSettingsStore.geminiAi.projectNumber = g.project_number;
+          if (g.model !== undefined) fallbackSettingsStore.geminiAi.model = g.model;
+          if (g.api_key !== undefined) fallbackSettingsStore.geminiAi.apiKey = g.api_key;
         }
       }
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { orvaFetch } from "@/lib/orva-api";
 /**
  * Dashboard products repository backed by the server catalog (Supabase `products` table).
  * Replaces the localStorage mock so every admin change reaches the storefront.
@@ -17,7 +18,7 @@ import type {
 import type { ProductPageLayoutConfig } from "./layout-types";
 
 async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
+  const res = await orvaFetch(url, {
     credentials: "same-origin",
     cache: "no-store",
     ...init,

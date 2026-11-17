@@ -9,6 +9,7 @@ import {
 } from '@/app/actions/settings';
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
 import { verifyAdminSession } from '@/lib/auth/admin-auth';
+import { runOrvaGeminiAgentQuery } from '@/lib/ai/store-ai-context';
 
 export async function GET(request: NextRequest) {
   if (!await verifyAdminSession(request)) {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   const isTgConfigured = Boolean(settings.telegram.botToken && settings.telegram.chatId);
   const isMetaConfigured = Boolean(settings.metaPixel.pixelId);
   const hasMetaCapi = Boolean(settings.metaPixel.capiToken);
-  const isGtmConfigured = Boolean(settings.googleTag?.containerId || settings.googleTag?.measurementId);
+  const isGeminiConfigured = Boolean(settings.geminiAi?.apiKey);
 
   return NextResponse.json({
     success: true,
@@ -34,15 +35,6 @@ export async function GET(request: NextRequest) {
         tokenSource: hasMetaCapi ? 'Server Config / Supabase' : 'Not Configured',
         status: isMetaConfigured
           ? (settings.metaPixel.enabled ? 'operational' : 'not_connected')
-          : 'not_configured',
-        updatedAt: settings.updatedAt || null,
-      },
-      googleTag: {
-        ...settings.googleTag,
-        isConfigured: isGtmConfigured,
-        tokenSource: isGtmConfigured ? 'Admin Dashboard / Environment' : 'Not Configured',
-        status: isGtmConfigured
-          ? (settings.googleTag.enabled ? 'operational' : 'not_connected')
           : 'not_configured',
         updatedAt: settings.updatedAt || null,
       },
@@ -74,6 +66,15 @@ export async function GET(request: NextRequest) {
         tokenSource: 'Not Configured',
         status: 'not_configured',
         updatedAt: null,
+      },
+      geminiAi: {
+        ...settings.geminiAi,
+        isConfigured: isGeminiConfigured,
+        tokenSource: isGeminiConfigured ? 'Server Config / Google Gemini API' : 'Not Configured',
+        status: isGeminiConfigured
+          ? (settings.geminiAi.enabled ? 'operational' : 'not_connected')
+          : 'not_configured',
+        updatedAt: settings.updatedAt || null,
       },
     },
   });
@@ -170,23 +171,34 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (integration === 'googleTag') {
+      if (integration === 'geminiAi') {
         const settings = await getAdminSettingsAction();
-        const containerId = (body.containerId || settings.googleTag?.containerId || '').trim();
-        const measurementId = (body.measurementId || settings.googleTag?.measurementId || '').trim();
-        const validGtm = Boolean(containerId && /^GTM-[A-Z0-9]+$/i.test(containerId));
-        const validGa4 = Boolean(measurementId && /^G-[A-Z0-9]+$/i.test(measurementId));
-        const configured = validGtm || validGa4;
+        const apiKey = (body.apiKey ?? settings.geminiAi?.apiKey ?? '').trim();
+        const model = (body.model ?? settings.geminiAi?.model ?? 'gemini-flash-latest').trim();
+        const configured = Boolean(apiKey.length >= 10);
+
+        const aiReport = await runOrvaGeminiAgentQuery({
+          userMessage:
+            'قدّم تقريراً شاملاً ومختصراً عن التقارير الأخيرة لعدد الطلبيات وتوزيع حالاتها (قيد الانتظار، المؤكدة، المشحونة، المسلّمة، المرتجعة، الملغاة) وعن التقارير العامة لأداء المتجر والمبيعات المحصّلة وأهم المنتجات.',
+          overrideApiKey: apiKey,
+          overrideModel: model,
+        });
 
         return NextResponse.json({
           success: true,
           testResult: {
             configured,
-            containerId: containerId || undefined,
-            measurementId: measurementId || undefined,
+            authenticated: configured && !aiReport.apiError,
+            agentName: body.name || aiReport.agentName,
+            projectName: body.projectName || aiReport.projectName,
+            projectNumber: body.projectNumber || aiReport.projectNumber,
+            model: aiReport.model,
+            latencyMs: aiReport.latencyMs,
+            reportText: aiReport.reply,
+            snapshot: aiReport.snapshot,
             message: configured
-              ? `تكوين Google Tag سليم (${validGtm ? containerId : ''}${validGtm && validGa4 ? ' + ' : ''}${validGa4 ? measurementId : ''}) وجاهز للعمل.`
-              : 'يرجى إدخال معرّف حاوية GTM صالح (مثال: GTM-KQNN3P49) أو معرّف GA4 (مثال: G-XXXXXXXXXX).',
+              ? `تم إجراء اختبار Orva Agent AI (${aiReport.projectName}) وتوليد التقرير الأخير لعدد الطلبيات والتقرير العام للمتجر بنجاح (${aiReport.snapshot.totalOrders} طلبية).`
+              : 'يرجى إدخال مفتاح Gemini API صالح لإجراء الاختبار.',
           },
         });
       }
@@ -218,14 +230,8 @@ export async function POST(request: NextRequest) {
         } else if (field === 'capiToken') {
           await saveSettingsAction({ metaPixel: { capiToken: '' } });
         }
-      } else if (integration === 'googleTag') {
-        if (field === 'containerId') {
-          await saveSettingsAction({ googleTag: { containerId: '' } });
-        } else if (field === 'measurementId') {
-          await saveSettingsAction({ googleTag: { measurementId: '' } });
-        } else {
-          await saveSettingsAction({ googleTag: { containerId: '', measurementId: '', enabled: false } });
-        }
+      } else if (integration === 'geminiAi') {
+        await saveSettingsAction({ geminiAi: { apiKey: '' } });
       }
       return NextResponse.json({
         success: true,
