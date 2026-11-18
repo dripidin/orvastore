@@ -7,7 +7,12 @@ import {
   getRedexSettingsAction,
   deleteRedexTokenAction,
   deleteGeminiApiKeyAction,
+  deleteVercelTokenAction,
 } from '@/app/actions/settings';
+import {
+  resolveVercelAnalyticsRuntimeConfig,
+  testVercelAnalyticsConnection,
+} from '@/lib/analytics/vercel-server';
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
 import { verifyAdminSession } from '@/lib/auth/admin-auth';
 import { runGeminiSettingsTestReport } from '@/lib/ai/store-ai-context';
@@ -19,12 +24,14 @@ export async function GET(request: NextRequest) {
 
   const settings = await getAdminSettingsAction();
   const redex = await getRedexSettingsAction();
+  const vercelRuntime = await resolveVercelAnalyticsRuntimeConfig();
 
   const isRedexConfigured = Boolean(redex.apiToken);
   const isTgConfigured = Boolean(settings.telegram.botToken && settings.telegram.chatId);
   const isMetaConfigured = Boolean(settings.metaPixel.pixelId);
   const hasMetaCapi = Boolean(settings.metaPixel.capiToken);
   const isGeminiConfigured = Boolean(settings.geminiAi?.apiKey);
+  const isVercelTokenConfigured = Boolean(vercelRuntime.token);
 
   return NextResponse.json({
     success: true,
@@ -74,6 +81,20 @@ export async function GET(request: NextRequest) {
         tokenSource: isGeminiConfigured ? 'Server Config / Google Gemini API' : 'Not Configured',
         status: isGeminiConfigured
           ? (settings.geminiAi.enabled ? 'operational' : 'not_connected')
+          : 'not_configured',
+        updatedAt: settings.updatedAt || null,
+      },
+      vercelAnalytics: {
+        enabled: vercelRuntime.enabled,
+        projectId: vercelRuntime.project.projectId,
+        teamId: vercelRuntime.project.teamId,
+        projectName: vercelRuntime.project.projectName,
+        teamSlug: vercelRuntime.project.teamSlug,
+        dashboardUrl: vercelRuntime.dashboardUrl,
+        isConfigured: isVercelTokenConfigured,
+        tokenSource: vercelRuntime.tokenSource,
+        status: isVercelTokenConfigured
+          ? (vercelRuntime.enabled ? 'operational' : 'not_connected')
           : 'not_configured',
         updatedAt: settings.updatedAt || null,
       },
@@ -187,6 +208,19 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (integration === 'vercelAnalytics') {
+        const testResult = await testVercelAnalyticsConnection({
+          token: typeof body.token === 'string' ? body.token : undefined,
+          projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
+          teamId: typeof body.teamId === 'string' ? body.teamId : undefined,
+        });
+
+        return NextResponse.json({
+          success: true,
+          testResult,
+        });
+      }
+
       // Generic integration test fallback
       return NextResponse.json({
         success: true,
@@ -216,6 +250,8 @@ export async function POST(request: NextRequest) {
         }
       } else if (integration === 'geminiAi') {
         await deleteGeminiApiKeyAction();
+      } else if (integration === 'vercelAnalytics') {
+        await deleteVercelTokenAction();
       }
       return NextResponse.json({
         success: true,

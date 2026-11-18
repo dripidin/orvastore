@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { queryVercelAnalytics, resolveVercelAnalyticsRuntimeConfig } from "@/lib/analytics/vercel-server";
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
 
-import fs from "node:fs";
-import path from "node:path";
+export const dynamic = "force-dynamic";
 
 type VercelPeriod = "24h" | "7d" | "30d" | "90d";
 
@@ -16,13 +16,6 @@ const ALLOWED_FILTER_DIMENSIONS = new Set([
   "browserName",
 ]);
 
-interface VercelProjectConfig {
-  projectId: string;
-  teamId: string;
-  teamSlug: string;
-  projectName: string;
-}
-
 interface AggregateDimensionRow {
   label: string;
   visitors: number;
@@ -34,31 +27,6 @@ interface TimeseriesPoint {
   bucket: string;
   visitors: number;
   pageviews: number;
-}
-
-function readVercelProjectConfig(): VercelProjectConfig {
-  let projectId = process.env.VERCEL_PROJECT_ID || "prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx";
-  let teamId = process.env.VERCEL_TEAM_ID || "team_cYT8gZkkTTbR60uqUXL6aRPH";
-  const teamSlug = process.env.VERCEL_TEAM_SLUG || "dripidin2-1079";
-  let projectName = process.env.VERCEL_PROJECT_NAME || "orvastore";
-
-  try {
-    const configPath = path.join(process.cwd(), ".vercel", "project.json");
-    if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
-        projectId?: string;
-        orgId?: string;
-        projectName?: string;
-      };
-      if (parsed.projectId) projectId = parsed.projectId;
-      if (parsed.orgId) teamId = parsed.orgId;
-      if (parsed.projectName) projectName = parsed.projectName;
-    }
-  } catch {
-    // Fallback to environment or default workspace project identifiers
-  }
-
-  return { projectId, teamId, teamSlug, projectName };
 }
 
 function resolveDateRange(period: VercelPeriod): { since: string; until: string; timeDimension: "hour" | "day" } {
@@ -84,48 +52,6 @@ function buildODataFilter(filterKey: string | null, filterValue: string | null):
   const sanitized = filterValue.trim().slice(0, 200).replace(/'/g, "''");
   if (!sanitized) return undefined;
   return `${filterKey} eq '${sanitized}'`;
-}
-
-async function queryVercelAnalytics<T>(
-  endpoint: string,
-  token: string,
-  params: Record<string, string | string[] | undefined>,
-): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
-  const url = new URL(`https://api.vercel.com/v1/query/web-analytics/${endpoint}`);
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined) continue;
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        url.searchParams.append(key, item);
-      }
-    } else {
-      url.searchParams.set(key, value);
-    }
-  }
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    let errorMsg = `Vercel API error (${res.status})`;
-    try {
-      const errJson = (await res.json()) as { error?: { message?: string } };
-      if (errJson.error?.message) {
-        errorMsg = errJson.error.message;
-      }
-    } catch {
-      // ignore non-json error bodies
-    }
-    return { ok: false, status: res.status, error: errorMsg };
-  }
-
-  const json = (await res.json()) as { data?: T };
-  return { ok: true, data: json.data as T };
 }
 
 function normalizeDimensionRows(
@@ -163,28 +89,29 @@ export async function GET(request: NextRequest) {
   const filterValue = searchParams.get("filterValue");
   const odataFilter = buildODataFilter(filterKey, filterValue);
 
-  const project = readVercelProjectConfig();
-  const dashboardUrl = `https://vercel.com/${project.teamSlug}/${project.projectName}/analytics`;
-  const token = (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN || "").trim();
+  const runtime = await resolveVercelAnalyticsRuntimeConfig();
+  const { project, dashboardUrl, token, enabled } = runtime;
 
   const basePayload = {
     success: true,
     provider: "vercel-web-analytics" as const,
     sdkPackage: "@vercel/analytics/next" as const,
     rootLayoutActive: true,
+    vercelTokenConfigured: Boolean(token),
     period,
     activeFilter: odataFilter && filterKey && filterValue ? { key: filterKey, value: filterValue } : null,
     project,
     dashboardUrl,
   };
 
-  if (!token) {
+  if (!token || !enabled) {
     return NextResponse.json({
       ...basePayload,
       connected: false,
-      reason: "missing_vercel_token",
-      message:
-        "الحزمة @vercel/analytics/next مفعّلة في الموقع. لعرض إحصائيات Vercel مباشرة داخل اللوحة أضف متغير البيئة VERCEL_TOKEN، أو افتح لوحة Vercel Web Analytics مباشرة.",
+      reason: !enabled ? "vercel_analytics_disabled" : "missing_vercel_token",
+      message: !enabled
+        ? "تم إيقاف سحب إحصائيات Vercel من إعدادات لوحة التحكم."
+        : "الحزمة @vercel/analytics/next مفعّلة في الموقع. لعرض إحصائيات Vercel مباشرة داخل اللوحة أضف VERCEL_TOKEN من إعدادات التكامل أو متغيرات Vercel.",
       syncedAt: null,
       summary: null,
       timeseries: [],

@@ -60,6 +60,12 @@ export interface AdminSettingsPayload {
     model?: string;
     apiKey?: string;
   };
+  vercelAnalytics?: {
+    enabled?: boolean;
+    token?: string;
+    projectId?: string;
+    teamId?: string;
+  };
   action?: string;
   integration?: string;
   field?: string;
@@ -143,6 +149,21 @@ export async function saveSettingsAction(
     }
     if (payload.geminiAi.apiKey !== undefined && payload.geminiAi.apiKey.trim().length > 0) {
       fallbackSettingsStore.geminiAi.apiKey = payload.geminiAi.apiKey.trim();
+    }
+  }
+
+  if (payload.vercelAnalytics) {
+    if (payload.vercelAnalytics.enabled !== undefined) {
+      fallbackSettingsStore.vercelAnalytics.enabled = Boolean(payload.vercelAnalytics.enabled);
+    }
+    if (payload.vercelAnalytics.projectId !== undefined && payload.vercelAnalytics.projectId.trim().length > 0) {
+      fallbackSettingsStore.vercelAnalytics.projectId = payload.vercelAnalytics.projectId.trim();
+    }
+    if (payload.vercelAnalytics.teamId !== undefined && payload.vercelAnalytics.teamId.trim().length > 0) {
+      fallbackSettingsStore.vercelAnalytics.teamId = payload.vercelAnalytics.teamId.trim();
+    }
+    if (payload.vercelAnalytics.token !== undefined && payload.vercelAnalytics.token.trim().length > 0) {
+      fallbackSettingsStore.vercelAnalytics.token = payload.vercelAnalytics.token.trim();
     }
   }
 
@@ -291,6 +312,21 @@ export async function saveSettingsAction(
           project_number: fallbackSettingsStore.geminiAi.projectNumber,
           model: fallbackSettingsStore.geminiAi.model,
           api_key: preservedKey,
+        };
+      }
+      if (payload.vercelAnalytics) {
+        const preservedToken =
+          fallbackSettingsStore.vercelAnalytics.token ||
+          (typeof existingIntegrations.vercel_analytics?.token === 'string'
+            ? existingIntegrations.vercel_analytics.token
+            : '');
+        fallbackSettingsStore.vercelAnalytics.token = preservedToken;
+        mergedIntegrations.vercel_analytics = {
+          ...(existingIntegrations.vercel_analytics || {}),
+          enabled: fallbackSettingsStore.vercelAnalytics.enabled,
+          project_id: fallbackSettingsStore.vercelAnalytics.projectId,
+          team_id: fallbackSettingsStore.vercelAnalytics.teamId,
+          token: preservedToken,
         };
       }
 
@@ -587,6 +623,24 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
             fallbackSettingsStore.geminiAi.apiKey = process.env.GEMINI_API_KEY.trim();
           }
         }
+        if (data.integrations?.vercel_analytics) {
+          const v = data.integrations.vercel_analytics;
+          if (v.enabled !== undefined) fallbackSettingsStore.vercelAnalytics.enabled = Boolean(v.enabled);
+          if (v.project_id) fallbackSettingsStore.vercelAnalytics.projectId = String(v.project_id).trim();
+          if (v.team_id) fallbackSettingsStore.vercelAnalytics.teamId = String(v.team_id).trim();
+          if (typeof v.token === 'string' && v.token.trim().length > 0) {
+            fallbackSettingsStore.vercelAnalytics.token = v.token.trim();
+          } else if (
+            !fallbackSettingsStore.vercelAnalytics.token &&
+            (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN)
+          ) {
+            fallbackSettingsStore.vercelAnalytics.token = (
+              process.env.VERCEL_TOKEN ||
+              process.env.VERCEL_ACCESS_TOKEN ||
+              ''
+            ).trim();
+          }
+        }
       }
     }
   } catch (err) {
@@ -595,6 +649,13 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
 
   if (!fallbackSettingsStore.geminiAi.apiKey && process.env.GEMINI_API_KEY) {
     fallbackSettingsStore.geminiAi.apiKey = process.env.GEMINI_API_KEY.trim();
+  }
+  if (!fallbackSettingsStore.vercelAnalytics.token && (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN)) {
+    fallbackSettingsStore.vercelAnalytics.token = (
+      process.env.VERCEL_TOKEN ||
+      process.env.VERCEL_ACCESS_TOKEN ||
+      ''
+    ).trim();
   }
 
   return fallbackSettingsStore;
@@ -711,4 +772,46 @@ export async function deleteGeminiApiKeyAction(): Promise<{ success: boolean; me
   }
 
   return { success: true, message: 'تم مسح مفتاح Gemini API بنجاح.' };
+}
+
+/**
+ * 8. Delete Vercel Web Analytics Token Action
+ * Resets VERCEL_TOKEN in local memory and Supabase site_settings.
+ */
+export async function deleteVercelTokenAction(): Promise<{ success: boolean; message: string }> {
+  fallbackSettingsStore.vercelAnalytics.token = '';
+  fallbackSettingsStore.updatedAt = new Date().toISOString();
+
+  try {
+    const supabase = getSupabaseServerClient() as any;
+    if (supabase) {
+      const { data } = await supabase
+        .from('site_settings')
+        .select('integrations')
+        .eq('id', 1)
+        .maybeSingle();
+
+      const existingIntegrations = data?.integrations || {};
+      await supabase
+        .from('site_settings')
+        .update({
+          integrations: {
+            ...existingIntegrations,
+            vercel_analytics: {
+              ...(existingIntegrations.vercel_analytics || {}),
+              enabled: fallbackSettingsStore.vercelAnalytics.enabled,
+              project_id: fallbackSettingsStore.vercelAnalytics.projectId,
+              team_id: fallbackSettingsStore.vercelAnalytics.teamId,
+              token: '',
+            },
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', 1);
+    }
+  } catch (dbErr) {
+    console.info('[Settings Delete Vercel Token Info]: Local storage cleared', dbErr);
+  }
+
+  return { success: true, message: 'تم مسح رمز VERCEL_TOKEN بنجاح.' };
 }

@@ -44,6 +44,12 @@ export interface AdminSettingsPayload {
     model?: string;
     apiKey?: string;
   };
+  vercelAnalytics?: {
+    enabled?: boolean;
+    token?: string;
+    projectId?: string;
+    teamId?: string;
+  };
 }
 
 export interface AdminSettingsRecord {
@@ -87,6 +93,12 @@ export interface AdminSettingsRecord {
     projectNumber: string;
     model: string;
     apiKey: string;
+  };
+  vercelAnalytics: {
+    enabled: boolean;
+    token: string;
+    projectId: string;
+    teamId: string;
   };
   updatedAt: string;
 }
@@ -132,6 +144,12 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     projectNumber: process.env.GEMINI_PROJECT_NUMBER || '347934146406',
     model: process.env.GEMINI_MODEL || 'auto',
     apiKey: process.env.GEMINI_API_KEY || '',
+  },
+  vercelAnalytics: {
+    enabled: true,
+    token: (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN || '').trim(),
+    projectId: process.env.VERCEL_PROJECT_ID || 'prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx',
+    teamId: process.env.VERCEL_TEAM_ID || 'team_cYT8gZkkTTbR60uqUXL6aRPH',
   },
   updatedAt: new Date().toISOString(),
 };

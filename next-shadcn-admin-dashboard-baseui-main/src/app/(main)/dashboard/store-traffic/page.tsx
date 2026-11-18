@@ -538,8 +538,19 @@ export default function StoreTrafficPage() {
             <p>
               {data?.reason === "vercel_api_unauthorized"
                 ? `تعذر سحب الأرقام عبر Vercel REST API (${data.message ?? "تحقق من صلاحيات VERCEL_TOKEN"}).`
-                : "لعرض قراءات الزوار ولوحات Vercel مباشرة داخل هذه الصفحة، أضف متغير البيئة VERCEL_TOKEN في إعدادات الخادم، أو انتقل مباشرة إلى تبويب Web Analytics في لوحة Vercel."}
+                : "لعرض قراءات الزوار ولوحات Vercel مباشرة داخل هذه الصفحة، أضف VERCEL_TOKEN من صفحة الإعدادات أو متغيرات Vercel، أو انتقل مباشرة إلى تبويب Web Analytics في لوحة Vercel."}
             </p>
+            <div className="pt-1">
+              <Button
+                nativeButton={false}
+                render={<Link href="/dashboard/settings?tab=analytics" />}
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+              >
+                إعداد VERCEL_TOKEN الآن
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       )}

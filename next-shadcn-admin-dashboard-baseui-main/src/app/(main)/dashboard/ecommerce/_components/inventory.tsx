@@ -1,5 +1,9 @@
 "use client";
 
+import * as React from "react";
+
+import Link from "next/link";
+
 import { ArrowUpRight, PackageCheck, PackageX, TriangleAlert } from "lucide-react";
 import { Label, Pie, PieChart } from "recharts";
 
@@ -7,52 +11,9 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Separator } from "@/components/ui/separator";
 
-const chartData = [{ month: "current", "in-stock": 760, "low-stock": 320, "out-of-stock": 160 }];
-const totalUnits = chartData[0]["in-stock"] + chartData[0]["low-stock"] + chartData[0]["out-of-stock"];
-const availablePercent = Math.round((chartData[0]["in-stock"] / totalUnits) * 100);
-const gaugeSegmentCount = 32;
-const inStockSegments = Math.round((chartData[0]["in-stock"] / totalUnits) * gaugeSegmentCount);
-const lowStockSegments = Math.round((chartData[0]["low-stock"] / totalUnits) * gaugeSegmentCount);
+import { useEcommerceOverview } from "./ecommerce-overview-context";
 
-function getGaugeSegmentStatus(index: number) {
-  if (index < inStockSegments) {
-    return "in-stock";
-  }
-
-  if (index < inStockSegments + lowStockSegments) {
-    return "low-stock";
-  }
-
-  return "out-of-stock";
-}
-
-const gaugeSegments = Array.from({ length: gaugeSegmentCount }, (_, index) => {
-  const status = getGaugeSegmentStatus(index);
-  return {
-    fill: `var(--color-${status})`,
-    id: `segment-${index + 1}`,
-    status,
-    value: 1,
-  };
-});
-
-const inventorySummary = [
-  {
-    icon: PackageCheck,
-    label: "In stock",
-    value: chartData[0]["in-stock"],
-  },
-  {
-    icon: TriangleAlert,
-    label: "Low stock",
-    value: chartData[0]["low-stock"],
-  },
-  {
-    icon: PackageX,
-    label: "Out",
-    value: chartData[0]["out-of-stock"],
-  },
-] as const;
+const GAUGE_SEGMENT_COUNT = 32;
 
 const chartConfig = {
   "in-stock": {
@@ -67,18 +28,101 @@ const chartConfig = {
     label: "Out of stock",
     color: "var(--destructive)",
   },
+  empty: {
+    label: "No data",
+    color: "var(--muted)",
+  },
 } satisfies ChartConfig;
 
 export function Inventory() {
+  const { inventoryStats, isLoadingProducts, products } = useEcommerceOverview();
+
+  const {
+    inStockProducts,
+    lowStockProducts,
+    outOfStockProducts,
+    inStockUnits,
+    lowStockUnits,
+    totalUnits,
+    totalProducts,
+    availablePercent,
+  } = inventoryStats;
+
+  const gaugeSegments = React.useMemo(() => {
+    if (totalProducts === 0) {
+      return Array.from({ length: GAUGE_SEGMENT_COUNT }, (_, index) => ({
+        fill: "var(--color-empty)",
+        id: `segment-${index + 1}`,
+        status: "empty",
+        value: 1,
+      }));
+    }
+
+    let inSeg = Math.round((inStockProducts / totalProducts) * GAUGE_SEGMENT_COUNT);
+    let lowSeg = Math.round((lowStockProducts / totalProducts) * GAUGE_SEGMENT_COUNT);
+    let outSeg = Math.max(0, GAUGE_SEGMENT_COUNT - inSeg - lowSeg);
+
+    if (outOfStockProducts > 0 && outSeg === 0) {
+      outSeg = 1;
+      if (inSeg > lowSeg && inSeg > 0) inSeg -= 1;
+      else if (lowSeg > 0) lowSeg -= 1;
+    }
+
+    return Array.from({ length: GAUGE_SEGMENT_COUNT }, (_, index) => {
+      let status: "in-stock" | "low-stock" | "out-of-stock" = "out-of-stock";
+      if (index < inSeg) status = "in-stock";
+      else if (index < inSeg + lowSeg) status = "low-stock";
+      return {
+        fill: `var(--color-${status})`,
+        id: `segment-${index + 1}`,
+        status,
+        value: 1,
+      };
+    });
+  }, [totalProducts, inStockProducts, lowStockProducts, outOfStockProducts]);
+
+  const inventorySummary = React.useMemo(
+    () => [
+      {
+        icon: PackageCheck,
+        label: "In stock",
+        value: inStockProducts,
+        subLabel: `${inStockUnits.toLocaleString("en-US")} pcs`,
+      },
+      {
+        icon: TriangleAlert,
+        label: "Low stock",
+        value: lowStockProducts,
+        subLabel: `${lowStockUnits.toLocaleString("en-US")} pcs`,
+      },
+      {
+        icon: PackageX,
+        label: "Out",
+        value: outOfStockProducts,
+        subLabel: "0 pcs",
+      },
+    ],
+    [inStockProducts, lowStockProducts, outOfStockProducts, inStockUnits, lowStockUnits],
+  );
+
+  const isLoading = isLoadingProducts && products.length === 0;
+
   return (
     <Card className="h-full">
       <CardHeader>
         <CardTitle className="font-normal text-muted-foreground text-sm">Inventory</CardTitle>
-        <CardDescription className="text-foreground text-xl tabular-nums leading-none tracking-tight">
-          {availablePercent}% available
+        <CardDescription className="flex flex-wrap items-baseline gap-2 text-foreground text-xl tabular-nums leading-none tracking-tight">
+          <span>{isLoading ? "…" : `${availablePercent}% available`}</span>
+          {!isLoading && (
+            <span className="font-normal text-muted-foreground text-xs">
+              ({totalUnits.toLocaleString("en-US")} pcs • {totalProducts} products)
+            </span>
+          )}
         </CardDescription>
         <CardAction>
-          <ArrowUpRight className="size-4" />
+          <Link href="/dashboard/products" aria-label="Manage Products & Inventory">
+            <ArrowUpRight className="size-4" />
+          </Link>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -108,7 +152,7 @@ export function Inventory() {
                           x={viewBox.cx}
                           y={(viewBox.cy || 0) + 22}
                         >
-                          {availablePercent}%
+                          {isLoading ? "…" : `${availablePercent}%`}
                         </tspan>
                         <tspan className="fill-muted-foreground text-xs" x={viewBox.cx} y={(viewBox.cy || 0) + 38}>
                           Available
@@ -124,14 +168,17 @@ export function Inventory() {
         <Separator />
 
         <div className="grid grid-cols-3 divide-x">
-          {inventorySummary.map((item, _index) => (
-            <div key={item.label} className="flex flex-col items-center gap-3 text-center">
+          {inventorySummary.map((item) => (
+            <div key={item.label} className="flex flex-col items-center gap-2 text-center">
               <div className="grid size-9 place-items-center rounded-full bg-muted">
                 <item.icon className="size-4 text-muted-foreground" />
               </div>
               <div>
                 <div className="text-muted-foreground text-xs leading-none">{item.label}</div>
-                <div className="font-medium text-sm tabular-nums">{item.value.toLocaleString()}</div>
+                <div className="mt-1 font-medium text-sm tabular-nums">
+                  {isLoading ? "…" : item.value.toLocaleString("en-US")}
+                </div>
+                <div className="text-[11px] text-muted-foreground tabular-nums">{item.subLabel}</div>
               </div>
             </div>
           ))}

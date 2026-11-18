@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
 
 import Link from "next/link";
 
-import { format, subMinutes } from "date-fns";
+import { eachDayOfInterval, format } from "date-fns";
 import { ArrowUpRight } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from "recharts";
 
+import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type ChartConfig,
@@ -18,150 +19,158 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 
-const trafficIntervalMinutes = 15;
+import {
+  getPeriodBounds,
+  normalizeOrderStatusKey,
+  parseOrderDate,
+  useEcommerceOverview,
+} from "./ecommerce-overview-context";
 
-const trafficPoints = [
-  { visitors: 280, anomalies: 8 },
-  { visitors: 420, anomalies: 4 },
-  { visitors: 360, anomalies: 3 },
-  { visitors: 140, anomalies: 2 },
-  { visitors: 80, anomalies: 1 },
-  { visitors: 600, anomalies: 4 },
-  { visitors: 260, anomalies: 3 },
-  { visitors: 70, anomalies: 2 },
-  { visitors: 90, anomalies: 1 },
-  { visitors: 180, anomalies: 4 },
-  { visitors: 150, anomalies: 3 },
-  { visitors: 60, anomalies: 2 },
-  { visitors: 430, anomalies: 1 },
-  { visitors: 110, anomalies: 4 },
-  { visitors: 260, anomalies: 3 },
-  { visitors: 120, anomalies: 2 },
-  { visitors: 90, anomalies: 1 },
-  { visitors: 40, anomalies: 8 },
-  { visitors: 75, anomalies: 3 },
-  { visitors: 0, anomalies: 2 },
-  { visitors: 15, anomalies: 1 },
-  { visitors: 35, anomalies: 4 },
-  { visitors: 60, anomalies: 3 },
-  { visitors: 95, anomalies: 2 },
-  { visitors: 105, anomalies: 1 },
-  { visitors: 120, anomalies: 4 },
-  { visitors: 0, anomalies: 3 },
-  { visitors: 25, anomalies: 2 },
-  { visitors: 70, anomalies: 1 },
-  { visitors: 110, anomalies: 4 },
-  { visitors: 0, anomalies: 3 },
-  { visitors: 140, anomalies: 2 },
-  { visitors: 310, anomalies: 1 },
-  { visitors: 120, anomalies: 4 },
-  { visitors: 160, anomalies: 8 },
-  { visitors: 30, anomalies: 2 },
-  { visitors: 20, anomalies: 1 },
-  { visitors: 0, anomalies: 4 },
-  { visitors: 120, anomalies: 3 },
-  { visitors: 210, anomalies: 2 },
-  { visitors: 110, anomalies: 1 },
-  { visitors: 190, anomalies: 4 },
-  { visitors: 0, anomalies: 3 },
-  { visitors: 85, anomalies: 2 },
-  { visitors: 250, anomalies: 1 },
-  { visitors: 40, anomalies: 4 },
-  { visitors: 110, anomalies: 3 },
-  { visitors: 0, anomalies: 2 },
-  { visitors: 140, anomalies: 1 },
-  { visitors: 95, anomalies: 4 },
-  { visitors: 180, anomalies: 3 },
-  { visitors: 620, anomalies: 18 },
-  { visitors: 35, anomalies: 1 },
-  { visitors: 330, anomalies: 4 },
-  { visitors: 45, anomalies: 3 },
-  { visitors: 0, anomalies: 2 },
-  { visitors: 160, anomalies: 1 },
-  { visitors: 190, anomalies: 4 },
-  { visitors: 260, anomalies: 3 },
-  { visitors: 90, anomalies: 2 },
-  { visitors: 70, anomalies: 1 },
-  { visitors: 180, anomalies: 4 },
-  { visitors: 150, anomalies: 3 },
-  { visitors: 280, anomalies: 2 },
-  { visitors: 160, anomalies: 1 },
-  { visitors: 20, anomalies: 4 },
-  { visitors: 120, anomalies: 3 },
-  { visitors: 200, anomalies: 2 },
-  { visitors: 45, anomalies: 8 },
-  { visitors: 115, anomalies: 4 },
-  { visitors: 145, anomalies: 3 },
-  { visitors: 40, anomalies: 2 },
-  { visitors: 160, anomalies: 1 },
-  { visitors: 170, anomalies: 4 },
-  { visitors: 95, anomalies: 3 },
-  { visitors: 140, anomalies: 2 },
-  { visitors: 70, anomalies: 1 },
-  { visitors: 230, anomalies: 4 },
-  { visitors: 120, anomalies: 3 },
-  { visitors: 65, anomalies: 2 },
-  { visitors: 35, anomalies: 1 },
-  { visitors: 0, anomalies: 4 },
-  { visitors: 80, anomalies: 3 },
-  { visitors: 180, anomalies: 2 },
-  { visitors: 95, anomalies: 1 },
-  { visitors: 140, anomalies: 8 },
-  { visitors: 270, anomalies: 3 },
-  { visitors: 110, anomalies: 2 },
-  { visitors: 50, anomalies: 1 },
-  { visitors: 230, anomalies: 18 },
-  { visitors: 115, anomalies: 3 },
-  { visitors: 80, anomalies: 2 },
-  { visitors: 260, anomalies: 1 },
-  { visitors: 20, anomalies: 4 },
-  { visitors: 120, anomalies: 3 },
-  { visitors: 5, anomalies: 2 },
-] as const;
-
-function getTrafficData() {
-  const now = new Date();
-
-  return trafficPoints.map((point, index) => ({
-    ...point,
-    timestamp: subMinutes(now, (trafficPoints.length - 1 - index) * trafficIntervalMinutes).toISOString(),
-  }));
-}
-
-const trafficConfig = {
-  visitors: {
-    label: "Visitors",
-    color: "var(--chart-3)",
-  },
-  anomalies: {
-    label: "Anomalies",
-    color: "var(--destructive)",
-  },
-} satisfies ChartConfig;
-
-function formatTrafficTooltipLabel(value: string) {
-  return format(new Date(value), "h:mm a, do MMMM yyyy");
+interface TrafficChartPoint {
+  bucket: string;
+  label: string;
+  primary: number;
+  secondary: number;
 }
 
 export function StoreTraffic() {
-  const [trafficData] = useState(() => getTrafficData());
-  const firstTrafficTimestamp = trafficData[0].timestamp;
-  const lastTrafficTimestamp = trafficData.at(-1)?.timestamp ?? "";
+  const { period, filteredOrders, vercelAnalytics, isLoadingOrders, isLoadingAnalytics } = useEcommerceOverview();
 
-  function formatTrafficTick(value: string) {
-    if (value === firstTrafficTimestamp) {
-      return "24h ago";
+  const isVercelConnected = Boolean(vercelAnalytics?.connected && vercelAnalytics.summary);
+
+  const chartConfig = React.useMemo<ChartConfig>(() => {
+    if (isVercelConnected) {
+      return {
+        primary: {
+          label: "Visitors",
+          color: "var(--chart-3)",
+        },
+        secondary: {
+          label: "Pageviews",
+          color: "var(--chart-1)",
+        },
+      };
+    }
+    return {
+      primary: {
+        label: "Orders",
+        color: "var(--chart-3)",
+      },
+      secondary: {
+        label: "Delivered",
+        color: "var(--chart-2)",
+      },
+    };
+  }, [isVercelConnected]);
+
+  const trafficData = React.useMemo<TrafficChartPoint[]>(() => {
+    if (isVercelConnected && vercelAnalytics?.timeseries && vercelAnalytics.timeseries.length > 0) {
+      return vercelAnalytics.timeseries.map((point) => ({
+        bucket: point.bucket,
+        label: point.bucket,
+        primary: Number(point.visitors || 0),
+        secondary: Number(point.pageviews || 0),
+      }));
     }
 
-    return value === lastTrafficTimestamp ? "now" : "";
+    const dated = filteredOrders
+      .map((order) => ({ order, date: parseOrderDate(order.createdAt) }))
+      .filter((item): item is { order: typeof item.order; date: Date } => item.date !== null);
+
+    if (dated.length === 0) {
+      const todayKey = format(new Date(), "yyyy-MM-dd");
+      return [{ bucket: todayKey, label: todayKey, primary: 0, secondary: 0 }];
+    }
+
+    const bounds = getPeriodBounds(period);
+    const timestamps = dated.map((d) => d.date.getTime());
+    const minDate = new Date(Math.min(...timestamps));
+    const maxDate = new Date(Math.max(...timestamps));
+    const start = bounds.start && bounds.start <= maxDate ? bounds.start : minDate;
+    const end = bounds.start ? bounds.end : maxDate;
+
+    const map = new Map<string, TrafficChartPoint>();
+    for (const day of eachDayOfInterval({ start: start <= end ? start : minDate, end: end >= start ? end : maxDate })) {
+      const key = format(day, "yyyy-MM-dd");
+      map.set(key, {
+        bucket: key,
+        label: format(day, "dd MMM yyyy"),
+        primary: 0,
+        secondary: 0,
+      });
+    }
+
+    for (const { order, date } of dated) {
+      const key = format(date, "yyyy-MM-dd");
+      let point = map.get(key);
+      if (!point) {
+        point = {
+          bucket: key,
+          label: format(date, "dd MMM yyyy"),
+          primary: 0,
+          secondary: 0,
+        };
+        map.set(key, point);
+      }
+      point.primary += 1;
+      if (normalizeOrderStatusKey(order.status) === "delivered") {
+        point.secondary += 1;
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
+  }, [isVercelConnected, vercelAnalytics, filteredOrders, period]);
+
+  const firstTick = trafficData[0]?.bucket ?? "";
+  const lastTick = trafficData.at(-1)?.bucket ?? "";
+
+  function formatTrafficTick(value: string) {
+    if (value === firstTick && firstTick !== lastTick) {
+      return trafficData[0]?.label || value;
+    }
+    if (value === lastTick) {
+      return trafficData.at(-1)?.label || value;
+    }
+    return "";
   }
 
+  const headline = React.useMemo(() => {
+    if (isLoadingAnalytics && isLoadingOrders) return "…";
+    if (isVercelConnected && vercelAnalytics?.summary) {
+      return `${vercelAnalytics.summary.visitors.toLocaleString("en-US")} visitors`;
+    }
+    return `${filteredOrders.length.toLocaleString("en-US")} orders`;
+  }, [isLoadingAnalytics, isLoadingOrders, isVercelConnected, vercelAnalytics, filteredOrders.length]);
+
+  const maxTrafficVal = Math.max(4, ...trafficData.map((pt) => Math.max(pt.primary, pt.secondary)));
+
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle className="font-normal text-muted-foreground text-sm">Store Traffic</CardTitle>
-        <CardDescription className="text-foreground text-xl tabular-nums leading-none tracking-tight">
-          12.9K visits
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="font-normal text-muted-foreground text-sm">Store Traffic</CardTitle>
+          {isVercelConnected ? (
+            <Badge
+              variant="outline"
+              className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+            >
+              Vercel Live
+            </Badge>
+          ) : (
+            <Link href="/dashboard/settings?tab=analytics">
+              <Badge variant="outline" className="cursor-pointer text-[10px] hover:bg-muted">
+                Orders Activity • أضف VERCEL_TOKEN
+              </Badge>
+            </Link>
+          )}
+        </div>
+        <CardDescription className="flex flex-wrap items-baseline gap-2 text-foreground text-xl tabular-nums leading-none tracking-tight">
+          <span>{headline}</span>
+          {isVercelConnected && vercelAnalytics?.summary && (
+            <span className="font-normal text-muted-foreground text-xs">
+              ({vercelAnalytics.summary.pageviews.toLocaleString("en-US")} pageviews)
+            </span>
+          )}
         </CardDescription>
         <CardAction>
           <Link href="/dashboard/store-traffic" aria-label="Open Store Traffic">
@@ -171,46 +180,61 @@ export function StoreTraffic() {
       </CardHeader>
 
       <CardContent>
-        <ChartContainer config={trafficConfig} className="h-54 w-full">
+        <ChartContainer config={chartConfig} className="h-54 w-full">
           <AreaChart accessibilityLayer data={trafficData} margin={{ bottom: 0, left: 0, right: 0, top: 8 }}>
             <defs>
               <linearGradient id="fillVisitors" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-visitors)" stopOpacity={0.28} />
-                <stop offset="95%" stopColor="var(--color-visitors)" stopOpacity={0.02} />
+                <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.28} />
+                <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} />
             <XAxis
               axisLine={false}
-              dataKey="timestamp"
-              tick={{ fontSize: 11 }}
-              tickFormatter={formatTrafficTick}
+              dataKey="bucket"
+              tick={{ fontSize: 10 }}
+              tickFormatter={(val) => formatTrafficTick(String(val))}
               tickLine={false}
               tickMargin={10}
-              ticks={[trafficData[0].timestamp, trafficData.at(-1)?.timestamp ?? ""]}
+              ticks={firstTick === lastTick ? [firstTick] : [firstTick, lastTick]}
             />
-            <YAxis axisLine={false} domain={[0, 650]} tickLine={false} tickMargin={6} width={36} yAxisId="traffic" />
+            <YAxis
+              axisLine={false}
+              domain={[0, Math.ceil(maxTrafficVal * 1.15)]}
+              allowDecimals={false}
+              tickLine={false}
+              tickMargin={6}
+              width={36}
+              yAxisId="traffic"
+            />
             <ChartTooltip
-              content={<ChartTooltipContent labelFormatter={(value) => formatTrafficTooltipLabel(String(value))} />}
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as TrafficChartPoint | undefined;
+                    return p?.label ?? "";
+                  }}
+                />
+              }
               cursor={{ stroke: "var(--border)", strokeDasharray: "4 4" }}
             />
             <ChartLegend align="right" verticalAlign="top" className="justify-end" content={<ChartLegendContent />} />
             <Area
-              dataKey="visitors"
+              dataKey="primary"
               dot={false}
               fill="url(#fillVisitors)"
-              stroke="var(--color-visitors)"
+              stroke="var(--color-primary)"
               strokeWidth={2}
-              type="stepAfter"
+              type="monotone"
               yAxisId="traffic"
             />
             <Line
-              dataKey="anomalies"
+              dataKey="secondary"
               dot={false}
-              stroke="var(--color-anomalies)"
+              stroke="var(--color-secondary)"
               strokeLinecap="round"
-              strokeWidth={1.2}
-              type="stepAfter"
+              strokeWidth={1.6}
+              type="monotone"
               yAxisId="traffic"
             />
           </AreaChart>
