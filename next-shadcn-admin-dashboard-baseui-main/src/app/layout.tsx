@@ -18,9 +18,6 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://www.orva-store.com"),
   title: APP_CONFIG.meta.title,
   description: APP_CONFIG.meta.description,
-  other: {
-    "facebook-domain-verification": "ttnn6aaa24imb5jd8ut69jkcb5lw5l",
-  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -40,7 +37,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       suppressHydrationWarning
     >
       <head>
-        <meta name="facebook-domain-verification" content="ttnn6aaa24imb5jd8ut69jkcb5lw5l" />
+        <meta name="facebook-domain-verification" content="ty4xvsmlzlaqjkfj9vy9z2z32pqmun" />
         {/* Applies theme and layout preferences on load to avoid flicker and unnecessary server rerenders. */}
         <ThemeBootScript />
       </head>
