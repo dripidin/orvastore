@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
@@ -18,16 +18,15 @@ import {
   FileCode2,
   Globe,
   Layers,
-  Package,
   RefreshCw,
   RotateCcw,
   Sparkles,
 } from "lucide-react";
 
+import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
 import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -193,35 +192,35 @@ export default function StorePagesAndSitemapPage() {
       <DevEnvironmentBanner />
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5">
+      <div className="flex flex-col justify-between gap-4 border-b pb-5 md:flex-row md:items-center">
         <div>
           <div className="flex items-center gap-2">
             <Link
               href="/dashboard/products"
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
             >
               <ArrowLeft className="h-3 w-3" />
               الكتالوج والمخزون
             </Link>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2 mt-1">
+          <h1 className="mt-1 flex items-center gap-2 font-bold text-2xl text-foreground tracking-tight">
             <Globe className="h-6 w-6 text-primary" />
             إدارة صفحات المتجر وخريطة الموقع (Store Pages & Sitemap)
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-muted-foreground text-xs">
             نظام توليد وإدارة صفحات الهبوط العامة للمتجر، مع المعاينة المعزولة وإدارة مسارات الإنتاج.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <PublishToStoreButton />
-          <Button variant="outline" size="sm" onClick={() => setSitemapModalOpen(true)} className="text-xs gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => setSitemapModalOpen(true)} className="gap-1.5 text-xs">
             <FileCode2 className="h-3.5 w-3.5 text-primary" />
             خريطة الموقع (Sitemap XML)
           </Button>
 
           <Link href="/dashboard/products/designer">
-            <Button size="sm" className="text-xs gap-1.5">
+            <Button size="sm" className="gap-1.5 text-xs">
               <Layers className="h-3.5 w-3.5" />
               محرر التصميم (Designer)
             </Button>
@@ -239,11 +238,11 @@ export default function StorePagesAndSitemapPage() {
       )}
 
       {/* ── Metric Summary Cards ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">إجمالي الصفحات المسجلة</CardDescription>
-            <CardTitle className="text-2xl font-bold">{pages.length}</CardTitle>
+            <CardTitle className="font-bold text-2xl">{pages.length}</CardTitle>
           </CardHeader>
           <CardContent className="text-[11px] text-muted-foreground">تغطي كافة الباقات والعروض في الكتالوج</CardContent>
         </Card>
@@ -251,7 +250,7 @@ export default function StorePagesAndSitemapPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">صفحات منشورة فعلياً (Published)</CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
               {publishedCount}
             </CardTitle>
           </CardHeader>
@@ -261,7 +260,7 @@ export default function StorePagesAndSitemapPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">صفحات جاهزة للمعاينة (Preview Ready)</CardDescription>
-            <CardTitle className="text-2xl font-bold text-blue-600 dark:text-blue-400">{previewReadyCount}</CardTitle>
+            <CardTitle className="font-bold text-2xl text-blue-600 dark:text-blue-400">{previewReadyCount}</CardTitle>
           </CardHeader>
           <CardContent className="text-[11px] text-muted-foreground">باقات جديدة جاهزة للمراجعة قبل النشر</CardContent>
         </Card>
@@ -269,7 +268,7 @@ export default function StorePagesAndSitemapPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">مسودات ومؤرشفة (Draft / Archived)</CardDescription>
-            <CardTitle className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+            <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
               {draftOrArchivedCount}
             </CardTitle>
           </CardHeader>
@@ -280,9 +279,9 @@ export default function StorePagesAndSitemapPage() {
       {/* ── Store Pages & Sitemap Registry Table ──────────────────────────── */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
             <div>
-              <CardTitle className="text-base font-bold flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 font-bold text-base">
                 <FileCheck className="h-4 w-4 text-primary" />
                 سجل صفحات المتجر وخريطة الفهرسة
               </CardTitle>
@@ -290,14 +289,14 @@ export default function StorePagesAndSitemapPage() {
                 قائمة كافة صفحات الهبوط وحالاتها والروابط العامة أو المعاينات المرتبطة بها.
               </CardDescription>
             </div>
-            <Button variant="ghost" size="sm" onClick={loadData} disabled={loading} className="text-xs self-end">
-              <RefreshCw className={`h-3.5 w-3.5 ml-1 ${loading ? "animate-spin" : ""}`} />
+            <Button variant="ghost" size="sm" onClick={loadData} disabled={loading} className="self-end text-xs">
+              <RefreshCw className={`ml-1 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               تحديث السجل
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -312,7 +311,7 @@ export default function StorePagesAndSitemapPage() {
               <TableBody>
                 {pages.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-xs">
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground text-xs">
                       لا توجد صفحات مسجلة حالياً.
                     </TableCell>
                   </TableRow>
@@ -320,8 +319,8 @@ export default function StorePagesAndSitemapPage() {
                   pages.map((page) => (
                     <TableRow key={page.pageId}>
                       <TableCell>
-                        <div className="font-semibold text-xs text-foreground">{page.title}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="font-semibold text-foreground text-xs">{page.title}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5">
                           <Badge variant="outline" className="font-mono text-[10px]">
                             {page.productSku}
                           </Badge>
@@ -335,7 +334,7 @@ export default function StorePagesAndSitemapPage() {
                             href={page.publicUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono"
+                            className="inline-flex items-center gap-1 font-mono text-primary text-xs hover:underline"
                           >
                             <span>{page.publicUrl}</span>
                             <ExternalLink className="h-3 w-3" />
@@ -343,46 +342,46 @@ export default function StorePagesAndSitemapPage() {
                         ) : (
                           <div className="flex items-center gap-1 text-muted-foreground text-xs">
                             <span className="font-mono text-[11px]">/{page.slug}</span>
-                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                            <Badge variant="secondary" className="px-1.5 py-0 text-[9px]">
                               غير منشور علناً
                             </Badge>
                           </div>
                         )}
-                        <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{page.previewPath}</div>
+                        <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{page.previewPath}</div>
                       </TableCell>
 
                       <TableCell>
-                        <div className="text-xs font-mono">{page.templateId}</div>
+                        <div className="font-mono text-xs">{page.templateId}</div>
                         <div className="text-[10px] text-muted-foreground">v{page.templateVersion}</div>
                       </TableCell>
 
                       <TableCell>
                         {page.status === "published" && (
-                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]">
+                          <Badge className="bg-emerald-600 text-[10px] text-white hover:bg-emerald-700">
                             منشور (Published)
                           </Badge>
                         )}
                         {page.status === "preview_ready" && (
                           <Badge
                             variant="secondary"
-                            className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 text-[10px]"
+                            className="border-blue-500/30 bg-blue-500/15 text-[10px] text-blue-700 dark:text-blue-300"
                           >
                             جاهز للمعاينة (Preview)
                           </Badge>
                         )}
                         {page.status === "draft" && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-400 text-[10px]">
+                          <Badge variant="outline" className="border-amber-400 text-[10px] text-amber-600">
                             مسودة (Draft)
                           </Badge>
                         )}
                         {page.status === "archived" && (
-                          <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
                             مؤرشف (Archived)
                           </Badge>
                         )}
                       </TableCell>
 
-                      <TableCell className="text-xs text-muted-foreground font-mono">
+                      <TableCell className="font-mono text-muted-foreground text-xs">
                         {new Date(page.lastGeneratedAt).toLocaleDateString("ar-DZ")}
                       </TableCell>
 
@@ -393,7 +392,7 @@ export default function StorePagesAndSitemapPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 text-[11px] gap-1 text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                className="h-7 gap-1 border-emerald-300 text-[11px] text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                                 nativeButton={false}
                                 render={<a href={page.publicUrl || "#"} target="_blank" rel="noopener noreferrer" />}
                               >
@@ -404,7 +403,7 @@ export default function StorePagesAndSitemapPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 text-[11px] gap-1 text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                className="h-7 gap-1 border-amber-300 text-[11px] text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                                 onClick={() => handleUnpublishPage(page)}
                                 disabled={actionLoading === `unpub_${page.pageId}`}
                                 title="إلغاء نشر الصفحة وحذفها من مسار المتجر"
@@ -419,7 +418,7 @@ export default function StorePagesAndSitemapPage() {
                             <Button
                               variant="default"
                               size="sm"
-                              className="h-7 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className="h-7 gap-1 bg-emerald-600 text-[11px] text-white hover:bg-emerald-700"
                               onClick={() => handlePublishPage(page)}
                               disabled={actionLoading === `pub_${page.pageId}`}
                               title="نشر الصفحة للعملاء في مسار المتجر الفعلي"
@@ -434,7 +433,7 @@ export default function StorePagesAndSitemapPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px] gap-1"
+                            className="h-7 gap-1 text-[11px]"
                             onClick={() => handleGeneratePreview(page)}
                             disabled={actionLoading === page.pageId}
                             title="توليد ومعاينة كود HTML المستقل"
@@ -481,12 +480,12 @@ export default function StorePagesAndSitemapPage() {
 
       {/* ── Safe HTML Preview Modal ───────────────────────────────────────── */}
       <Dialog open={Boolean(previewPage)} onOpenChange={(open) => !open && setPreviewPage(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col text-right" dir="ltr">
+        <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col text-right" dir="ltr">
           <DialogHeader className="border-b pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Code2 className="h-5 w-5 text-primary" />
-                <DialogTitle className="text-base font-bold">معاينة صفحة المنتج: {previewPage?.title}</DialogTitle>
+                <DialogTitle className="font-bold text-base">معاينة صفحة المنتج: {previewPage?.title}</DialogTitle>
               </div>
               <Badge variant="outline" className="font-mono text-xs">
                 {previewPage?.templateId} v{previewPage?.templateVersion}
@@ -498,30 +497,30 @@ export default function StorePagesAndSitemapPage() {
           </DialogHeader>
 
           {/* Tab Switcher */}
-          <div className="flex items-center justify-between border-b py-2 px-1">
+          <div className="flex items-center justify-between border-b px-1 py-2">
             <div className="flex items-center gap-2">
               <Button
                 variant={previewTab === "render" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setPreviewTab("render")}
-                className="text-xs h-7"
+                className="h-7 text-xs"
               >
-                <Eye className="h-3.5 w-3.5 ml-1" />
+                <Eye className="ml-1 h-3.5 w-3.5" />
                 المعاينة البصرية (Visual Frame)
               </Button>
               <Button
                 variant={previewTab === "code" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setPreviewTab("code")}
-                className="text-xs h-7"
+                className="h-7 text-xs"
               >
-                <FileCode2 className="h-3.5 w-3.5 ml-1" />
+                <FileCode2 className="ml-1 h-3.5 w-3.5" />
                 كود HTML المولد (Source)
               </Button>
             </div>
 
             {previewTab === "code" && (
-              <Button variant="outline" size="sm" onClick={copyHtmlCode} className="text-xs h-7 gap-1">
+              <Button variant="outline" size="sm" onClick={copyHtmlCode} className="h-7 gap-1 text-xs">
                 {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
                 {copied ? "تم النسخ!" : "نسخ الكود"}
               </Button>
@@ -531,31 +530,31 @@ export default function StorePagesAndSitemapPage() {
           {/* Modal Content */}
           <div className="flex-1 overflow-auto py-2">
             {previewTab === "render" ? (
-              <div className="w-full h-[520px] rounded-lg border bg-neutral-950 overflow-hidden">
+              <div className="h-[520px] w-full overflow-hidden rounded-lg border bg-neutral-950">
                 <iframe
                   srcDoc={previewHtml}
                   title="Storefront Page Preview"
-                  className="w-full h-full border-none"
+                  className="h-full w-full border-none"
                   sandbox="allow-scripts"
                 />
               </div>
             ) : (
               <div className="relative">
-                <pre className="p-4 rounded-lg bg-neutral-900 text-neutral-200 text-xs font-mono overflow-auto max-h-[520px] text-left direction-ltr">
+                <pre className="direction-ltr max-h-[520px] overflow-auto rounded-lg bg-neutral-900 p-4 text-left font-mono text-neutral-200 text-xs">
                   <code>{previewHtml}</code>
                 </pre>
               </div>
             )}
           </div>
 
-          <DialogFooter className="border-t pt-3 flex items-center justify-between sm:justify-between">
+          <DialogFooter className="flex items-center justify-between border-t pt-3 sm:justify-between">
             <div className="text-[11px] text-muted-foreground">
               المسار المعزول: <code className="font-mono text-primary">{previewPage?.previewPath}</code>
             </div>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
+                className="gap-1.5 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
                 onClick={() => previewPage && handlePublishPage(previewPage)}
                 disabled={actionLoading === `pub_${previewPage?.pageId}`}
               >
@@ -578,7 +577,7 @@ export default function StorePagesAndSitemapPage() {
           <DialogHeader className="border-b pb-3">
             <div className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-primary" />
-              <DialogTitle className="text-base font-bold">سجل خريطة الموقع (Sitemap Index Registry)</DialogTitle>
+              <DialogTitle className="font-bold text-base">سجل خريطة الموقع (Sitemap Index Registry)</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
               تصفية الروابط العامة المفهرسة وفق قواعد محركات البحث (SEO Safety Gate).
@@ -588,11 +587,11 @@ export default function StorePagesAndSitemapPage() {
           <div className="space-y-3 py-2 text-xs">
             <p className="text-muted-foreground leading-relaxed">
               تقتصر الروابط العامة المفهرسة حصرياً على الصفحات المنشورة (
-              <code className="text-primary font-mono text-[11px]">published</code>). أي صفحات جديدة أو مسودات تجريبية
+              <code className="font-mono text-[11px] text-primary">published</code>). أي صفحات جديدة أو مسودات تجريبية
               يتم استبعادها من الفهرسة لتفادي أخطاء 404 أو روابط وهمية.
             </p>
 
-            <div className="rounded-md border p-3 bg-muted/40 font-mono text-[11px] space-y-1.5 direction-ltr text-left overflow-auto max-h-[260px]">
+            <div className="direction-ltr max-h-[260px] space-y-1.5 overflow-auto rounded-md border bg-muted/40 p-3 text-left font-mono text-[11px]">
               <div className="text-muted-foreground">&lt;!-- ORVA Store Sitemap Index --&gt;</div>
               <div className="text-muted-foreground">
                 &lt;urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"&gt;
@@ -603,7 +602,7 @@ export default function StorePagesAndSitemapPage() {
                   <div key={entry.url} className="pl-4 text-emerald-400">
                     &lt;url&gt;
                     <br />
-                    &nbsp;&nbsp;&lt;loc&gt;https://orva-store.com{entry.url}&lt;/loc&gt;
+                    &nbsp;&nbsp;&lt;loc&gt;https://www.orva-store.com{entry.url}&lt;/loc&gt;
                     <br />
                     &nbsp;&nbsp;&lt;lastmod&gt;{entry.lastModified.slice(0, 10)}&lt;/lastmod&gt;
                     <br />

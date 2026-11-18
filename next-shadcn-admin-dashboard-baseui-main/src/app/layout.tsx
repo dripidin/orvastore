@@ -15,6 +15,7 @@ import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provi
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://www.orva-store.com"),
   title: APP_CONFIG.meta.title,
   description: APP_CONFIG.meta.description,
   other: {

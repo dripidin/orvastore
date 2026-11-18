@@ -329,7 +329,7 @@ export default function StoreTrafficPage() {
     });
   };
 
-  const dashboardUrl = data?.dashboardUrl ?? "https://vercel.com/dripalpha/orvastore/analytics";
+  const dashboardUrl = data?.dashboardUrl ?? "https://vercel.com/dripidin2-1079/orvastore/analytics";
   const isConnected = Boolean(data?.connected && data.summary);
   const isCustomEventFilterActive = activeFilter?.key === "eventName";
   const maxSeriesValue = Math.max(

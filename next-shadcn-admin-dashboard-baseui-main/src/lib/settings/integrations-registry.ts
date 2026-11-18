@@ -352,7 +352,7 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     availableCapabilities: [
       "AdminSessionGate password barrier",
       "Isolated demo mode session storage (local development only)",
-      "Strict CSRF Origin whitelist check (orva-store.com, localhost:3000, 127.0.0.1:3000)",
+      "Strict CSRF Origin whitelist check (www.orva-store.com, orva-store.com, localhost:3000, 127.0.0.1:3000)",
       "Timing-safe password comparison (hash_equals / crypto.timingSafeEqual)",
     ],
     managementMethod: "Integrated authentication gateway and session store",

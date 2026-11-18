@@ -273,6 +273,7 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
     .join("\n");
 
   const cleanSlug = storePage.slug.replace(/^products\//, "").replace(/\.html$/, "");
+  const siteOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://www.orva-store.com").replace(/\/$/, "");
   const canonicalPath = isProduction
     ? (storePage.publicUrl ? storePage.publicUrl.replace(/\.html$/, "") : `/products/${cleanSlug}`)
     : "";
@@ -285,7 +286,7 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
     <meta name="robots" content="${isProduction ? "index, follow" : "noindex, nofollow"}">
     <title>${safeTitle} — ${formatPriceDzd(sellingPrice)}</title>
     <meta name="description" content="${escapeHtml(storePage.metaDescription || safeSubtitle)}">
-    ${isProduction && canonicalPath ? `<link rel="canonical" href="https://orva-store.com${canonicalPath}">` : ""}
+    ${isProduction && canonicalPath ? `<link rel="canonical" href="${siteOrigin}${canonicalPath}">` : ""}
 
     <!-- Generator Metadata (Phase 8B Lifecycle Model) -->
     <!-- Template: ${escapeHtml(storePage.templateId)} v${escapeHtml(storePage.templateVersion)} -->

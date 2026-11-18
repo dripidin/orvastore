@@ -419,8 +419,8 @@ export async function testTelegramNotificationAction(
   }
 
   const sampleOrderNumber = 'PACK2-67904';
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://orvastore.vercel.app').replace(/\/$/, '');
-  const dashboardOrderUrl = `${appUrl}/admin.html?orderId=${encodeURIComponent(sampleOrderNumber)}`;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.orva-store.com').replace(/\/$/, '');
+  const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce/?orderId=${encodeURIComponent(sampleOrderNumber)}#orders`;
   const sampleText = [
     `👑 *طلب جديد: عرض 5 في 1 الفاخر (PACK 5EN1 — 13,390 د.ج)*`,
     `━━━━━━━━━━━━━━━━━━`,

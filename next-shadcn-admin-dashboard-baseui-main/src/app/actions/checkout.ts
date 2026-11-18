@@ -119,8 +119,8 @@ async function triggerTelegramAlert(params: {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://orvastore.vercel.app').replace(/\/$/, '');
-    const dashboardOrderUrl = `${appUrl}/admin.html?orderId=${encodeURIComponent(params.orderNumber)}`;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.orva-store.com').replace(/\/$/, '');
+    const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce/?orderId=${encodeURIComponent(params.orderNumber)}#orders`;
 
     const meta = getPackNotificationMeta(
       params.packId,

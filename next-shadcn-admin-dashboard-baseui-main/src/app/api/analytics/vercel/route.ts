@@ -19,6 +19,7 @@ const ALLOWED_FILTER_DIMENSIONS = new Set([
 interface VercelProjectConfig {
   projectId: string;
   teamId: string;
+  teamSlug: string;
   projectName: string;
 }
 
@@ -36,8 +37,9 @@ interface TimeseriesPoint {
 }
 
 function readVercelProjectConfig(): VercelProjectConfig {
-  let projectId = process.env.VERCEL_PROJECT_ID || "prj_QO9oV9rX9En9UgVZeLD6xa8X7m7t";
-  let teamId = process.env.VERCEL_TEAM_ID || "team_Csxw1YZzzCNQeQgJXApoZekM";
+  let projectId = process.env.VERCEL_PROJECT_ID || "prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx";
+  let teamId = process.env.VERCEL_TEAM_ID || "team_cYT8gZkkTTbR60uqUXL6aRPH";
+  const teamSlug = process.env.VERCEL_TEAM_SLUG || "dripidin2-1079";
   let projectName = process.env.VERCEL_PROJECT_NAME || "orvastore";
 
   try {
@@ -56,7 +58,7 @@ function readVercelProjectConfig(): VercelProjectConfig {
     // Fallback to environment or default workspace project identifiers
   }
 
-  return { projectId, teamId, projectName };
+  return { projectId, teamId, teamSlug, projectName };
 }
 
 function resolveDateRange(period: VercelPeriod): { since: string; until: string; timeDimension: "hour" | "day" } {
@@ -162,7 +164,7 @@ export async function GET(request: NextRequest) {
   const odataFilter = buildODataFilter(filterKey, filterValue);
 
   const project = readVercelProjectConfig();
-  const dashboardUrl = `https://vercel.com/dripalpha/${project.projectName}/analytics`;
+  const dashboardUrl = `https://vercel.com/${project.teamSlug}/${project.projectName}/analytics`;
   const token = (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN || "").trim();
 
   const basePayload = {

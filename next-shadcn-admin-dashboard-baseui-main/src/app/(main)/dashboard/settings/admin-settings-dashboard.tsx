@@ -638,7 +638,7 @@ export function AdminSettingsDashboard() {
                   <div className="text-slate-600 font-mono text-[10px]">━━━━━━━━━━━━━━━━━━</div>
                   <div className="text-[10px] text-slate-400 italic">📌 الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</div>
                   <div><span className="text-sky-400 underline cursor-pointer">👉 [لوحة التحكم (Admin Dashboard)]</span></div>
-                  <div className="text-[11px] text-sky-400/90 break-all select-all">https://orvastore.vercel.app/admin.html?orderId=PACK2-67904</div>
+                  <div className="text-[11px] text-sky-400/90 break-all select-all">https://www.orva-store.com/dashboard/ecommerce/?orderId=PACK2-67904#orders</div>
                 </div>
               </div>
             </CardContent>
