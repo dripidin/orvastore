@@ -1,0 +1,29 @@
+# ORVA Store Algeria (orva-store.com)
+
+> ORVA Store DZ is an Algerian e-commerce hardware and workshop equipment store offering CROWN and STARCLE PRO tools, tool kits, and accessories, with Cash on Delivery (COD), parcel inspection before payment, and shipping across all 58 Algerian wilayas.
+
+- Canonical Domain: `orva-store.com` (HTTPS)
+- Content-Signal Policy: search=yes, ai-input=yes, ai-train=no
+- Languages: Arabic (ar-DZ), French (fr-DZ)
+- Currency: DZD (Algerian Dinar)
+- Customer Support Phone: tel:+213798282495
+- Customer Support Email: mailto:contact@orva-store.com
+- WhatsApp Business: https://wa.me/213798282495
+
+## Storefront Pages
+
+- [Homepage](https://orva-store.com/): Main storefront featuring CROWN & STARCLE PRO workshop kits, delivery guarantees, FAQs, and product request form.
+- [All Products Catalog](https://orva-store.com/shop/): Authoritative live catalog for current product availability, stock status, and DZD pricing (static links below are snapshots and are not dynamically synchronized).
+- [Pack 1 — 4-in-1 Tire Compressor & Socket Wrench Kit](https://orva-store.com/pack1/): Portable TOYOTA 12V tire compressor, 46-piece STARCLE PRO socket/wrench set, 11-piece flexible driver, and 6-piece screwdriver kit (4,950 DZD snapshot price).
+- [Pack 2 — CROWN 20V Cordless Drill Kit](https://orva-store.com/pack2/): CROWN 20V cordless power drill pack with 2 batteries, 46-piece socket set, flexible driver, 6 screwdrivers, and GILAN gloves (13,390 DZD snapshot price; check `/shop/` for live stock).
+- [ORVA P4 CROWN Pack](https://orva-store.com/p/orva-p4-crown/): CROWN workshop pack with 700W Tronçonneuse, 3.6V cordless screwdriver, 600W 13mm drill, flexible driver, and GILAN gloves (15,200 DZD snapshot price; check `/shop/` for live stock).
+- [Pack 3 — CROWN MMA-200 MINI Welding Pack](https://orva-store.com/pack3/): Heavy-duty CROWN MMA-200 MINI welding kit with GILAN protective gloves, welding mask, wire brush, cables, and screwdrivers (15,950 DZD snapshot price).
+- [About ORVA Store](https://orva-store.com/about/): Business profile, direct-to-customer original CROWN & STARCLE PRO equipment supply, and delivery coverage across all 58 Algerian wilayas.
+- [Contact Us](https://orva-store.com/contact/): Direct phone hotline, email support, WhatsApp contact, and order assistance.
+- [Terms of Sale](https://orva-store.com/terms/): Terms of sale, Cash on Delivery, parcel inspection before payment, and defect exchange policy.
+
+## Agent & Machine-Readable Interfaces
+
+- Markdown Representation (`Accept: text/markdown`): Send HTTP header `Accept: text/markdown` to supported public storefront URLs above to receive lightweight Markdown instead of HTML.
+- [Sitemap XML](https://orva-store.com/sitemap.xml): Up-to-date XML URL index for public pages and published catalog entries.
+- [MCP Server Card (SEP-1649)](https://orva-store.com/.well-known/mcp/server-card.json): Machine-readable metadata and tool capabilities for ORVA Store's public read-only catalog and 58-wilaya delivery fee MCP endpoint (`https://orva-store.com/api/mcp/`).
