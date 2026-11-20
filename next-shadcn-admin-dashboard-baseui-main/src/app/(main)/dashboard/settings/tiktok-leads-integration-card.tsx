@@ -1216,7 +1216,7 @@ export function TikTokLeadsIntegrationCard({
                           {issue.key}: {issue.code}
                         </Badge>
                       ))}
-                      {!readiness.redirectUriValid && (
+                      {!readiness.redirectUriValid && readiness.redirectUriHttps === false && (
                         <Badge
                           variant="destructive"
                           className="font-mono text-[10px]"

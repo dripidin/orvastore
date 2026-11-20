@@ -779,6 +779,13 @@ export function validateTikTokEnvironment(
     }
   }
 
+  // In production mode, override missing or stale localhost defaults with canonical store origin
+  if (modeResolution.mode === "production") {
+    if (!expectedOrigin || /localhost|127\.0\.0\.1/i.test(expectedOrigin)) {
+      expectedOrigin = CANONICAL_ORVA_PRODUCTION_ORIGIN;
+    }
+  }
+
   const effectiveNodeEnvForRedirect =
     overrides?.nodeEnv ??
     (modeResolution.mode === "production" ? "production" : process.env.NODE_ENV ?? "development");
