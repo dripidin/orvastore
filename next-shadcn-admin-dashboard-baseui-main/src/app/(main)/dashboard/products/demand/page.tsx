@@ -33,7 +33,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 
 import {
   AlgeriaMap,
@@ -374,7 +373,7 @@ export default function ProductDemandByWilayaPage() {
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5 mt-1">
               <Globe2 className="size-7 text-primary" />
-              <span>طلب المنتجات حسب الولايات (Product Demand by Wilaya)</span>
+              <span>طلب المنتجات حسب الولايات</span>
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               تحليل جغرافي لتوزيع الطلبات ومعدلات التحويل وحصة كل ولاية عبر خريطة الجزائر التفاعلية (58 ولاية).
@@ -407,9 +406,6 @@ export default function ProductDemandByWilayaPage() {
           </div>
         </div>
       </header>
-
-      {/* Dev Environment Banner */}
-      <DevEnvironmentBanner />
 
       {/* Load Error Alert (Live Mode connection failure) */}
       {loadError && (

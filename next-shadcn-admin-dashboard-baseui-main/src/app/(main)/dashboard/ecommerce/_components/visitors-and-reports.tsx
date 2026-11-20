@@ -92,13 +92,6 @@ export function VisitorsAndReports() {
           <h2 className="flex items-center gap-2 text-xl font-bold">
             <BarChart3 className="size-5 text-primary" aria-hidden="true" />
             تقارير الزيارات والحملات التسويقية
-            <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30 bg-emerald-500/5 mr-2">
-              <span className="relative flex h-1.5 w-1.5 inline-block mr-1">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-              </span>
-              Vercel Web Analytics
-            </Badge>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             تحليلات حركة الزوار، أداء القنوات الإعلانية، ومؤشرات تحويل الطلبات الفعلية لمتجر ORVA.

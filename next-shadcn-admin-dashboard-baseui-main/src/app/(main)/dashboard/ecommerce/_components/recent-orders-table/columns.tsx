@@ -37,7 +37,7 @@ import {
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import { maskDemoPhone } from "@/lib/phone-utils";
 
-import type { OrderRow } from "./schema";
+import { matchesOrderFilter, resolveOperationalOrderBucket, type OrderFilter, type OrderRow } from "./schema";
 import { getAvailableTransitions } from "./status-transitions";
 
 function formatOrderDate(date: string) {
@@ -55,15 +55,23 @@ function OperationalStatusBadge({
   status,
   inRedex,
   carrierStatus,
+  trackingCode,
 }: {
   status: string;
   inRedex?: boolean;
   carrierStatus?: string | null;
+  trackingCode?: string | null;
 }) {
   const s = (status || "").toLowerCase();
   const cs = (carrierStatus || "").toLowerCase();
+  const bucket = resolveOperationalOrderBucket({
+    status,
+    in_redex: inRedex,
+    carrier_status: carrierStatus,
+    redex_tracking_code: trackingCode,
+  });
 
-  if (s === "delivered") {
+  if (bucket === "Delivered") {
     return (
       <Badge
         variant="outline"
@@ -75,7 +83,7 @@ function OperationalStatusBadge({
     );
   }
 
-  if (s === "cancelled" || s === "canceled" || s === "deleted") {
+  if (bucket === "Cancelled") {
     return (
       <Badge
         variant="outline"
@@ -87,7 +95,7 @@ function OperationalStatusBadge({
     );
   }
 
-  if (s === "returned") {
+  if (bucket === "Returned") {
     return (
       <Badge
         variant="outline"
@@ -99,29 +107,19 @@ function OperationalStatusBadge({
     );
   }
 
-  if (s === "redex_station" || cs === "vers_station" || cs === "vers_hub") {
-    return (
-      <Badge
-        variant="outline"
-        className="border-purple-600/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold gap-1 text-[11px]"
-      >
-        <Truck className="size-3" />
-        Redex Station
-      </Badge>
-    );
-  }
+  if (bucket === "Shipped") {
+    if (s === "redex_station" || cs === "vers_station" || cs === "vers_hub") {
+      return (
+        <Badge
+          variant="outline"
+          className="border-purple-600/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold gap-1 text-[11px]"
+        >
+          <Truck className="size-3" />
+          Redex Station
+        </Badge>
+      );
+    }
 
-  if (
-    s === "shipped" ||
-    cs === "en_ramassage" ||
-    cs === "picked" ||
-    cs === "accepted_by_carrier" ||
-    cs === "en_hub" ||
-    cs === "vers_wilaya" ||
-    cs === "en_preparation" ||
-    cs === "en_livraison" ||
-    cs === "dispatched_to_driver"
-  ) {
     return (
       <Badge
         variant="outline"
@@ -133,13 +131,7 @@ function OperationalStatusBadge({
     );
   }
 
-  if (
-    s === "pushed" ||
-    inRedex ||
-    cs === "prete_a_expedier" ||
-    cs === "order_information_received_by_carrier" ||
-    cs === "notification_on_order"
-  ) {
+  if (bucket === "Pushed to Redex") {
     return (
       <Badge
         variant="outline"
@@ -151,7 +143,7 @@ function OperationalStatusBadge({
     );
   }
 
-  if (s === "confirmed") {
+  if (bucket === "Confirmed") {
     return (
       <Badge
         variant="outline"
@@ -316,6 +308,7 @@ export function createRecentOrdersColumns(
               status={row.original.status}
               inRedex={row.original.in_redex}
               carrierStatus={row.original.carrier_status}
+              trackingCode={row.original.redex_tracking_code || row.original.redex_tracking_id}
             />
             <SwitchStatusBadge
               isSwitched={row.original.isSwitched}
@@ -343,44 +336,7 @@ export function createRecentOrdersColumns(
       },
       filterFn: (row, _columnId, value) => {
         if (!value || value === "All") return true;
-        const s = (row.original.status || "").toLowerCase();
-        const score = row.original.riskScore || 0;
-
-        if (value === "Pending") return s === "pending" || s === "review" || s === "قيد الانتظار" || s === "قيد المراجعة";
-        if (value === "Confirmed") return s === "confirmed" && !row.original.in_redex;
-        if (value === "Pushed to Redex") {
-          const cs = (row.original.carrier_status || "").toLowerCase();
-          return (
-            s === "pushed" ||
-            (Boolean(row.original.in_redex) &&
-              s !== "redex_station" &&
-              cs !== "vers_station" &&
-              cs !== "vers_hub" &&
-              s !== "shipped" &&
-              s !== "delivered" &&
-              s !== "returned" &&
-              s !== "cancelled")
-          );
-        }
-        if (value === "Redex Station") {
-          const cs = (row.original.carrier_status || "").toLowerCase();
-          return s === "redex_station" || cs === "vers_station" || cs === "vers_hub";
-        }
-        if (value === "Shipped") return s === "shipped" || Boolean(row.original.in_redex);
-        if (value === "Delivered") return s === "delivered";
-        if (value === "Cancelled") return s === "cancelled" || s === "deleted";
-        if (value === "Switched Only") return row.original.isSwitched;
-        if (value === "Risk") {
-          return (
-            score >= 40 ||
-            row.original.riskLevel === "HIGH" ||
-            row.original.riskDecision === "BLOCK" ||
-            row.original.riskDecision === "REVIEW" ||
-            s === "review"
-          );
-        }
-
-        return true;
+        return matchesOrderFilter(row.original, String(value) as OrderFilter | "Redex Station");
       },
     },
     {

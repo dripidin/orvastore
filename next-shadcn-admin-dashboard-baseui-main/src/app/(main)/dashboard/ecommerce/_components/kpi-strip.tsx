@@ -227,15 +227,7 @@ export function KpiStrip() {
             {/* 1. Total Sales (Delivered Only) */}
             <Card className="h-full rounded-none border-0 border-border border-b ring-0 md:border-r">
               <CardHeader>
-                <div className="flex items-center gap-1.5">
-                  <CardTitle className="font-normal text-sm">Total Sales</CardTitle>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                  >
-                    Delivered
-                  </Badge>
-                </div>
+                <CardTitle className="font-normal text-sm">Total Sales</CardTitle>
                 <CardDescription className="text-2xl sm:text-3xl text-foreground tabular-nums leading-none tracking-tight">
                   {isLoadingOrders ? loadingPlaceholder : formatDzd(metrics.deliveredRevenueDzd)}
                 </CardDescription>

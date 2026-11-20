@@ -32,7 +32,6 @@ import {
   Truck,
 } from "lucide-react";
 
-import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -277,8 +276,6 @@ export default function ProductPageDesigner() {
 
   return (
     <div className="space-y-6 pb-20">
-      <DevEnvironmentBanner />
-
       {/* ── Page Header ────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5">
         <div>
@@ -293,7 +290,7 @@ export default function ProductPageDesigner() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2 mt-1">
             <LayoutTemplate className="h-6 w-6 text-primary" />
-            محرر صفحات المنتجات (Product Page Designer)
+            محرر صفحات المنتجات
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             التحكم البصري في ترتيب معرض الصور، نموذج الطلب، المميزات والمنتجات المقترحة مع محاكي متجر آمن 100%.

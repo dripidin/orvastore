@@ -14,5 +14,10 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1"
+  },
+  "overrides": {
+    "systeminformation": ">=5.33.23",
+    "minimatch": "^11.0.9",
+    "postcss": "^8.5.33"
   }
 }

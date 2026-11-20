@@ -505,18 +505,15 @@ export function AlgeriaMap({
                 <Navigation className="size-4 text-primary" />
                 <span>Algeria Delivery &amp; Shipment Map</span>
               </CardTitle>
-              <Badge variant="outline" className="border-border bg-background/50 text-muted-foreground text-[11px] gap-1">
-                <span>{wilayaStats.size} ولاية نشطة في بيانات الاختبار (58 ولاية مدعومة)</span>
-              </Badge>
               {switchedRoute && (
                 <Badge variant="outline" className="border-purple-500/50 bg-purple-500/10 text-purple-700 text-[11px] font-semibold animate-pulse flex items-center gap-1">
                   <ArrowLeftRight className="size-3" />
-                  <span>تتبع طلبية محوّلة (مسار 3 نقاط)</span>
+                  <span>تتبع طلبية محوّلة</span>
                 </Badge>
               )}
             </div>
             <CardDescription className="text-xs">
-              خريطة تفاعلية متجاوبة تدعم التكبير والتصغير والتحريك (Zoom & Pan)، مع تتبع مسارات التحويل ثلاثية النقاط للطلبيات المحوّلة.
+              خريطة تفاعلية متجاوبة تدعم التكبير والتصغير والتحريك، مع تتبع مسارات التحويل للطلبيات المحوّلة عبر 58 ولاية.
             </CardDescription>
           </div>
 

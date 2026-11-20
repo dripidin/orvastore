@@ -5,7 +5,7 @@ export default function Page() {
     <div className="flex flex-col gap-6" dir="ltr">
       <header className="space-y-1 border-b pb-4">
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-          أفضل المنتجات مبيعاً (Top Products)
+          أفضل المنتجات مبيعاً
         </h1>
         <p className="text-sm text-muted-foreground">
           ترتيب أداء المنتجات الأكثر مبيعاً وطلباً استناداً إلى بيانات طلبيات المتجر الحقيقية والمبيعات المحصلة.

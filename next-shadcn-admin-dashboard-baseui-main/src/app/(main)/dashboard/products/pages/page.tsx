@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 
 import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
-import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -189,8 +188,6 @@ export default function StorePagesAndSitemapPage() {
 
   return (
     <div className="space-y-6 pb-20" dir="ltr">
-      <DevEnvironmentBanner />
-
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col justify-between gap-4 border-b pb-5 md:flex-row md:items-center">
         <div>
@@ -205,7 +202,7 @@ export default function StorePagesAndSitemapPage() {
           </div>
           <h1 className="mt-1 flex items-center gap-2 font-bold text-2xl text-foreground tracking-tight">
             <Globe className="h-6 w-6 text-primary" />
-            إدارة صفحات المتجر وخريطة الموقع (Store Pages & Sitemap)
+            إدارة صفحات المتجر وخريطة الموقع
           </h1>
           <p className="mt-0.5 text-muted-foreground text-xs">
             نظام توليد وإدارة صفحات الهبوط العامة للمتجر، مع المعاينة المعزولة وإدارة مسارات الإنتاج.

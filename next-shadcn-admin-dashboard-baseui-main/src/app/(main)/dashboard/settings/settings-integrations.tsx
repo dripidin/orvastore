@@ -10,7 +10,6 @@ import {
   Check,
   CheckCircle2,
   Copy,
-  ExternalLink,
   Eye,
   EyeOff,
   Globe,
@@ -18,12 +17,12 @@ import {
   Info,
   Key,
   Loader2,
+  Megaphone,
   RefreshCw,
   Save,
   ShieldCheck,
   Sparkles,
   Tag,
-  Terminal,
   Trash2,
   Truck,
   Upload,
@@ -51,6 +50,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { IntegrationStatus } from "@/lib/settings/integrations-registry";
 import { getAppRepositoryMode } from "@/lib/orva-api";
+import { TikTokLeadsIntegrationCard } from "./tiktok-leads-integration-card";
+import {
+  TIKTOK_API_ENDPOINTS,
+  type TikTokConnectionBadgeSummary,
+  deriveTikTokConnectionUiState,
+} from "./tiktok-leads-types";
 
 interface PublicSettingsPayload {
   redex?: {
@@ -102,18 +107,6 @@ interface PublicSettingsPayload {
     projectNumber: string;
     model: string;
     apiKey: string;
-    isConfigured: boolean;
-    tokenSource: string;
-    updatedAt: string | null;
-    status: string;
-  };
-  vercelAnalytics?: {
-    enabled: boolean;
-    projectId: string;
-    teamId: string;
-    projectName: string;
-    teamSlug: string;
-    dashboardUrl: string;
     isConfigured: boolean;
     tokenSource: string;
     updatedAt: string | null;
@@ -173,15 +166,24 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
 export function SettingsIntegrations() {
   const searchParams = useSearchParams();
   const requestedTab = searchParams?.get("tab");
+  const ALLOWED_TABS = ["general", "gemini", "analytics", "tiktok", "delivery", "notifications"];
   const [activeTab, setActiveTab] = React.useState<string>(
-    requestedTab && ["general", "gemini", "analytics", "delivery", "notifications"].includes(requestedTab)
+    requestedTab && ALLOWED_TABS.includes(requestedTab)
       ? requestedTab
       : "general",
   );
+  const [tiktokStatusSummary, setTiktokStatusSummary] =
+    React.useState<TikTokConnectionBadgeSummary>({
+      state: "not_connected",
+      badgeStatus: "not_connected",
+      labelAr: "غير متصل",
+      descriptionAr: "",
+      requiresReconnect: false,
+    });
   const repoMode = typeof window !== "undefined" ? getAppRepositoryMode() : "mock";
 
   React.useEffect(() => {
-    if (requestedTab && ["general", "gemini", "analytics", "delivery", "notifications"].includes(requestedTab)) {
+    if (requestedTab && ["general", "gemini", "analytics", "tiktok", "delivery", "notifications"].includes(requestedTab)) {
       setActiveTab(requestedTab);
     }
   }, [requestedTab]);
@@ -226,7 +228,7 @@ export function SettingsIntegrations() {
   const [metaFeedback, setMetaFeedback] = React.useState<ActionFeedback | null>(null);
 
   // Store Logo State
-  const [storeLogoUrl, setStoreLogoUrl] = React.useState<string>("/images/orva-logo.svg");
+  const [storeLogoUrl, setStoreLogoUrl] = React.useState<string>("/images/orva-logo.png");
   const [storeLogoSaving, setStoreLogoSaving] = React.useState<boolean>(false);
   const [logoFeedback, setLogoFeedback] = React.useState<ActionFeedback | null>(null);
   const logoFileInputRef = React.useRef<HTMLInputElement>(null);
@@ -259,18 +261,7 @@ export function SettingsIntegrations() {
     redexTrackedCount: number;
     latencyMs?: number;
   } | null>(null);
-  const [copiedCurl, setCopiedCurl] = React.useState<boolean>(false);
   const [copiedReport, setCopiedReport] = React.useState<boolean>(false);
-
-  // Vercel Web Analytics State
-  const [vercelEnabled, setVercelEnabled] = React.useState<boolean>(true);
-  const [vercelToken, setVercelToken] = React.useState<string>("");
-  const [showVercelToken, setShowVercelToken] = React.useState<boolean>(false);
-  const [vercelProjectId, setVercelProjectId] = React.useState<string>("prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx");
-  const [vercelTeamId, setVercelTeamId] = React.useState<string>("team_cYT8gZkkTTbR60uqUXL6aRPH");
-  const [vercelSaving, setVercelSaving] = React.useState<boolean>(false);
-  const [vercelTesting, setVercelTesting] = React.useState<boolean>(false);
-  const [vercelFeedback, setVercelFeedback] = React.useState<ActionFeedback | null>(null);
 
   const applyServerSettings = React.useCallback((settings: PublicSettingsPayload) => {
     setServerSettings(settings);
@@ -303,11 +294,6 @@ export function SettingsIntegrations() {
       if (settings.geminiAi.apiKey) {
         setGeminiApiKey(settings.geminiAi.apiKey);
       }
-    }
-    if (settings.vercelAnalytics) {
-      setVercelEnabled(settings.vercelAnalytics.enabled !== false);
-      setVercelProjectId(settings.vercelAnalytics.projectId || "prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx");
-      setVercelTeamId(settings.vercelAnalytics.teamId || "team_cYT8gZkkTTbR60uqUXL6aRPH");
     }
   }, []);
 
@@ -359,6 +345,41 @@ export function SettingsIntegrations() {
   React.useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  // Fetch local TikTok Ads connection summary for the Quick-Jump Strip (zero external TikTok API calls)
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadTikTokQuickStatus = async () => {
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        };
+        if (typeof window !== "undefined") {
+          const token = localStorage.getItem("orva_admin_token");
+          if (token) headers["Authorization"] = `Bearer ${token}`;
+        }
+        const res = await fetch(TIKTOK_API_ENDPOINTS.connect, {
+          method: "GET",
+          headers,
+          credentials: "same-origin",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.success) {
+          setTiktokStatusSummary(
+            deriveTikTokConnectionUiState(data.readiness ?? null, data.connection ?? null),
+          );
+        }
+      } catch {
+        // Keep honest default status without throwing
+      }
+    };
+    void loadTikTokQuickStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Generic API caller with Server Action fallback
   const callSettingsApi = async (body: Record<string, unknown>) => {
@@ -780,31 +801,6 @@ export function SettingsIntegrations() {
   const effectivePreviewModel =
     geminiModel && geminiModel !== "auto" ? geminiModel : geminiResolvedModel || "gemini-flash-lite-latest";
 
-  const geminiCurlSnippet = `curl "https://generativelanguage.googleapis.com/v1beta/models/${effectivePreviewModel}:generateContent" \\
-  -H 'Content-Type: application/json' \\
-  -H 'X-goog-api-key: ${showGeminiKey && geminiApiKey ? geminiApiKey : "YOUR_GEMINI_API_KEY"}' \\
-  -X POST \\
-  -d '{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": "أعطني التقرير الأخير لعدد الطلبيات والتقرير العام لأداء متجر ORVA Store"
-          }
-        ]
-      }
-    ]
-  }'`;
-
-  const handleCopyCurl = () => {
-    const rawCurl = `curl "https://generativelanguage.googleapis.com/v1beta/models/${effectivePreviewModel}:generateContent" \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-goog-api-key: ${geminiApiKey || "YOUR_GEMINI_API_KEY"}' \\\n  -X POST \\\n  -d '{\n    "contents": [\n      {\n        "parts": [\n          {\n            "text": "Explain how AI works in a few words"\n          }\n        ]\n      }\n    ]\n  }'`;
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      void navigator.clipboard.writeText(rawCurl);
-      setCopiedCurl(true);
-      setTimeout(() => setCopiedCurl(false), 2000);
-    }
-  };
-
   const handleCopyReport = () => {
     if (!geminiTestReport) return;
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -814,82 +810,11 @@ export function SettingsIntegrations() {
     }
   };
 
-  // ── Vercel Web Analytics Handlers ───────────────────────────────────────────
-  const handleSaveVercelAnalytics = async () => {
-    setVercelSaving(true);
-    setVercelFeedback(null);
-    try {
-      const payload: Record<string, unknown> = {
-        enabled: vercelEnabled,
-        projectId: vercelProjectId.trim() || "prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx",
-        teamId: vercelTeamId.trim() || "team_cYT8gZkkTTbR60uqUXL6aRPH",
-      };
-      if (vercelToken.trim()) {
-        payload.token = vercelToken.trim();
-      }
-      await callSettingsApi({ action: "save", vercelAnalytics: payload });
-      setVercelToken("");
-      setVercelFeedback({
-        type: "success",
-        message: "تم حفظ إعدادات Vercel Web Analytics و VERCEL_TOKEN على الخادم و Supabase بنجاح.",
-      });
-      await fetchSettings();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "تعذر حفظ إعدادات Vercel Web Analytics.";
-      setVercelFeedback({ type: "error", message: msg });
-    } finally {
-      setVercelSaving(false);
-    }
-  };
-
-  const handleTestVercelAnalytics = async () => {
-    setVercelTesting(true);
-    setVercelFeedback(null);
-    try {
-      const res = await callSettingsApi({
-        action: "test",
-        integration: "vercelAnalytics",
-        token: vercelToken.trim() || undefined,
-        projectId: vercelProjectId.trim() || undefined,
-        teamId: vercelTeamId.trim() || undefined,
-      });
-      const test = res.testResult;
-      setVercelFeedback({
-        type: test?.authenticated ? "success" : "error",
-        message: test?.message || "تعذّر فحص اتصال Vercel Web Analytics.",
-      });
-      await fetchSettings();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "فشل فحص اتصال Vercel Web Analytics.";
-      setVercelFeedback({ type: "error", message: msg });
-    } finally {
-      setVercelTesting(false);
-    }
-  };
-
-  const handleClearVercelToken = async () => {
-    if (!confirm("هل أنت متأكد من مسح رمز VERCEL_TOKEN المحفوظ؟")) return;
-    setVercelSaving(true);
-    setVercelFeedback(null);
-    try {
-      await callSettingsApi({ action: "delete", integration: "vercelAnalytics", field: "token" });
-      setVercelToken("");
-      setVercelFeedback({ type: "info", message: "تم مسح رمز VERCEL_TOKEN بنجاح." });
-      await fetchSettings();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "تعذر مسح رمز VERCEL_TOKEN.";
-      setVercelFeedback({ type: "error", message: msg });
-    } finally {
-      setVercelSaving(false);
-    }
-  };
-
   const isRedexConfigured = Boolean(serverSettings?.redex?.isConfigured);
   const isTgConfigured = Boolean(serverSettings?.telegram?.isConfigured);
   const isMetaConfigured = Boolean(serverSettings?.metaPixel?.isConfigured);
   const hasMetaCapi = Boolean(serverSettings?.metaPixel?.hasCapiToken);
   const isGeminiConfigured = Boolean(serverSettings?.geminiAi?.isConfigured || geminiApiKey.trim());
-  const isVercelConfigured = Boolean(serverSettings?.vercelAnalytics?.isConfigured || vercelToken.trim());
 
   return (
     <div className="space-y-6" dir="ltr">
@@ -899,11 +824,11 @@ export function SettingsIntegrations() {
           <Info className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div className="space-y-1 text-xs">
             <div className="font-bold text-blue-950 dark:text-blue-200">
-              إدارة الإعدادات، الذكاء الاصطناعي (Gemini AI)، والتكاملات المركزية (Secure Dynamic Integration Management)
+              إدارة الإعدادات والذكاء الاصطناعي والتكاملات المركزية
             </div>
             <p className="text-blue-800 dark:text-blue-300 leading-relaxed">
-              يمكنك إدارة وتحديث إعدادات وكيل الذكاء الاصطناعي <strong>Orva Agent AI (Google Gemini API)</strong>، رموز الربط لشركات الشحن (Redex)، بوت تيليجرام، وMeta Pixel مباشرة من هذه اللوحة.
-              يتم حفظ الأسرار بأمان على الخادم وفي قاعدة بيانات Supabase مع استمراريتها الكاملة.
+              يمكنك إدارة وتحديث إعدادات مساعد الذكاء الاصطناعي <strong>{geminiName || "Orva Agent AI"}</strong>، ورموز الربط لشركات الشحن، وبوت تيليجرام، وبيكسل فيسبوك مباشرة من هذه اللوحة.
+              يتم حفظ الإعدادات بأمان على الخادم وفي قاعدة البيانات.
             </p>
           </div>
         </div>
@@ -920,7 +845,7 @@ export function SettingsIntegrations() {
       </div>
 
       {/* Active Integrations Status & Quick-Jump Strip */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" dir="rtl">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" dir="rtl">
         <div
           onClick={() => setActiveTab("gemini")}
           className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
@@ -941,11 +866,9 @@ export function SettingsIntegrations() {
               label={isGeminiConfigured ? (geminiEnabled ? "متصل ونشط" : "متوقف") : "غير مهيأ"}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground font-mono" dir="ltr">
-            <span>{geminiProjectName || "projects/347934146406"}</span>
-            <Badge variant="secondary" className="text-[10px] font-mono">
-              {geminiModel === "auto" ? "Auto Router" : geminiModel || "Auto Router"}
-            </Badge>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>التوجيه التلقائي الذكي</span>
+            <span>{geminiModel === "auto" ? "تلقائي" : geminiModel}</span>
           </div>
         </div>
 
@@ -983,27 +906,43 @@ export function SettingsIntegrations() {
               <div className="flex size-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
                 <BarChart3 className="size-4" />
               </div>
-              <span>Meta Pixel & Vercel</span>
+              <span>Meta Pixel & CAPI</span>
             </div>
             <StatusBadge
-              status={
-                isMetaConfigured || isVercelConfigured
-                  ? "operational"
-                  : serverSettings?.metaPixel?.status || "not_configured"
-              }
-              label={
-                isMetaConfigured && isVercelConfigured
-                  ? "متصلان ونشطان"
-                  : isMetaConfigured
-                    ? "Pixel متصل"
-                    : "Vercel SDK مفعّل"
-              }
+              status={isMetaConfigured ? "operational" : serverSettings?.metaPixel?.status || "not_configured"}
+              label={isMetaConfigured ? "متصل ونشط" : "غير مهيأ"}
             />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>تتبع الحملات وتحليلات الزوار</span>
+            <span>تتبع الحملات والأحداث عبر السيرفر</span>
             <Badge variant="outline" className="text-[10px]">
-              {isVercelConfigured ? "VERCEL_TOKEN ✓" : "أضف VERCEL_TOKEN"}
+              {hasMetaCapi ? "CAPI v19 ✓" : "Browser Pixel"}
+            </Badge>
+          </div>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("tiktok")}
+          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+            activeTab === "tiktok" ? "border-indigo-500 bg-indigo-500/5 ring-1 ring-indigo-500/20" : "bg-card"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <Megaphone className="size-4" />
+              </div>
+              <span>TikTok Ads</span>
+            </div>
+            <StatusBadge
+              status={tiktokStatusSummary.badgeStatus}
+              label={tiktokStatusSummary.labelAr}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>النماذج الفورية وطلبيات COD</span>
+            <Badge variant="outline" className="text-[10px]">
+              Lead Gen
             </Badge>
           </div>
         </div>
@@ -1038,7 +977,7 @@ export function SettingsIntegrations() {
           <TabsList className="h-auto p-1 bg-muted/60 flex flex-nowrap w-max gap-1">
             <TabsTrigger value="general" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <Globe className="size-3.5" />
-              <span>General Settings</span>
+              <span>Store Settings</span>
             </TabsTrigger>
             <TabsTrigger value="gemini" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <Sparkles className="size-3.5 text-emerald-500" />
@@ -1046,7 +985,11 @@ export function SettingsIntegrations() {
             </TabsTrigger>
             <TabsTrigger value="analytics" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <BarChart3 className="size-3.5" />
-              <span>Analytics & Meta Pixel</span>
+              <span>Meta Pixel & CAPI</span>
+            </TabsTrigger>
+            <TabsTrigger value="tiktok" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
+              <Megaphone className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>TikTok Ads</span>
             </TabsTrigger>
             <TabsTrigger value="delivery" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
               <Truck className="size-3.5" />
@@ -1105,7 +1048,7 @@ export function SettingsIntegrations() {
                           type="text"
                           value={storeLogoUrl}
                           onChange={(e) => setStoreLogoUrl(e.target.value)}
-                          placeholder="مسار الشعار: /images/orva-logo.svg أو رابط كامل"
+                          placeholder="مسار الشعار: /images/orva-logo.png أو رابط كامل"
                           className="h-8 text-xs font-mono"
                           dir="ltr"
                         />
@@ -1159,7 +1102,69 @@ export function SettingsIntegrations() {
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1 md:col-span-2">
                   <div className="text-muted-foreground font-semibold">المنطقة الزمنية للمتجر (Store Timezone):</div>
                   <div className="font-extrabold text-sm text-foreground font-mono">Africa/Algiers (UTC+1)</div>
-                  <div className="text-[11px] text-muted-foreground">تعتمد حسابات اليوم والأسبوع وتحليلات الزوار حصراً على توقيت الجزائر الرسمي.</div>
+                  <div className="text-[11px] text-muted-foreground">تعتمد حسابات اليوم والأسبوع وتقارير الطلبيات حصراً على توقيت الجزائر الرسمي.</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Integrated Gemini AI Section inside Store Settings */}
+          <Card className="border-emerald-500/30 shadow-xs">
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Sparkles className="size-4 text-emerald-500" />
+                    <span>GEMINI AI INTEGRATION — {geminiName || "Orva Agent AI"}</span>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    مدمج الآن مباشرة ضمن إعدادات المتجر: تحكّم في تفعيل مساعد الذكاء الاصطناعي ومفاتيح Google Gemini API.
+                  </CardDescription>
+                </div>
+                <StatusBadge
+                  status={serverSettings?.geminiAi?.status || (isGeminiConfigured ? "operational" : "not_configured")}
+                  label={isGeminiConfigured ? (geminiEnabled ? "متصل ونشط" : "متوقف") : "غير مهيأ"}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3.5">
+                <div className="space-y-0.5">
+                  <div className="font-bold text-foreground">حالة الوكيل والنموذج النشط</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {geminiModel === "auto" ? "التوجيه التلقائي لأسرع نموذج متاح" : geminiModel}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="store-settings-gemini-switch" className="text-xs font-semibold cursor-pointer">
+                      {geminiEnabled ? "مفعّل" : "معطّل"}
+                    </Label>
+                    <Switch
+                      id="store-settings-gemini-switch"
+                      checked={geminiEnabled}
+                      onCheckedChange={async (checked) => {
+                        setGeminiEnabled(checked);
+                        await callSettingsApi({
+                          action: "save",
+                          geminiAi: { enabled: checked },
+                        });
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("orva:gemini-settings-updated"));
+                        }
+                        await fetchSettings();
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setActiveTab("gemini")}
+                    className="h-8 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs"
+                  >
+                    <Bot className="size-3.5" />
+                    <span>فتح إعدادات Gemini AI Integration</span>
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -1173,27 +1178,13 @@ export function SettingsIntegrations() {
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base font-bold flex items-center gap-2">
-                        <Bot className="size-4 text-emerald-600" />
-                        <span>نظام تكامل الذكاء الاصطناعي — {geminiName || "Orva Agent AI"} (Google Gemini API)</span>
-                      </CardTitle>
-                      <Badge variant="secondary" className="text-[11px] font-mono">
-                        {geminiModel === "auto" ? `Auto (${geminiResolvedModel || "Live Working Model"})` : geminiModel}
-                      </Badge>
-                      <StatusBadge
-                        status={serverSettings?.geminiAi?.status || (isGeminiConfigured ? "operational" : "not_configured")}
-                        label={isGeminiConfigured ? (geminiEnabled ? "Connected & Active" : "Disabled") : "Not Configured"}
-                      />
-                    </div>
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <Bot className="size-4 text-emerald-600" />
+                      <span>إعدادات الذكاء الاصطناعي — {geminiName || "Orva Agent AI"}</span>
+                    </CardTitle>
                     <CardDescription className="text-xs">
-                      إدارة كاملة لمحرك Google Gemini API المرتبط ببطاقة المحادثة الذكية (Spectrum UI AI Chat Card) مع توجيه تلقائي لأسرع نموذج شغال وتوقف آمن عند الانقطاع.
+                      إدارة محرك الذكاء الاصطناعي المرتبط بنافذة المحادثة الذكية مع توجيه تلقائي لأسرع نموذج متاح وتوقف آمن عند الانقطاع.
                     </CardDescription>
-                  </div>
-
-                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs font-medium font-mono">
-                    <ShieldCheck className="size-4 text-emerald-600" />
-                    <span>Project: {geminiProjectNumber || "347934146406"}</span>
                   </div>
                 </div>
               </CardHeader>
@@ -1329,7 +1320,7 @@ export function SettingsIntegrations() {
                       </Button>
                     </div>
                     <div className="text-[11px] text-muted-foreground">
-                      يُرسل عبر ترويسة <code className="font-mono">X-goog-api-key</code> من الخادم فقط، ويُحفظ في Supabase وبيئة الخادم.
+                      يُرسل المفتاح من الخادم فقط ويُحفظ بشكل آمن في قاعدة البيانات.
                     </div>
                   </div>
 
@@ -1469,38 +1460,6 @@ export function SettingsIntegrations() {
                 )}
               </CardFooter>
             </Card>
-
-            {/* cURL & REST API Reference Blueprint Card */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="space-y-0.5">
-                    <CardTitle className="text-sm font-bold flex items-center gap-2">
-                      <Terminal className="size-4 text-emerald-600" />
-                      <span>مرجع الاتصال المباشر بـ Google Gemini REST API (cURL Blueprint)</span>
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      أمر الاتصال المعتمد لمشروع <code className="font-mono">{geminiProjectName || "projects/347934146406"}</code> باستخدام الترويسة الرسمية <code className="font-mono">X-goog-api-key</code>.
-                    </CardDescription>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyCurl}
-                    className="h-8 text-xs gap-1.5"
-                  >
-                    {copiedCurl ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-                    <span>{copiedCurl ? "تم النسخ" : "نسخ أمر cURL"}</span>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <pre className="overflow-x-auto rounded-xl bg-slate-950 p-3.5 font-mono text-[11px] leading-relaxed text-emerald-300" dir="ltr">
-                  {geminiCurlSnippet}
-                </pre>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
@@ -1510,44 +1469,32 @@ export function SettingsIntegrations() {
             {/* First-Party Analytics */}
             <Card className="md:col-span-1">
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-bold flex items-center gap-2">
-                    <BarChart3 className="size-4 text-primary" />
-                    First-Party Analytics
-                  </CardTitle>
-                  <StatusBadge status="connected" label="Active & Private" />
-                </div>
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <BarChart3 className="size-4 text-primary" />
+                  التحليلات الداخلية
+                </CardTitle>
                 <CardDescription className="text-xs">
                   نظام القياس الداخلي الخصوصي 100%.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
-                <div>• قياس الجلسات وحركات التصفح (Store Traffic)</div>
-                <div>• رصد معاينة المنتجات (ViewContent Telemetry)</div>
-                <div>• رصد إرسال الطلبات (InitiateCheckout & Purchase)</div>
+                <div>• قياس الجلسات وحركات التصفح</div>
+                <div>• رصد معاينة المنتجات</div>
+                <div>• رصد إرسال الطلبات وإتمام الشراء</div>
                 <div>• التوزيع الجغرافي وحساب حصص الولايات (58 ولاية)</div>
-                <div>• تجميع البيانات وفق روزنامة الجزائر (UTC+1)</div>
+                <div>• تجميع البيانات وفق روزنامة الجزائر</div>
               </CardContent>
             </Card>
 
-            {/* Unified Meta Pixel & CAPI v19.0 Card */}
+            {/* Unified Meta Pixel & CAPI Card */}
             <Card className="md:col-span-2">
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base font-bold flex items-center gap-2">
-                        <Tag className="size-4 text-blue-600" />
-                        إعدادات تتبع الحملات — Meta Pixel & Conversions API
-                      </CardTitle>
-                      <Badge variant="secondary" className="text-[11px] font-mono">
-                        v19.0 Graph API
-                      </Badge>
-                      <StatusBadge
-                        status={serverSettings?.metaPixel?.status || "not_configured"}
-                        label={isMetaConfigured ? "Configured & Active" : "Not Configured"}
-                      />
-                    </div>
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <Tag className="size-4 text-blue-600" />
+                      إعدادات تتبع الحملات — Meta Pixel &amp; Conversions API
+                    </CardTitle>
                     <CardDescription className="text-xs">
                       تتبع دقيق عالي التحويل لمبيعات COD مع تفادي حظر الكوكيز وإلغاء الازدواجية البرمجية (Deduplication) وإرسال الأحداث عبر المتصفح والخادم دون إعادة بناء الموقع.
                     </CardDescription>
@@ -1762,228 +1709,6 @@ export function SettingsIntegrations() {
                 </div>
               </CardFooter>
             </Card>
-
-            {/* Vercel Web Analytics Card (Active Zero-Cookie Platform Telemetry & VERCEL_TOKEN) */}
-            <Card className="md:col-span-3 border-emerald-500/30">
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-base font-bold flex items-center gap-2">
-                        <Globe className="size-4 text-emerald-600" />
-                        تحليلات الزوار — Vercel Web Analytics (VERCEL_TOKEN)
-                      </CardTitle>
-                      <Badge variant="secondary" className="text-[11px] font-mono">
-                        @vercel/analytics/next
-                      </Badge>
-                      <StatusBadge
-                        status={
-                          isVercelConfigured
-                            ? vercelEnabled
-                              ? "operational"
-                              : "not_connected"
-                            : "configured"
-                        }
-                        label={
-                          isVercelConfigured
-                            ? vercelEnabled
-                              ? "API Token Connected"
-                              : "API Sync Disabled"
-                            : "SDK Active (Awaiting VERCEL_TOKEN)"
-                        }
-                      />
-                    </div>
-                    <CardDescription className="text-xs">
-                      مكوّن <code className="font-mono">&lt;Analytics /&gt;</code> مفعّل ويعمل على{" "}
-                      <span className="font-mono">www.orva-store.com</span>. أضف{" "}
-                      <code className="font-mono">VERCEL_TOKEN</code> لعرض أرقام الزوار والصفحات والمصادر الحية داخل
-                      لوحة التحكم مباشرة.
-                    </CardDescription>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      nativeButton={false}
-                      render={
-                        <a
-                          href="https://vercel.com/account/tokens"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      }
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                    >
-                      <span>إنشاء VERCEL_TOKEN</span>
-                      <ExternalLink className="size-3.5" />
-                    </Button>
-                    <Button
-                      nativeButton={false}
-                      render={
-                        <a
-                          href={
-                            serverSettings?.vercelAnalytics?.dashboardUrl ||
-                            "https://vercel.com/dripidin2-1079/orvastore/analytics"
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      }
-                      variant="secondary"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                    >
-                      <span>لوحة Vercel</span>
-                      <ExternalLink className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 text-xs">
-                {vercelFeedback && (
-                  <Alert variant={vercelFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
-                    {vercelFeedback.type === "error" ? (
-                      <AlertCircle className="size-4" />
-                    ) : (
-                      <CheckCircle2 className="size-4" />
-                    )}
-                    <AlertTitle className="text-xs font-bold">
-                      {vercelFeedback.type === "error" ? "تنبيه" : "نتيجة العملية"}
-                    </AlertTitle>
-                    <AlertDescription className="text-xs mt-0.5">{vercelFeedback.message}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="vercel-analytics-toggle" className="text-xs font-bold cursor-pointer">
-                      مزامنة إحصائيات Vercel Web Analytics داخل لوحة الإدارة
-                    </Label>
-                    <div className="text-[11px] text-muted-foreground">
-                      سحب أعداد الزوار والمشاهدات والمصادر وأهم الصفحات إلى لوحة Store Overview و Store Traffic.
-                    </div>
-                  </div>
-                  <Switch
-                    id="vercel-analytics-toggle"
-                    checked={vercelEnabled}
-                    onCheckedChange={setVercelEnabled}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5 md:col-span-1">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="vercel-token-input" className="text-xs font-semibold">
-                        VERCEL_TOKEN (Access Token):
-                      </Label>
-                      {isVercelConfigured && (
-                        <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
-                          🔒 محفوظ على الخادم
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="vercel-token-input"
-                        type={showVercelToken ? "text" : "password"}
-                        value={vercelToken}
-                        onChange={(e) => setVercelToken(e.target.value)}
-                        placeholder={
-                          isVercelConfigured
-                            ? "•••••••••••••••••••• (محفوظ — اتركه فارغاً للإبقاء عليه)"
-                            : "الصق VERCEL_TOKEN هنا"
-                        }
-                        className="font-mono text-xs flex-1"
-                        dir="ltr"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        onClick={() => setShowVercelToken((prev) => !prev)}
-                        title={showVercelToken ? "إخفاء الرمز" : "إظهار الرمز"}
-                      >
-                        {showVercelToken ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                      </Button>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      المصدر الحالي: {serverSettings?.vercelAnalytics?.tokenSource || "غير مهيأ"}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="vercel-project-id" className="text-xs font-semibold">
-                      VERCEL_PROJECT_ID:
-                    </Label>
-                    <Input
-                      id="vercel-project-id"
-                      type="text"
-                      value={vercelProjectId}
-                      onChange={(e) => setVercelProjectId(e.target.value)}
-                      placeholder="prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx"
-                      className="font-mono text-xs"
-                      dir="ltr"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="vercel-team-id" className="text-xs font-semibold">
-                      VERCEL_TEAM_ID:
-                    </Label>
-                    <Input
-                      id="vercel-team-id"
-                      type="text"
-                      value={vercelTeamId}
-                      onChange={(e) => setVercelTeamId(e.target.value)}
-                      placeholder="team_cYT8gZkkTTbR60uqUXL6aRPH"
-                      className="font-mono text-xs"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-
-              <CardFooter className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleSaveVercelAnalytics}
-                    disabled={vercelSaving}
-                    className="text-xs gap-1.5 h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    {vercelSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                    <span>حفظ إعدادات Vercel Analytics</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestVercelAnalytics}
-                    disabled={vercelTesting}
-                    className="text-xs gap-1.5 h-8"
-                  >
-                    {vercelTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
-                    <span>فحص الاتصال وجلب الزيارات</span>
-                  </Button>
-                </div>
-                {isVercelConfigured && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearVercelToken}
-                    disabled={vercelSaving}
-                    className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-8"
-                  >
-                    <Trash2 className="size-3.5" />
-                    <span>مسح VERCEL_TOKEN</span>
-                  </Button>
-                )}
-              </CardFooter>
-            </Card>
           </div>
         </TabsContent>
 
@@ -2129,7 +1854,7 @@ export function SettingsIntegrations() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
                   <Bell className="size-4 text-primary" />
-                  إشعارات تيليجرام اللحظية (Telegram Bot Order Alerts)
+                  إشعارات تيليجرام اللحظية
                 </CardTitle>
                 <StatusBadge
                   status={serverSettings?.telegram?.status || "not_configured"}
@@ -2281,6 +2006,16 @@ export function SettingsIntegrations() {
               )}
             </CardFooter>
           </Card>
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            TAB: TIKTOK ADS LEAD GENERATION INTEGRATION (PHASE C)
+           ═══════════════════════════════════════════════════════════════════ */}
+        <TabsContent value="tiktok" className="mt-4">
+          <TikTokLeadsIntegrationCard
+            callbackParams={searchParams}
+            onStatusChange={setTiktokStatusSummary}
+          />
         </TabsContent>
       </Tabs>
     </div>

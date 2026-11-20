@@ -19,45 +19,6 @@ export type EcommercePeriod =
 
 export type EcommerceChannel = "all-channels" | "meta" | "direct" | "tiktok" | "google" | "manual";
 
-export interface VercelAnalyticsDimensionRow {
-  label: string;
-  visitors: number;
-  pageviews: number;
-  percent: number;
-}
-
-export interface VercelAnalyticsTimeseriesPoint {
-  bucket: string;
-  visitors: number;
-  pageviews: number;
-}
-
-export interface VercelAnalyticsOverview {
-  success: boolean;
-  connected: boolean;
-  vercelTokenConfigured?: boolean;
-  reason?: string;
-  message?: string;
-  dashboardUrl: string;
-  syncedAt: string | null;
-  summary: {
-    visitors: number;
-    pageviews: number;
-    pagesPerVisit: number;
-    customEventsTotal: number;
-  } | null;
-  timeseries: VercelAnalyticsTimeseriesPoint[];
-  panels: {
-    pages: VercelAnalyticsDimensionRow[];
-    referrers: VercelAnalyticsDimensionRow[];
-    countries: VercelAnalyticsDimensionRow[];
-    os: VercelAnalyticsDimensionRow[];
-    devices: VercelAnalyticsDimensionRow[];
-    browsers: VercelAnalyticsDimensionRow[];
-    events: VercelAnalyticsDimensionRow[];
-  };
-}
-
 export interface TopProductItem {
   id: string;
   name: string;
@@ -335,12 +296,6 @@ export function computeInventoryStats(products: Product[]): InventoryBreakdownSt
   };
 }
 
-function mapOverviewPeriodToVercelPeriod(period: EcommercePeriod): "7d" | "30d" | "90d" {
-  if (period === "last-7-days") return "7d";
-  if (period === "this-month" || period === "last-month" || period === "last-30-days") return "30d";
-  return "90d";
-}
-
 export interface EcommerceOverviewContextValue {
   period: EcommercePeriod;
   setPeriod: (p: EcommercePeriod) => void;
@@ -351,12 +306,9 @@ export interface EcommerceOverviewContextValue {
   products: Product[];
   inventoryStats: InventoryBreakdownStats;
   topProducts: TopProductItem[];
-  vercelAnalytics: VercelAnalyticsOverview | null;
   isLoadingOrders: boolean;
   isLoadingProducts: boolean;
-  isLoadingAnalytics: boolean;
   isRefreshing: boolean;
-  lastSyncedAt: string | null;
   refreshAll: () => Promise<void>;
   formattedToday: string;
 }
@@ -387,8 +339,6 @@ export function EcommerceOverviewProvider({ children }: { children: React.ReactN
 
   const [products, setProducts] = React.useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = React.useState(true);
-  const [vercelAnalytics, setVercelAnalytics] = React.useState<VercelAnalyticsOverview | null>(null);
-  const [isLoadingAnalytics, setIsLoadingAnalytics] = React.useState(true);
   const [manualRefreshing, setManualRefreshing] = React.useState(false);
 
   const loadProducts = React.useCallback(async () => {
@@ -403,33 +353,6 @@ export function EcommerceOverviewProvider({ children }: { children: React.ReactN
     }
   }, []);
 
-  const loadVercelAnalytics = React.useCallback(async (targetPeriod: EcommercePeriod) => {
-    setIsLoadingAnalytics(true);
-    try {
-      const headers: Record<string, string> = { "X-Requested-With": "XMLHttpRequest" };
-      if (typeof window !== "undefined") {
-        const token = window.localStorage.getItem("orva_admin_token");
-        if (token) headers.Authorization = `Bearer ${token}`;
-      }
-      const vercelPeriod = mapOverviewPeriodToVercelPeriod(targetPeriod);
-      const res = await fetch(`/api/analytics/vercel?period=${vercelPeriod}`, {
-        cache: "no-store",
-        credentials: "same-origin",
-        headers,
-      });
-      if (res.ok) {
-        const json = (await res.json()) as VercelAnalyticsOverview;
-        if (json.success) {
-          setVercelAnalytics(json);
-        }
-      }
-    } catch (err) {
-      console.warn("[EcommerceOverview] Could not fetch Vercel Web Analytics:", err);
-    } finally {
-      setIsLoadingAnalytics(false);
-    }
-  }, []);
-
   React.useEffect(() => {
     void loadProducts();
     const handleCatalogUpdate = () => void loadProducts();
@@ -441,18 +364,14 @@ export function EcommerceOverviewProvider({ children }: { children: React.ReactN
     };
   }, [loadProducts]);
 
-  React.useEffect(() => {
-    void loadVercelAnalytics(period);
-  }, [loadVercelAnalytics, period]);
-
   const refreshAll = React.useCallback(async () => {
     setManualRefreshing(true);
     try {
-      await Promise.all([refreshOrders(), loadProducts(), loadVercelAnalytics(period)]);
+      await Promise.all([refreshOrders(), loadProducts()]);
     } finally {
       setManualRefreshing(false);
     }
-  }, [refreshOrders, loadProducts, loadVercelAnalytics, period]);
+  }, [refreshOrders, loadProducts]);
 
   const filteredOrders = React.useMemo(
     () => filterOrdersByOverviewFilters(orders, period, channel),
@@ -475,12 +394,9 @@ export function EcommerceOverviewProvider({ children }: { children: React.ReactN
       products,
       inventoryStats,
       topProducts,
-      vercelAnalytics,
       isLoadingOrders,
       isLoadingProducts,
-      isLoadingAnalytics,
       isRefreshing: isRefreshingOrders || manualRefreshing,
-      lastSyncedAt: vercelAnalytics?.syncedAt || null,
       refreshAll,
       formattedToday,
     }),
@@ -492,10 +408,8 @@ export function EcommerceOverviewProvider({ children }: { children: React.ReactN
       products,
       inventoryStats,
       topProducts,
-      vercelAnalytics,
       isLoadingOrders,
       isLoadingProducts,
-      isLoadingAnalytics,
       isRefreshingOrders,
       manualRefreshing,
       refreshAll,

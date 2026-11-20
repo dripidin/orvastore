@@ -1,0 +1,41 @@
+{
+  "serverInfo": {
+    "name": "orva-store-mcp",
+    "title": "ORVA Store Algeria Catalog & Delivery MCP Server",
+    "version": "1.0.0"
+  },
+  "name": "orva-store-mcp",
+  "version": "1.0.0",
+  "description": "Public read-only MCP server for ORVA Store Algeria (orva-store.com) providing product catalog pricing in DZD, 58-wilaya COD delivery fee lookups, and store contact/legal information.",
+  "endpoint": "https://orva-store.com/api/mcp/",
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "https://orva-store.com/api/mcp/"
+  },
+  "documentationUrl": "https://orva-store.com/llms.txt",
+  "authentication": {
+    "required": false
+  },
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    },
+    "resources": {
+      "listChanged": false
+    }
+  },
+  "tools": [
+    {
+      "name": "list_orva_products",
+      "description": "List published workshop tool packs and hardware kits from ORVA Store with current DZD pricing and URLs."
+    },
+    {
+      "name": "get_wilaya_delivery_fees",
+      "description": "Look up home delivery (Domicile) and pickup desk (Stop Desk) shipping fees in DZD across all 58 Algerian wilayas."
+    },
+    {
+      "name": "get_store_contact_info",
+      "description": "Retrieve ORVA Store business details, customer service telephone, email, WhatsApp, and legal page URLs."
+    }
+  ]
+}

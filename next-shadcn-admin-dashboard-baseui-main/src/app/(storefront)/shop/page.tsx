@@ -10,6 +10,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "كل المنتجات | متجر أورفا ORVA STORE DZ",
   description: "جميع باقات وأدوات متجر أورفا الأصلية — الدفع عند الاستلام والتوصيل إلى 58 ولاية.",
+  alternates: {
+    canonical: "https://orva-store.com/shop/",
+  },
 };
 
 const PROMISES = [

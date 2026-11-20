@@ -2,22 +2,28 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { Flame, LayoutGrid, Package, Wrench } from "lucide-react";
 import { formatDzd, type NavProduct } from "@/lib/catalog/types";
+import { OFFICIAL_STORE_LOGO_URL, normalizeStoreLogoUrl } from "@/lib/settings/settings-store";
 import { PhoneBadge } from "./phone-badge";
 
 const NAV_ICONS = [Package, Flame, Wrench];
 
-export function StorefrontHeader({ products = [] }: { products?: NavProduct[] }) {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+export function StorefrontHeader({
+  products = [],
+  logoUrl: initialLogoUrl,
+}: {
+  products?: NavProduct[];
+  logoUrl?: string;
+}) {
+  const [logoUrl, setLogoUrl] = useState<string>(() => normalizeStoreLogoUrl(initialLogoUrl));
 
   useEffect(() => {
     let active = true;
     fetch("/api/store-branding")
       .then((response) => response.json())
       .then((data: { logoUrl?: string }) => {
-        if (active && data.logoUrl) setLogoUrl(data.logoUrl);
+        if (active && data.logoUrl) setLogoUrl(normalizeStoreLogoUrl(data.logoUrl));
       })
       .catch(() => undefined);
     return () => { active = false; };
@@ -28,14 +34,16 @@ export function StorefrontHeader({ products = [] }: { products?: NavProduct[] })
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-4">
         {/* Brand Logo & Slogan */}
         <Link href="/" className="flex items-center gap-3 group focus:outline-hidden">
-          <div className="size-10 sm:size-11 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center overflow-hidden text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
-            {logoUrl ? (
-              // Dashboard logos may be uploaded data URLs or configured image paths.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt="" className="size-full object-contain bg-white p-1" />
-            ) : (
-              <Wrench className="size-5 sm:size-6 drop-shadow-xs" />
-            )}
+          <div className="size-11 sm:size-12 rounded-full flex items-center justify-center overflow-hidden shrink-0 drop-shadow-sm group-hover:scale-105 transition-transform">
+            {/* Official ORVA DZ emblem (transparent PNG / custom uploaded branding). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoUrl || OFFICIAL_STORE_LOGO_URL}
+              alt="ORVA Store Algeria"
+              width={48}
+              height={48}
+              className="size-full object-contain"
+            />
           </div>
           <div className="flex flex-col">
             <div className="flex items-baseline gap-1">

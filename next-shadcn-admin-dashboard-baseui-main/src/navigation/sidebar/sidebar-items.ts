@@ -1,6 +1,5 @@
 import {
   Boxes,
-  ChartBar,
   Forklift,
   Gauge,
   Globe,
@@ -10,7 +9,6 @@ import {
   Package,
   Settings2,
   ShoppingBag,
-  Sparkles,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -76,23 +74,10 @@ export const sidebarItems: NavGroup[] = [
         icon: Gauge,
       },
       {
-        id: "store-traffic",
-        title: "Store Traffic",
-        url: "/dashboard/store-traffic",
-        icon: ChartBar,
-      },
-      {
         id: "settings",
-        title: "Settings & Carriers",
+        title: "Store Settings",
         url: "/dashboard/settings",
         icon: Settings2,
-      },
-      {
-        id: "gemini-ai-settings",
-        title: "Gemini AI Integration",
-        url: "/dashboard/settings?tab=gemini",
-        icon: Sparkles,
-        badge: "new",
       },
     ],
   },

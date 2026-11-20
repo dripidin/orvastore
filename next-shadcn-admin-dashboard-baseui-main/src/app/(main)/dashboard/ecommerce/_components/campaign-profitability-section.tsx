@@ -139,12 +139,10 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 font-bold text-base">
               <Calculator className="size-4 text-emerald-500" />
-              محرك ربحية الحملات التلقائي (Attribution &amp; Redex Profitability)
+              محرك ربحية الحملات التلقائي
             </CardTitle>
             <CardDescription className="text-xs">
-              يربط كل طلبية بمعرفات الحملة (<code className="font-mono">fb_campaign_id</code>,{" "}
-              <code className="font-mono">utm_campaign</code>) وحالة التسليم الفعلية في Redex (
-              <code className="font-mono">redex_tracking_id</code>) لحساب صافي الربح و ROAS لكل حملة.
+              يربط كل طلبية بمعرفات الحملة وحالة التسليم الفعلية في شركة التوصيل لحساب صافي الربح والعائد على الإنفاق الإعلاني لكل حملة.
             </CardDescription>
           </div>
 

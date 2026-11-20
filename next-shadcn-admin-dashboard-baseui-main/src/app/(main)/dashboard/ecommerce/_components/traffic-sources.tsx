@@ -2,15 +2,12 @@
 
 import * as React from "react";
 
-import Link from "next/link";
-
-import { ArrowUpRight, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import { Bar, BarChart, LabelList, type LabelProps, XAxis, YAxis } from "recharts";
 import { type SimpleIcon as SimpleIconType, siGoogle, siMeta, siTiktok, siWhatsapp } from "simple-icons";
 
 import { SimpleIcon } from "@/components/simple-icon";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
 
 import { resolveOrderChannelKey, useEcommerceOverview } from "./ecommerce-overview-context";
@@ -52,30 +49,6 @@ type SourceChangeLabelProps = LabelProps & {
 
 function getNumber(value: number | string | undefined) {
   return typeof value === "number" ? value : Number(value);
-}
-
-function classifyHostname(rawLabel: string): {
-  key: string;
-  name: string;
-  icon: SimpleIconType | null;
-} {
-  const lower = rawLabel.trim().toLowerCase();
-  if (!lower || lower.includes("مباشر") || lower === "direct" || lower.includes("orva-store")) {
-    return { key: "direct", name: "Direct", icon: null };
-  }
-  if (lower.includes("facebook") || lower.includes("fb.com") || lower.includes("instagram") || lower.includes("meta")) {
-    return { key: "meta", name: "Meta Ads", icon: siMeta };
-  }
-  if (lower.includes("google")) {
-    return { key: "google", name: "Google", icon: siGoogle };
-  }
-  if (lower.includes("tiktok")) {
-    return { key: "tiktok", name: "TikTok", icon: siTiktok };
-  }
-  if (lower.includes("whatsapp") || lower.includes("wa.me")) {
-    return { key: "whatsapp", name: "WhatsApp", icon: siWhatsapp };
-  }
-  return { key: `ref:${lower}`, name: rawLabel, icon: null };
 }
 
 function TrafficSourceIconLabel({ height, index, width, x, y, items }: IconLabelProps) {
@@ -160,64 +133,12 @@ function TrafficSourceShareLabel({ height, value, y }: SourceChangeLabelProps) {
 }
 
 export function TrafficSources() {
-  const { channel, filteredOrders, vercelAnalytics, isLoadingOrders, isLoadingAnalytics } = useEcommerceOverview();
-
-  const hasVercelReferrers = Boolean(
-    vercelAnalytics?.connected && vercelAnalytics.panels.referrers && vercelAnalytics.panels.referrers.length > 0,
-  );
-
-  const [modeOverride, setModeOverride] = React.useState<"auto" | "vercel" | "orders">("auto");
-
-  const activeMode: "vercel" | "orders" = React.useMemo(() => {
-    if (modeOverride === "orders") return "orders";
-    if (modeOverride === "vercel" && hasVercelReferrers) return "vercel";
-    if (channel === "all-channels" && hasVercelReferrers) return "vercel";
-    return "orders";
-  }, [modeOverride, hasVercelReferrers, channel]);
+  const { filteredOrders, isLoadingOrders } = useEcommerceOverview();
 
   const { trafficSources, totalCount } = React.useMemo<{
     trafficSources: TrafficSourceItem[];
     totalCount: number;
   }>(() => {
-    if (activeMode === "vercel" && vercelAnalytics?.panels.referrers) {
-      const grouped = new Map<string, { name: string; count: number; icon: SimpleIconType | null }>();
-
-      for (const row of vercelAnalytics.panels.referrers) {
-        const classified = classifyHostname(row.label);
-        const prev = grouped.get(classified.key) ?? {
-          name: classified.name,
-          count: 0,
-          icon: classified.icon,
-        };
-        prev.count += Number(row.visitors || 0);
-        grouped.set(classified.key, prev);
-      }
-
-      const entries = Array.from(grouped.entries())
-        .filter(([, item]) => item.count > 0)
-        .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 5);
-
-      const total = entries.reduce((sum, [, item]) => sum + item.count, 0);
-      return {
-        totalCount: vercelAnalytics.summary?.visitors ?? total,
-        trafficSources: entries.map(([key, item]) => {
-          const share = total > 0 ? Math.max(4, Math.round((item.count / total) * 100)) : 0;
-          const realPct = total > 0 ? Math.round((item.count / total) * 100) : 0;
-          return {
-            key,
-            name: item.name,
-            count: item.count,
-            countLabel: `${item.count.toLocaleString("en-US")} visits`,
-            share,
-            shareText: `${realPct}%`,
-            icon: item.icon,
-          };
-        }),
-      };
-    }
-
-    // Real Order Attribution sources from Supabase orders
     const orderGroups = new Map<string, { name: string; count: number; icon: SimpleIconType | null }>();
     for (const order of filteredOrders) {
       const ch = resolveOrderChannelKey(order);
@@ -261,51 +182,22 @@ export function TrafficSources() {
         };
       }),
     };
-  }, [activeMode, vercelAnalytics, filteredOrders]);
+  }, [filteredOrders]);
 
   const headline = React.useMemo(() => {
-    if (isLoadingOrders && isLoadingAnalytics) return "…";
-    return activeMode === "vercel"
-      ? `${totalCount.toLocaleString("en-US")} visits`
-      : `${totalCount.toLocaleString("en-US")} attributed orders`;
-  }, [isLoadingOrders, isLoadingAnalytics, activeMode, totalCount]);
+    if (isLoadingOrders) return "…";
+    return `${totalCount.toLocaleString("en-US")} attributed orders`;
+  }, [isLoadingOrders, totalCount]);
 
   return (
     <Card className="h-full">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="font-normal text-muted-foreground text-sm">Traffic Sources</CardTitle>
-          {hasVercelReferrers && (
-            <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-              <Button
-                type="button"
-                size="xs"
-                variant={activeMode === "vercel" ? "secondary" : "ghost"}
-                onClick={() => setModeOverride("vercel")}
-                className="h-5 px-2 text-[10px]"
-              >
-                Vercel Visits
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant={activeMode === "orders" ? "secondary" : "ghost"}
-                onClick={() => setModeOverride("orders")}
-                className="h-5 px-2 text-[10px]"
-              >
-                Order Attribution
-              </Button>
-            </div>
-          )}
+          <CardTitle className="font-normal text-muted-foreground text-sm">Order Attribution Sources</CardTitle>
         </div>
         <CardDescription className="text-foreground text-xl tabular-nums leading-none tracking-tight">
           {headline}
         </CardDescription>
-        <CardAction>
-          <Link href="/dashboard/store-traffic" aria-label="Open Traffic Sources Analytics">
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </CardAction>
       </CardHeader>
 
       <CardContent>

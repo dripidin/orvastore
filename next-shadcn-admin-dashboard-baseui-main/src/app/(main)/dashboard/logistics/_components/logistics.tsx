@@ -6,15 +6,12 @@ import {
   AlertCircle,
   Forklift,
   RefreshCw,
-  ShieldCheck,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchOrvaOrders, formatDzd, type OrvaOrder } from "@/lib/orva-api";
 
-import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { OrderSwitchDialog } from "../../ecommerce/_components/order-switch-dialog";
 import { AlgeriaMap } from "./algeria-map";
 import { DeliveryStatsStrip } from "./delivery-stats-strip";
@@ -133,16 +130,9 @@ export function Logistics() {
               <Forklift className="size-6 text-primary" />
               <span>ORVA STORE — LOGISTICS</span>
             </h1>
-            <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 text-xs font-semibold">
-              Origin Hub: Biskra (07)
-            </Badge>
           </div>
-          <p className="text-muted-foreground text-xs sm:text-sm flex items-center gap-2">
-            <span>نظام لوجستي متكامل لإدارة وجهات الشحن، وحساب المسافات الجغرافية، وتتبع بوليصات Redex</span>
-            <span>•</span>
-            <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium text-xs">
-              <ShieldCheck className="size-3.5" /> بيانات GeoAlgeria الرسمية مفعلة
-            </span>
+          <p className="text-muted-foreground text-xs sm:text-sm">
+            نظام لوجستي متكامل لإدارة وجهات الشحن، وحساب المسافات الجغرافية، وتتبع بوليصات التوصيل عبر 58 ولاية.
           </p>
         </div>
 
@@ -161,8 +151,6 @@ export function Logistics() {
 
         </div>
       </div>
-
-      <DevEnvironmentBanner />
 
       {loadError && (
 

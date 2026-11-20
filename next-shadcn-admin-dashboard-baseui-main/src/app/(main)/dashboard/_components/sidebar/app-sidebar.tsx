@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 
-import { Command } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -15,6 +14,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
+import { OFFICIAL_STORE_LOGO_URL } from "@/lib/settings/settings-store";
 import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
@@ -40,7 +40,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton render={<Link prefetch={false} href="/dashboard/ecommerce" />}>
-              <Command />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={OFFICIAL_STORE_LOGO_URL}
+                alt="ORVA Store Logo"
+                width={24}
+                height={24}
+                className="size-6 shrink-0 rounded-full object-contain"
+              />
               <span className="font-semibold text-base">{APP_CONFIG.name}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

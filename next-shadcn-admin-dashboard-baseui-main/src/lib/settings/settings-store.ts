@@ -3,6 +3,18 @@
  * Kept separate from Server Actions to satisfy Next.js 'use server' export restrictions.
  */
 
+/** Official ORVA DZ store emblem & branding default URL. */
+export const OFFICIAL_STORE_LOGO_URL = '/images/orva-logo.png';
+
+/** Upgrades legacy/empty store logo paths to the official ORVA DZ emblem. */
+export function normalizeStoreLogoUrl(url?: string | null): string {
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  if (!trimmed || trimmed === '/images/orva-logo.svg') {
+    return OFFICIAL_STORE_LOGO_URL;
+  }
+  return trimmed;
+}
+
 export interface AdminSettingsPayload {
   metaPixel?: {
     pixelId?: string;
@@ -133,7 +145,7 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     },
   },
   store: {
-    logoUrl: '/images/orva-logo.svg',
+    logoUrl: '/images/orva-logo.png',
     brandName: 'ORVA Store',
     customerPhone: '0798282495',
   },

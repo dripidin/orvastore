@@ -26,7 +26,6 @@ import {
   MapPin,
 } from "lucide-react";
 
-import { DevEnvironmentBanner } from "@/components/dev-environment-banner";
 import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -584,8 +583,6 @@ export default function ProductsManagementPage() {
           </div>
         </div>
       </header>
-
-      <DevEnvironmentBanner />
 
       {feedbackMessage && (
         <Alert

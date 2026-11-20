@@ -26,7 +26,7 @@ import { toast } from "@/components/ui/toast";
 import { formatDzd } from "@/lib/orva-api";
 import { formatAttributionSourceLabel } from "@/lib/analytics/campaign-profitability";
 
-import type { OrderRow } from "./recent-orders-table/schema";
+import { resolveOperationalOrderBucket, type OrderRow } from "./recent-orders-table/schema";
 import { getAvailableTransitions } from "./recent-orders-table/status-transitions";
 import { ShipmentTrackingPanel } from "./shipment-tracking-panel";
 
@@ -52,37 +52,36 @@ function formatDate(dateStr?: string) {
 }
 
 function resolveStatusLabel(order: OrderRow): { label: string; className: string } {
-  const s = (order.status || "").toLowerCase();
-  const cs = (order.carrier_status || "").toLowerCase();
+  const bucket = resolveOperationalOrderBucket(order);
 
-  if (s === "cancelled" || s === "canceled" || s === "deleted") {
+  if (bucket === "Cancelled") {
     return { label: "ملغاة (Cancelled)", className: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300" };
   }
-  if (s === "delivered") {
+  if (bucket === "Delivered") {
     return {
-      label: "مستلمة (Delivered)",
+      label: "مسلّمة (Delivered)",
       className: "border-green-600/30 bg-green-500/10 text-green-700 dark:text-green-300",
     };
   }
-  if (s === "returned") {
+  if (bucket === "Returned") {
     return {
       label: "مرتجعة (Returned)",
       className: "border-orange-600/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
     };
   }
-  if (s === "redex_station" || cs === "vers_station" || cs === "vers_hub" || s === "shipped") {
+  if (bucket === "Shipped") {
     return {
       label: "مشحونة (Shipped)",
       className: "border-purple-600/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
     };
   }
-  if (s === "pushed" || order.in_redex || cs === "prete_a_expedier") {
+  if (bucket === "Pushed to Redex") {
     return {
-      label: "مُرسلة لشركة التوصيل",
+      label: "Pushed to Redex (جاهز للإرسال)",
       className: "border-cyan-600/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
     };
   }
-  if (s === "confirmed") {
+  if (bucket === "Confirmed") {
     return { label: "مؤكدة (Confirmed)", className: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300" };
   }
   return {

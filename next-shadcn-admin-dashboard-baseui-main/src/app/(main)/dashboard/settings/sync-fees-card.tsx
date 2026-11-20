@@ -44,7 +44,7 @@ export function SyncFeesCard() {
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4" dir="rtl">
       <div className="space-y-1">
-        <h2 className="font-bold text-sm">مزامنة تعريفات التوصيل (EcoTrack)</h2>
+        <h2 className="font-bold text-sm">مزامنة تعريفات التوصيل</h2>
         <p className="text-muted-foreground text-xs">
           تُستخدم التعريفات الحية لحساب مصاريف الشحن عند الطلب حسب الولاية ونوع التوصيل.
           {syncedAt ? ` آخر مزامنة: ${new Date(syncedAt).toLocaleString("ar-DZ")}` : " لم تتم المزامنة بعد."}

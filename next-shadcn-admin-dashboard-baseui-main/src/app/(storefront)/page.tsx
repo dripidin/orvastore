@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
@@ -8,7 +9,6 @@ import {
   PhoneCall,
   ShieldCheck,
   RotateCcw,
-  ShieldAlert,
   Sparkles,
   Truck,
 } from "lucide-react";
@@ -18,15 +18,40 @@ import { ProductGrid } from "@/components/storefront/catalog/product-card";
 import { CrownPartnerSection } from "@/components/storefront/home/crown-partner-section";
 import { ProductRequestForm } from "@/components/storefront/home/product-request-form";
 import { listPublishedProducts } from "@/lib/catalog/server";
+import { buildStorefrontHomeJsonLd, ORVA_CANONICAL_ORIGIN } from "@/lib/seo/storefront-schema";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "متجر أورفا | ORVA STORE DZ — عتاد ومعدات الصيانة والورشة الأصلية",
+  description:
+    "المتجر الجزائري المتخصص في باقات العتاد وأدوات الصيانة الأصلية من كراون (CROWN) وستاركل برو (STARCLE PRO). الدفع عند الاستلام مع حق المعاينة والتوصيل لـ 58 ولاية.",
+  alternates: {
+    canonical: `${ORVA_CANONICAL_ORIGIN}/`,
+  },
+  openGraph: {
+    title: "متجر أورفا | ORVA STORE DZ — عتاد ومعدات الصيانة والورشة الأصلية",
+    description:
+      "باقات العتاد وأدوات الصيانة الأصلية من CROWN و STARCLE PRO في الجزائر — الدفع عند الاستلام وحق المعاينة قبل الدفع.",
+    url: `${ORVA_CANONICAL_ORIGIN}/`,
+    siteName: "ORVA Store Algeria",
+    locale: "ar_DZ",
+    type: "website",
+  },
+};
 
 export default async function StorefrontHomePage() {
   const products = await listPublishedProducts();
   const bestSeller = products.find((p) => p.stockQuantity > 0) ?? products[0];
+  const jsonLd = buildStorefrontHomeJsonLd(products);
 
   return (
     <div className="space-y-16 sm:space-y-24">
+      <script
+        type="application/ld+json"
+        // Serializes validated server-generated Schema.org JSON-LD graph
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* 1. Hero Banner */}
       <section className="relative overflow-hidden border-b border-slate-200 bg-white pt-12 pb-16 sm:pt-20">
         <div className="pointer-events-none absolute inset-0 z-0">

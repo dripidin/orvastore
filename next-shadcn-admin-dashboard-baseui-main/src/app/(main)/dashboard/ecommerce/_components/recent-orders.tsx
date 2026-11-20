@@ -70,7 +70,12 @@ import { OrderSwitchDialog } from "./order-switch-dialog";
 import { OrderPushDialog } from "./order-push-dialog";
 import { RiskOverrideDialog } from "./risk-override-dialog";
 import { createRecentOrdersColumns } from "./recent-orders-table/columns";
-import { orderFilters, type OrderFilter, type OrderRow } from "./recent-orders-table/schema";
+import {
+  matchesOrderFilter,
+  orderFilters,
+  type OrderFilter,
+  type OrderRow,
+} from "./recent-orders-table/schema";
 import { getAvailableTransitions, STATUS_LABELS_AR } from "./recent-orders-table/status-transitions";
 
 function extractConversionsFromRemarks(remarks: any): {
@@ -413,41 +418,8 @@ export function RecentOrders() {
         }
       }
 
-      // 2. Status Tab Filter
-      const s = (order.status || "").toLowerCase();
-      const cs = (order.carrier_status || "").toLowerCase();
-      if (activeFilter === "Pending" && s !== "pending") return false;
-      if (activeFilter === "Confirmed" && !(s === "confirmed" && !order.in_redex)) return false;
-      if (
-        activeFilter === "Pushed to Redex" &&
-        !(
-          s === "pushed" ||
-          (Boolean(order.in_redex) &&
-            s !== "redex_station" &&
-            cs !== "vers_station" &&
-            cs !== "vers_hub" &&
-            s !== "shipped" &&
-            s !== "delivered" &&
-            s !== "returned" &&
-            s !== "cancelled")
-        )
-      )
-        return false;
-      if (activeFilter === "Shipped" && !(s === "shipped" || Boolean(order.in_redex))) return false;
-      if (activeFilter === "Delivered" && s !== "delivered") return false;
-      if (activeFilter === "Returned" && s !== "returned") return false;
-      if (activeFilter === "Cancelled" && !(s === "cancelled" || s === "deleted")) return false;
-      if (activeFilter === "Switched Only" && !order.isSwitched) return false;
-      if (
-        activeFilter === "Risk" &&
-        !(
-          (order.riskScore && order.riskScore >= 40) ||
-          order.riskLevel === "HIGH" ||
-          order.riskDecision === "BLOCK" ||
-          order.riskDecision === "REVIEW" ||
-          s === "review"
-        )
-      ) {
+      // 2. Status Tab Filter (strictly isolated operational buckets)
+      if (!matchesOrderFilter(order, activeFilter)) {
         return false;
       }
 
@@ -469,41 +441,16 @@ export function RecentOrders() {
   const filterCounts = React.useMemo(() => {
     return {
       All: orders.length,
-      Pending: orders.filter((o) => o.status === "pending").length,
-      Confirmed: orders.filter((o) => o.status === "confirmed" && !o.in_redex).length,
-      "Pushed to Redex": orders.filter((o) => {
-        const s = (o.status || "").toLowerCase();
-        const cs = (o.carrier_status || "").toLowerCase();
-        return (
-          s === "pushed" ||
-          (Boolean(o.in_redex) &&
-            s !== "redex_station" &&
-            cs !== "vers_station" &&
-            cs !== "vers_hub" &&
-            s !== "shipped" &&
-            s !== "delivered" &&
-            s !== "returned" &&
-            s !== "cancelled")
-        );
-      }).length,
-      "Redex Station": orders.filter((o) => {
-        const s = (o.status || "").toLowerCase();
-        const cs = (o.carrier_status || "").toLowerCase();
-        return s === "redex_station" || cs === "vers_station" || cs === "vers_hub";
-      }).length,
-      Shipped: orders.filter((o) => o.status === "shipped" || Boolean(o.in_redex)).length,
-      Delivered: orders.filter((o) => o.status === "delivered").length,
-      Returned: orders.filter((o) => o.status === "returned").length,
-      Cancelled: orders.filter((o) => o.status === "cancelled" || o.status === "deleted").length,
-      "Switched Only": orders.filter((o) => o.isSwitched).length,
-      Risk: orders.filter(
-        (o) =>
-          (o.riskScore && o.riskScore >= 40) ||
-          o.riskLevel === "HIGH" ||
-          o.riskDecision === "BLOCK" ||
-          o.riskDecision === "REVIEW" ||
-          o.status === "review",
-      ).length,
+      Pending: orders.filter((o) => matchesOrderFilter(o, "Pending")).length,
+      Confirmed: orders.filter((o) => matchesOrderFilter(o, "Confirmed")).length,
+      "Pushed to Redex": orders.filter((o) => matchesOrderFilter(o, "Pushed to Redex")).length,
+      "Redex Station": orders.filter((o) => matchesOrderFilter(o, "Redex Station")).length,
+      Shipped: orders.filter((o) => matchesOrderFilter(o, "Shipped")).length,
+      Delivered: orders.filter((o) => matchesOrderFilter(o, "Delivered")).length,
+      Returned: orders.filter((o) => matchesOrderFilter(o, "Returned")).length,
+      Cancelled: orders.filter((o) => matchesOrderFilter(o, "Cancelled")).length,
+      "Switched Only": orders.filter((o) => matchesOrderFilter(o, "Switched Only")).length,
+      Risk: orders.filter((o) => matchesOrderFilter(o, "Risk")).length,
     };
   }, [orders]);
 

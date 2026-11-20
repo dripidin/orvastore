@@ -18,7 +18,6 @@ import {
 import { Inventory } from "./inventory";
 import { KpiStrip } from "./kpi-strip";
 import { RecentOrders } from "./recent-orders";
-import { StoreTraffic } from "./store-traffic";
 import { TopProducts } from "./top-products";
 import { TrafficSources } from "./traffic-sources";
 
@@ -123,11 +122,11 @@ function EcommerceOverviewContent() {
 
           <Button
             nativeButton={false}
-            render={<Link href="/dashboard/settings?tab=analytics" />}
+            render={<Link href="/dashboard/settings" />}
             size="icon-sm"
             variant="outline"
-            title="إعدادات التكامل و Vercel Analytics"
-            aria-label="Open Analytics Settings"
+            title="إعدادات المتجر (Store Settings)"
+            aria-label="Open Store Settings"
           >
             <Settings2 className="size-3.5" />
           </Button>
@@ -136,10 +135,7 @@ function EcommerceOverviewContent() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <KpiStrip />
-        <div className="xl:col-span-5">
-          <StoreTraffic />
-        </div>
-        <div className="xl:col-span-7">
+        <div className="xl:col-span-12">
           <TrafficSources />
         </div>
         <div className="xl:col-span-6">

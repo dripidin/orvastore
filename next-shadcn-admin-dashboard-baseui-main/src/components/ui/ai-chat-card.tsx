@@ -4,7 +4,10 @@ import Link from "next/link";
 import {
   AlertCircle,
   Bot,
+  GripHorizontal,
   Loader2,
+  Maximize2,
+  Minimize2,
   Package,
   RefreshCw,
   RotateCcw,
@@ -16,7 +19,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getDashboardSettingsFallbackAction,
@@ -69,12 +72,24 @@ const QUICK_PROMPTS = [
 export interface AIChatCardProps {
   className?: string;
   onClose?: () => void;
+  onHeaderPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
+  onResetPosition?: () => void;
+  isDragging?: boolean;
+  isCustomPositioned?: boolean;
 }
 
-export function AIChatCard({ className, onClose }: AIChatCardProps) {
+export function AIChatCard({
+  className,
+  onClose,
+  onHeaderPointerDown,
+  onResetPosition,
+  isDragging = false,
+  isCustomPositioned = false,
+}: AIChatCardProps) {
   const [agentName, setAgentName] = useState("Orva Agent AI");
   const [projectNumber, setProjectNumber] = useState("347934146406");
   const [activeModel, setActiveModel] = useState("Auto");
+  const [isExpanded, setIsExpanded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome-msg",
@@ -90,18 +105,34 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
   const [disconnectedError, setDisconnectedError] = useState<string | null>(null);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  const isLoadingRef = useRef(isLoading);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   const isDisconnected = Boolean(disconnectedError);
 
   const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-    }
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    });
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, disconnectedError, scrollToBottom]);
+  }, [messages, isLoading, disconnectedError, isExpanded, scrollToBottom]);
 
   const buildAuthHeaders = () => {
     const headers: Record<string, string> = {
@@ -151,7 +182,15 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
   const sendMessage = useCallback(
     async (textToSend: string, options?: { skipUserAppend?: boolean }) => {
       const trimmed = textToSend.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || isLoadingRef.current) return;
+
+      const historyPayload = messagesRef.current
+        .filter((m) => m.id !== "welcome-msg" && !m.id.startsWith("welcome-"))
+        .slice(-6)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
       if (!options?.skipUserAppend) {
         const userMsg: ChatMessage = {
@@ -164,18 +203,12 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         setInput("");
       }
 
+      isLoadingRef.current = true;
       setIsLoading(true);
       setDisconnectedError(null);
 
       try {
         const headers = buildAuthHeaders();
-        const historyPayload = messages
-          .filter((m) => m.id !== "welcome-msg" && !m.id.startsWith("welcome-"))
-          .slice(-6)
-          .map((m) => ({
-            role: m.role,
-            content: m.content,
-          }));
 
         const res = await fetch("/api/ai-agent", {
           method: "POST",
@@ -234,10 +267,11 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         setDisconnectedError("تم إيقاف الدردشة مؤقتاً: تعذّر الاتصال بخادم Orva Agent AI. تحقق من الشبكة ثم أعد المحاولة.");
         setLastFailedPrompt(trimmed);
       } finally {
+        isLoadingRef.current = false;
         setIsLoading(false);
       }
     },
-    [isLoading, messages],
+    [],
   );
 
   const handleReconnect = async () => {
@@ -306,25 +340,32 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
     <Card
       dir="rtl"
       className={cn(
-        "flex h-[540px] w-full max-w-md flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl",
+        "flex flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl transition-[width,height,box-shadow] duration-200",
+        isExpanded
+          ? "h-[min(84dvh,680px)] w-[min(94vw,36rem)] min-h-[280px] max-h-[calc(100dvh-5rem)]"
+          : "h-[min(74dvh,540px)] w-[min(92vw,26rem)] min-h-[240px] max-h-[calc(100dvh-5rem)]",
+        isDragging && "select-none ring-2 ring-emerald-500/40 shadow-[0_20px_60px_-15px_rgba(16,185,129,0.35)]",
         isDisconnected ? "border-destructive/40" : "border-emerald-500/30",
         className,
       )}
     >
-      {/* Spectrum UI AI Chat Card Header */}
+      {/* Spectrum UI AI Chat Card Header (Draggable Handle) */}
       <CardHeader
+        onPointerDown={onHeaderPointerDown}
+        title={onHeaderPointerDown ? "اسحب لتحريك نافذة المحادثة في أي مكان على الشاشة" : undefined}
         className={cn(
-          "border-b bg-gradient-to-l px-4 py-3",
+          "shrink-0 border-b bg-gradient-to-l px-3.5 py-2.5 sm:px-4 sm:py-3",
+          onHeaderPointerDown && "cursor-grab active:cursor-grabbing touch-none select-none",
           isDisconnected
             ? "from-destructive/10 via-destructive/5 to-transparent"
             : "from-emerald-500/10 via-primary/5 to-transparent",
         )}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div
               className={cn(
-                "relative flex size-9 items-center justify-center rounded-xl ring-1",
+                "relative flex size-9 shrink-0 items-center justify-center rounded-xl ring-1",
                 isDisconnected
                   ? "bg-destructive/15 text-destructive ring-destructive/30"
                   : "bg-emerald-500/15 text-emerald-500 ring-emerald-500/30",
@@ -343,13 +384,13 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
                 />
               </span>
             </div>
-            <div>
-              <CardTitle className="flex items-center gap-1.5 font-bold text-sm">
-                <span>{agentName}</span>
+            <div className="min-w-0">
+              <CardTitle className="flex flex-wrap items-center gap-1.5 font-bold text-xs sm:text-sm">
+                <span className="truncate">{agentName}</span>
                 <Badge
                   variant="outline"
                   className={cn(
-                    "px-1.5 py-0 font-mono text-[10px]",
+                    "max-w-[130px] truncate px-1.5 py-0 font-mono text-[10px]",
                     isDisconnected
                       ? "border-destructive/40 text-destructive"
                       : "border-emerald-500/30 text-emerald-500",
@@ -358,15 +399,44 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
                   {isDisconnected ? "متوقف مؤقتاً" : activeModel}
                 </Badge>
               </CardTitle>
-              <p className="font-mono text-[10px] text-muted-foreground" dir="ltr">
-                projects/{projectNumber}
-              </p>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                {onHeaderPointerDown && <GripHorizontal className="size-3 shrink-0 opacity-70" />}
+                <span className="truncate font-mono" dir="ltr">
+                  projects/{projectNumber}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div
+            className="flex shrink-0 items-center gap-0.5 sm:gap-1"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {isCustomPositioned && onResetPosition && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={onResetPosition}
+                title="إرجاع المربع للزاوية الافتراضية"
+                aria-label="إرجاع المربع للزاوية الافتراضية"
+              >
+                <GripHorizontal className="size-3.5 text-emerald-500" />
+              </Button>
+            )}
             <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              title={isExpanded ? "الحجم الافتراضي" : "توسيع نافذة الشات"}
+              aria-label={isExpanded ? "الحجم الافتراضي" : "توسيع نافذة الشات"}
+            >
+              {isExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            </Button>
+            <Button
+              type="button"
+              nativeButton={false}
               variant="ghost"
               size="icon-xs"
               render={<Link prefetch={false} href="/dashboard/settings?tab=gemini" onClick={onClose} />}
@@ -402,15 +472,15 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
       </CardHeader>
 
       {/* Messages Stream */}
-      <CardContent ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto p-3.5">
+      <CardContent ref={scrollContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 sm:p-3.5">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={cn("flex flex-col gap-1.5", msg.role === "user" ? "items-start" : "items-end")}
+            className={cn("flex min-w-0 flex-col gap-1.5", msg.role === "user" ? "items-start" : "items-end")}
           >
             <div
               className={cn(
-                "flex max-w-[90%] items-start gap-2 rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-xs",
+                "flex min-w-0 max-w-[92%] items-start gap-2 rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-xs",
                 msg.role === "user"
                   ? "rounded-tr-xs bg-primary text-primary-foreground"
                   : "rounded-tl-xs border bg-muted/60 text-foreground",
@@ -421,41 +491,43 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
               ) : (
                 <Bot className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
               )}
-              <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              <div dir="auto" className="min-w-0 flex-1 whitespace-pre-wrap break-words overflow-x-hidden">
+                {msg.content}
+              </div>
             </div>
 
             {/* Matched Orders Instant Lookup Cards */}
             {msg.matchedOrders && msg.matchedOrders.length > 0 && (
-              <div className="w-full max-w-[92%] space-y-1.5 pt-1">
+              <div className="w-full max-w-[94%] space-y-1.5 pt-1">
                 {msg.matchedOrders.map((order) => (
                   <div
                     key={order.id}
                     className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-[11px] space-y-1"
                   >
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="font-mono text-emerald-600 dark:text-emerald-400">#{order.id}</span>
-                      <Badge variant="secondary" className="text-[10px]">
+                    <div className="flex items-center justify-between gap-2 font-bold">
+                      <span className="truncate font-mono text-emerald-600 dark:text-emerald-400">#{order.id}</span>
+                      <Badge variant="secondary" className="shrink-0 text-[10px]">
                         {order.status}
                       </Badge>
                     </div>
-                    <div className="text-foreground">
+                    <div className="truncate text-foreground">
                       {order.customer} • <span className="font-mono">{order.phone}</span>
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Package className="size-3" />
-                        {order.productName}
+                    <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                      <span className="flex min-w-0 items-center gap-1 truncate">
+                        <Package className="size-3 shrink-0" />
+                        <span className="truncate">{order.productName}</span>
                       </span>
-                      <span className="font-bold font-mono text-foreground">
+                      <span className="shrink-0 font-bold font-mono text-foreground">
                         {order.totalDzd.toLocaleString("fr-DZ")} د.ج
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span>
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span className="truncate">
                         {order.wilaya} — {order.commune}
                       </span>
                       {order.redexTrackingId && (
-                        <span className="flex items-center gap-1 font-mono text-purple-500">
+                        <span className="flex shrink-0 items-center gap-1 font-mono text-purple-500">
                           <Truck className="size-3" />
                           {order.redexTrackingId}
                         </span>
@@ -471,8 +543,8 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         ))}
 
         {isLoading && (
-          <div className="flex items-center gap-2 rounded-2xl border bg-muted/40 px-3.5 py-2.5 text-muted-foreground text-xs w-fit">
-            <Loader2 className="size-3.5 animate-spin text-emerald-500" />
+          <div className="flex w-fit max-w-full items-center gap-2 rounded-2xl border bg-muted/40 px-3.5 py-2.5 text-muted-foreground text-xs">
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-emerald-500" />
             <span>جاري الاتصال بمحرك Google Gemini وتحليل الرد...</span>
           </div>
         )}
@@ -482,7 +554,7 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
             <AlertCircle className="size-4" />
             <AlertTitle className="font-bold text-xs">تم إيقاف الدردشة مؤقتاً (انقطاع اتصال Gemini)</AlertTitle>
             <AlertDescription className="mt-1 space-y-2.5 text-xs">
-              <p className="leading-relaxed">{disconnectedError}</p>
+              <p className="leading-relaxed break-words">{disconnectedError}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -497,6 +569,7 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
                 </Button>
                 <Button
                   type="button"
+                  nativeButton={false}
                   size="sm"
                   variant="outline"
                   render={<Link prefetch={false} href="/dashboard/settings?tab=gemini" onClick={onClose} />}
@@ -512,7 +585,7 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
       </CardContent>
 
       {/* Quick Action Prompts & Input Composer */}
-      <CardFooter className="flex flex-col gap-2 border-t bg-background/80 p-3">
+      <CardFooter className="shrink-0 flex flex-col gap-2 border-t bg-background/80 p-2.5 sm:p-3">
         <div className="flex w-full gap-1.5 overflow-x-auto pb-1">
           {QUICK_PROMPTS.map((item) => (
             <button
@@ -528,9 +601,10 @@ export function AIChatCard({ className, onClose }: AIChatCardProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              dir="auto"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={

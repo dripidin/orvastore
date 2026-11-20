@@ -6,13 +6,18 @@ import type { StoreProduct } from "@/lib/catalog/types";
 
 export function productMetadata(product: StoreProduct): Metadata {
   const { landing } = product;
+  const canonicalUrl = `https://orva-store.com${product.route}`;
   return {
     title: landing.seo.title,
     description: landing.seo.description,
     keywords: landing.seo.keywords,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
       title: landing.seo.title,
       description: landing.seo.description,
+      url: canonicalUrl,
       images: [{ url: landing.heroImage, alt: landing.heroImageAlt }],
       locale: "ar_DZ",
       type: "website",

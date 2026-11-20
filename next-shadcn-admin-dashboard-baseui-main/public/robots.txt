@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /auth/
+
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+
+Sitemap: https://orva-store.com/sitemap.xml

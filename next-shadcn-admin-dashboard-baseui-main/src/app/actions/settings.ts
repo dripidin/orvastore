@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import {
   AdminSettingsRecord,
   fallbackSettingsStore,
+  normalizeStoreLogoUrl,
 } from '@/lib/settings/settings-store';
 import { getCourierProviderManager } from '@/lib/couriers';
 
@@ -224,7 +225,7 @@ export async function saveSettingsAction(
 
   if (payload.store) {
     if (payload.store.logoUrl !== undefined) {
-      fallbackSettingsStore.store.logoUrl = payload.store.logoUrl;
+      fallbackSettingsStore.store.logoUrl = normalizeStoreLogoUrl(payload.store.logoUrl);
     }
     if (payload.store.brandName !== undefined) {
       fallbackSettingsStore.store.brandName = payload.store.brandName;
@@ -312,6 +313,14 @@ export async function saveSettingsAction(
           project_number: fallbackSettingsStore.geminiAi.projectNumber,
           model: fallbackSettingsStore.geminiAi.model,
           api_key: preservedKey,
+        };
+      }
+      if (payload.store) {
+        mergedIntegrations.store = {
+          ...(existingIntegrations.store || {}),
+          logo_url: normalizeStoreLogoUrl(fallbackSettingsStore.store.logoUrl),
+          brand_name: fallbackSettingsStore.store.brandName,
+          customer_phone: fallbackSettingsStore.store.customerPhone,
         };
       }
       if (payload.vercelAnalytics) {
@@ -640,6 +649,14 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
               ''
             ).trim();
           }
+        }
+        if (data.integrations?.store) {
+          const st = data.integrations.store;
+          fallbackSettingsStore.store.logoUrl = normalizeStoreLogoUrl(st.logo_url);
+          if (st.brand_name) fallbackSettingsStore.store.brandName = String(st.brand_name);
+          if (st.customer_phone) fallbackSettingsStore.store.customerPhone = String(st.customer_phone);
+        } else {
+          fallbackSettingsStore.store.logoUrl = normalizeStoreLogoUrl(fallbackSettingsStore.store.logoUrl);
         }
       }
     }

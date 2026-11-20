@@ -62,7 +62,15 @@ export function ProductRequestForm() {
               <p className="text-slate-600 text-sm">سنراجعه ونتصل بك عند توفر المنتج.</p>
             </div>
           ) : (
-            <form onSubmit={submit} className="space-y-4 text-right" noValidate>
+            <form
+              onSubmit={submit}
+              className="space-y-4 text-right"
+              noValidate
+              {...({
+                toolname: "request_orva_product",
+                tooldescription: "Submit a workshop tool or hardware product request to ORVA Store Algeria",
+              } as Record<string, string>)}
+            >
               <input
                 type="text"
                 name="website"
@@ -76,11 +84,12 @@ export function ProductRequestForm() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">الاسم *</span>
-                  <input className={inputCls} value={form.customerName} onChange={set("customerName")} placeholder="اسمك" />
+                  <input name="customerName" className={inputCls} value={form.customerName} onChange={set("customerName")} placeholder="اسمك" required />
                 </label>
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">رقم الهاتف (اختياري)</span>
                   <input
+                    name="phone"
                     className={`${inputCls} text-right font-mono`}
                     dir="ltr"
                     type="tel"
@@ -94,15 +103,17 @@ export function ProductRequestForm() {
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">المنتج المطلوب *</span>
                   <input
+                    name="productWanted"
                     className={inputCls}
                     value={form.productWanted}
                     onChange={set("productWanted")}
                     placeholder="مثال: مكينة غسيل بالضغط CROWN"
+                    required
                   />
                 </label>
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">الولاية</span>
-                  <select className={`${inputCls} cursor-pointer`} value={form.wilaya} onChange={set("wilaya")}>
+                  <select name="wilaya" className={`${inputCls} cursor-pointer`} value={form.wilaya} onChange={set("wilaya")}>
                     <option value="">اختر الولاية</option>
                     {ALGERIA_58_WILAYAS.map((w) => (
                       <option key={w.code} value={`${w.code} - ${w.nameAr}`}>
@@ -115,6 +126,7 @@ export function ProductRequestForm() {
               <label className="block space-y-1.5">
                 <span className="font-bold text-slate-800 text-sm">تفاصيل إضافية</span>
                 <textarea
+                  name="message"
                   className={`${inputCls} min-h-24 resize-y`}
                   value={form.message}
                   onChange={set("message")}
