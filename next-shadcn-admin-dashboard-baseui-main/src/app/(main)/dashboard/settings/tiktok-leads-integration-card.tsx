@@ -1099,20 +1099,6 @@ export function TikTokLeadsIntegrationCard({
         />
       )}
 
-      {/* Operational Safety Invariant Strip */}
-      <Alert className="border-indigo-200 bg-indigo-50/70 dark:border-indigo-900 dark:bg-indigo-950/20 py-3">
-        <ShieldCheck className="size-4 text-indigo-600 dark:text-indigo-400" />
-        <AlertTitle className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
-          ضمانات التشغيل الآمن لتكامل TikTok Lead Generation
-        </AlertTitle>
-        <AlertDescription className="text-xs text-indigo-900/90 dark:text-indigo-300 leading-relaxed">
-          جميع العملاء الواردين من نماذج TikTok الفورية يُحفظون كطلبيات دفع عند الاستلام بحالة{" "}
-          <strong className="font-mono">pending</strong> (<strong className="font-mono">in_redex = false</strong>)
-          فقط بانتظار تأكيد فريق الاتصال — لا يتم إرسال أي طرد تلقائياً إلى <strong>Redex</strong> ولا إطلاق حدث{" "}
-          <strong>Meta CAPI Purchase</strong>، ولا تُعرض أي رموز سرية أو مفاتيح وصول في المتصفح.
-        </AlertDescription>
-      </Alert>
-
       {/* =====================================================================
           SECTION A — CONNECTION MANAGEMENT
          ===================================================================== */}
@@ -1135,7 +1121,7 @@ export function TikTokLeadsIntegrationCard({
                 )}
               </div>
               <CardDescription className="text-xs">
-                ربط حساب TikTok Business عبر تفويض OAuth 2.0 الرسمي وتشفير رموز الوصول على الخادم باستخدام AES-256-GCM.
+                ربط حساب TikTok الإعلاني لجلب استمارات وطلبيات الزبائن تلقائياً إلى متجرك.
               </CardDescription>
             </div>
             <Button
@@ -1322,8 +1308,7 @@ export function TikTokLeadsIntegrationCard({
                 <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground flex items-center gap-3">
                   <Lock className="size-4 shrink-0 text-muted-foreground" />
                   <p className="leading-relaxed">
-                    {connectionSummary.descriptionAr} عند الضغط على «ربط حساب TikTok» سيتم توجيهك بأمان إلى بوابة{" "}
-                    <span className="font-mono">TikTok Business</span> مع حماية CSRF State Cookie صالحة لـ 10 دقائق.
+                    اضغط على زر «ربط حساب TikTok Business» لتوجيهك بأمان إلى منصة تيك توك لتأكيد منح الصلاحيات للمتجر.
                   </p>
                 </div>
               )}
@@ -1367,7 +1352,7 @@ export function TikTokLeadsIntegrationCard({
 
                 <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                   <Lock className="size-3" />
-                  <span>التوكنات مشفرة حصرياً على الخادم ولا تظهر في المتصفح</span>
+                  <span>اتصال محمي ومشفر بالكامل</span>
                 </div>
               </div>
             </>
@@ -1383,10 +1368,10 @@ export function TikTokLeadsIntegrationCard({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <CardTitle className="text-base font-bold">
-                الحسابات الإعلانية المصرح بها (Advertiser Accounts)
+                الحسابات الإعلانية (TikTok Ad Accounts)
               </CardTitle>
               <CardDescription className="text-xs">
-                اختر الحساب الإعلاني النشط لمتجر ORVA وتحقق من صلاحية جلب العملاء المحتملين (Scope 12010100) واشتراك Webhook.
+                اختر الحساب الإعلاني النشط الذي تطلق منه الإعلانات لاستقبال الطلبيات منه.
               </CardDescription>
             </div>
             <Button
@@ -1422,7 +1407,7 @@ export function TikTokLeadsIntegrationCard({
             <div className="space-y-0.5 min-w-0">
               <div className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
                 <Radio className="size-3.5 text-primary" />
-                <span>رابط Webhook المعتمد لاستقبال العملاء الفوري (Trailing Slash):</span>
+                <span>رابط الـ Webhook لاستقبال الطلبيات الفورية:</span>
               </div>
               <div className="font-mono text-[11px] text-muted-foreground break-all" dir="ltr">
                 {webhookUrlDisplay}

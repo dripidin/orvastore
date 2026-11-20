@@ -276,7 +276,7 @@ export function deriveTikTokConnectionUiState(
       state: "not_connected",
       badgeStatus: readiness?.configured ? "configured" : "not_connected",
       labelAr: "غير متصل",
-      descriptionAr: "جاهز للربط عبر تفويض TikTok Business OAuth 2.0 الآمن.",
+      descriptionAr: "الحساب غير متصل حالياً.",
       requiresReconnect: false,
     };
   }
@@ -315,7 +315,7 @@ export function deriveTikTokConnectionUiState(
     state: "connected",
     badgeStatus: "connected",
     labelAr: "متصل ونشط",
-    descriptionAr: "الحساب متصل ومشفّر على الخادم (AES-256-GCM). يتم حفظ الطلبيات بحالة قيد الانتظار فقط.",
+    descriptionAr: "الحساب متصل ونشط. يتم استقبال الطلبيات وحفظها في المتجر تلقائياً.",
     requiresReconnect: false,
   };
 }
