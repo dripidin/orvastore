@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import type { FormEvent, ReactNode } from "react";
-import { LockKeyhole, Sparkles } from "lucide-react";
-
+import { LockKeyhole, RefreshCw, Sparkles } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,81 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { isDemoModeAllowed } from "@/lib/demo-environment";
 import { orvaFetch } from "@/lib/orva-api";
+
+export const ADMIN_AUTH_ENDPOINT = "/api/auth/";
+const TRANSIENT_GATEWAY_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_RETRY_DELAY_MS = 600;
+
+export interface AuthFailureClassification {
+  unavailable: boolean;
+  unavailableDetail: string | null;
+  loginError: string;
+}
+
+export function classifyAuthFailure(status: number, hasJsonPayload: boolean): AuthFailureClassification {
+  if (status === 401) {
+    return {
+      unavailable: false,
+      unavailableDetail: null,
+      loginError: "كلمة المرور غير صحيحة.",
+    };
+  }
+  if (status === 400) {
+    return {
+      unavailable: false,
+      unavailableDetail: null,
+      loginError: "يرجى إدخال كلمة مرور صالحة.",
+    };
+  }
+  if (TRANSIENT_GATEWAY_STATUSES.has(status)) {
+    return {
+      unavailable: true,
+      unavailableDetail: `خادم الإدارة قيد إعادة التشغيل أو غير متاح مؤقتاً (HTTP ${status}). أعد المحاولة بعد لحظات.`,
+      loginError: `خادم الإدارة غير متاح مؤقتاً (HTTP ${status}). يرجى إعادة المحاولة بعد لحظات.`,
+    };
+  }
+  if (!hasJsonPayload || status >= 500 || status === 404) {
+    return {
+      unavailable: true,
+      unavailableDetail: `تعذر الحصول على استجابة صالحة من خدمة الإدارة (HTTP ${status}). تحقق من حالة الخادم ثم أعد المحاولة.`,
+      loginError: `تعذر تسجيل الدخول بسبب استجابة غير متوقعة من خدمة الإدارة (HTTP ${status}).`,
+    };
+  }
+  return {
+    unavailable: false,
+    unavailableDetail: null,
+    loginError: "تعذر تسجيل الدخول. يرجى المحاولة مرة أخرى.",
+  };
+}
+
+async function fetchAdminAuth(
+  body: Record<string, unknown>,
+  extraHeaders?: Record<string, string>,
+  retryOnTransient = true
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    ...extraHeaders,
+  };
+
+  const response = await orvaFetch(ADMIN_AUTH_ENDPOINT, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (retryOnTransient && TRANSIENT_GATEWAY_STATUSES.has(response.status)) {
+    await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS));
+    return orvaFetch(ADMIN_AUTH_ENDPOINT, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  }
+
+  return response;
+}
 
 interface AdminSessionContextValue {
   logout: () => Promise<void>;
@@ -30,12 +104,15 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
   const [state, setState] = React.useState<"checking" | "signed-in" | "signed-out">("checking");
   const [password, setPassword] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isRetrying, setIsRetrying] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [serviceUnavailable, setServiceUnavailable] = React.useState(false);
+  const [serviceUnavailableDetail, setServiceUnavailableDetail] = React.useState<string | null>(null);
   const [demoAllowed, setDemoAllowed] = React.useState(false);
 
   const checkSession = React.useCallback(async () => {
     setServiceUnavailable(false);
+    setServiceUnavailableDetail(null);
     const allowed = isDemoModeAllowed();
     setDemoAllowed(allowed);
 
@@ -53,29 +130,54 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
     }
 
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {};
       if (typeof window !== "undefined") {
         const token = localStorage.getItem("orva_admin_token");
         if (token) headers["Authorization"] = `Bearer ${token}`;
       }
-      const response = await orvaFetch("/api/auth", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ action: "session" }),
-      });
+      const response = await fetchAdminAuth({ action: "session" }, headers, true);
       const result = (await response.json().catch(() => null)) as { success?: boolean } | null;
-      setState(response.ok && result?.success ? "signed-in" : "signed-out");
-      if (!response.ok && response.status !== 401 && response.status !== 403) setServiceUnavailable(true);
+
+      if (response.ok && result?.success) {
+        setState("signed-in");
+        setServiceUnavailable(false);
+        setServiceUnavailableDetail(null);
+        return;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("orva_admin_token");
+        }
+        setState("signed-out");
+        return;
+      }
+
+      const classified = classifyAuthFailure(response.status, result !== null);
+      setState("signed-out");
+      setServiceUnavailable(classified.unavailable);
+      setServiceUnavailableDetail(classified.unavailableDetail);
     } catch {
       setState("signed-out");
       setServiceUnavailable(true);
+      setServiceUnavailableDetail("تعذر الاتصال بخدمة الإدارة. تأكد من اتصالك وتوفر الخادم، ثم أعد المحاولة.");
     }
   }, []);
-
 
   React.useEffect(() => {
     void checkSession();
   }, [checkSession]);
+
+  const handleRetrySessionCheck = async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    setError(null);
+    try {
+      await checkSession();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -84,12 +186,17 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
     setIsSubmitting(true);
     setError(null);
     try {
-      const response = await orvaFetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login", password: password.trim() }),
-      });
-      const result = (await response.json().catch(() => null)) as { success?: boolean; error?: string; token?: string } | null;
+      const response = await fetchAdminAuth(
+        { action: "login", password: password.trim() },
+        undefined,
+        true
+      );
+      const result = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        token?: string;
+      } | null;
+
       if (response.ok && result?.success) {
         setPassword("");
         if (typeof window !== "undefined") {
@@ -100,14 +207,18 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
         }
         setState("signed-in");
         setServiceUnavailable(false);
+        setServiceUnavailableDetail(null);
         return;
       }
 
-      setError(response.status === 401 ? "كلمة المرور غير صحيحة." : "تعذر تسجيل الدخول. تحقق من اتصال خدمة الإدارة.");
-      setServiceUnavailable(response.status !== 401 && response.status !== 400);
+      const classified = classifyAuthFailure(response.status, result !== null);
+      setError(classified.loginError);
+      setServiceUnavailable(classified.unavailable);
+      setServiceUnavailableDetail(classified.unavailableDetail);
     } catch {
-      setError("تعذر الاتصال بخدمة الإدارة. استخدم الداشبورد على نفس النطاق الذي يستضيف واجهة API.");
+      setError("تعذر الاتصال بخدمة الإدارة. تحقق من الاتصال وتوفر الخادم ثم أعد المحاولة.");
       setServiceUnavailable(true);
+      setServiceUnavailableDetail("تعذر الاتصال بخدمة الإدارة. تأكد من اتصالك وتوفر الخادم، ثم أعد المحاولة.");
     } finally {
       setIsSubmitting(false);
     }
@@ -115,11 +226,7 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
 
   const logout = React.useCallback(async () => {
     try {
-      await orvaFetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "logout" }),
-      });
+      await fetchAdminAuth({ action: "logout" }, undefined, false);
     } finally {
       if (typeof window !== "undefined") {
         localStorage.setItem("orva_demo_session_active", "false");
@@ -128,9 +235,10 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
       setState("signed-out");
       setPassword("");
       setError(null);
+      setServiceUnavailable(false);
+      setServiceUnavailableDetail(null);
     }
   }, []);
-
 
   if (state === "checking") {
     return (
@@ -157,8 +265,24 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
           <CardContent>
             {serviceUnavailable && (
               <Alert className="mb-4" variant="destructive">
-                <AlertTitle>خدمة الإدارة غير متاحة</AlertTitle>
-                <AlertDescription>تأكد أن الواجهة وواجهة API تعملان على النطاق نفسه، ثم أعد المحاولة.</AlertDescription>
+                <AlertTitle>خدمة الإدارة غير متاحة مؤقتاً</AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <p>
+                    {serviceUnavailableDetail ||
+                      "تأكد أن الواجهة وواجهة API تعملان على النطاق نفسه، ثم أعد المحاولة."}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleRetrySessionCheck()}
+                    disabled={isRetrying}
+                    className="gap-1.5"
+                  >
+                    <RefreshCw className={`size-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                    <span>{isRetrying ? "جارٍ إعادة الفحص…" : "إعادة المحاولة"}</span>
+                  </Button>
+                </AlertDescription>
               </Alert>
             )}
             {error && (
@@ -216,7 +340,6 @@ export function AdminSessionGate({ children }: { children: ReactNode }) {
               </>
             )}
           </CardContent>
-
         </Card>
       </div>
     );
