@@ -1222,6 +1222,38 @@ async function runSuite() {
       assert.equal(validProd.configured, true);
       assert.equal(validProd.productionReady, true);
       assert.equal(validProd.apiBaseUrl, "https://business-api.tiktok.com/open_api/v1.3");
+
+      // Verify www. and non-www. origin compatibility in production
+      const validProdWww = validateTikTokEnvironment({
+        environmentMode: "production",
+        appId: TEST_APP_ID,
+        appSecret: TEST_APP_SECRET,
+        redirectUri: "https://www.orva-store.com/api/integrations/tiktok/callback/",
+        encryptionKey: TEST_ENCRYPTION_KEY,
+        webhookSecret: TEST_WEBHOOK_SECRET,
+        cronSecret: TEST_CRON_SECRET,
+        sandboxMode: false,
+        appUrl: CANONICAL_ORIGIN,
+        nodeEnv: "production",
+      });
+      assert.equal(validProdWww.configurationStatus, "READY");
+      assert.equal(validProdWww.redirectUriOriginMatchesApp, true);
+
+      // Verify http appUrl automatically upgrades in production
+      const validProdHttpAppUrl = validateTikTokEnvironment({
+        environmentMode: "production",
+        appId: TEST_APP_ID,
+        appSecret: TEST_APP_SECRET,
+        redirectUri: "https://orva-store.com/api/integrations/tiktok/callback/",
+        encryptionKey: TEST_ENCRYPTION_KEY,
+        webhookSecret: TEST_WEBHOOK_SECRET,
+        cronSecret: TEST_CRON_SECRET,
+        sandboxMode: false,
+        appUrl: "http://orva-store.com",
+        nodeEnv: "production",
+      });
+      assert.equal(validProdHttpAppUrl.configurationStatus, "READY");
+      assert.equal(validProdHttpAppUrl.redirectUriOriginMatchesApp, true);
       assert.throws(() =>
         resolveTikTokOAuthConfig({
           environmentMode: "production",

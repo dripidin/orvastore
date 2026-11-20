@@ -19,6 +19,7 @@
 import crypto from "node:crypto";
 import { TikTokApiClient } from "./client";
 import {
+  CANONICAL_ORVA_PRODUCTION_ORIGIN,
   TIKTOK_CALLBACK_PATH,
   type TikTokConfigurationIssue,
   type TikTokConfigurationStatus,
@@ -150,6 +151,16 @@ export function resolveTikTokOAuthConfig(overrides?: TikTokOAuthConfigOverrides)
       expectedOrigin = new URL(rawAppUrl).origin;
     } catch {
       expectedOrigin = null;
+    }
+  }
+
+  // In production mode, override missing or stale localhost defaults with canonical store origin
+  if (modeResolution.mode === "production") {
+    if (!expectedOrigin || /localhost|127\.0\.0\.1/i.test(expectedOrigin)) {
+      expectedOrigin = CANONICAL_ORVA_PRODUCTION_ORIGIN;
+    }
+    if (expectedOrigin && expectedOrigin.startsWith("http://")) {
+      expectedOrigin = expectedOrigin.replace(/^http:\/\//i, "https://");
     }
   }
 

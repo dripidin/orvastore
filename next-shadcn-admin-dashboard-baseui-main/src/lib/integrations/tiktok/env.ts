@@ -25,6 +25,7 @@ import {
   resolveTikTokApiBaseUrl,
 } from "./types";
 
+export { CANONICAL_ORVA_PRODUCTION_ORIGIN } from "./types";
 export const TIKTOK_CALLBACK_PATH = "/api/integrations/tiktok/callback/";
 export const TIKTOK_WEBHOOK_PATH = "/api/integrations/tiktok/webhook/";
 
@@ -408,6 +409,52 @@ export interface RedirectUriCheckResult {
   code?: string;
 }
 
+/**
+ * Checks whether the callback URL's origin is compatible with the expected application origin.
+ * Tolerates www. vs non-www. prefixes (e.g. https://orva-store.com and https://www.orva-store.com),
+ * and in production tolerates upgrades from http: to https: for canonical store domains.
+ */
+export function areTikTokOriginsCompatible(
+  parsedUrl: URL,
+  expectedOriginStr: string | null | undefined,
+  isProduction: boolean,
+): boolean {
+  if (!expectedOriginStr) return true;
+  let parsedExpected: URL;
+  try {
+    parsedExpected = new URL(expectedOriginStr);
+  } catch {
+    return false;
+  }
+
+  // 1. Strict exact origin match
+  if (parsedUrl.origin.toLowerCase() === parsedExpected.origin.toLowerCase()) {
+    return true;
+  }
+
+  // 2. Normalize hostnames by stripping leading www.
+  const parsedHost = parsedUrl.hostname.toLowerCase().replace(/^www\./i, "");
+  const expectedHost = parsedExpected.hostname.toLowerCase().replace(/^www\./i, "");
+
+  // If hostnames match (e.g. orva-store.com vs www.orva-store.com)
+  if (parsedHost === expectedHost) {
+    if (isProduction) {
+      return parsedUrl.protocol === "https:";
+    }
+    return true;
+  }
+
+  // 3. In production, if parsedUrl points to canonical orva-store.com
+  // and expectedOrigin was localhost, 127.0.0.1, or orva-store.com
+  if (isProduction && parsedHost === "orva-store.com") {
+    if (expectedHost === "orva-store.com" || /localhost|127\.0\.0\.1/i.test(parsedExpected.hostname)) {
+      return parsedUrl.protocol === "https:";
+    }
+  }
+
+  return false;
+}
+
 export function validateTikTokCallbackUrl(
   rawUri: string | undefined | null,
   options?: {
@@ -516,7 +563,10 @@ export function validateTikTokCallbackUrl(
   }
 
   const expectedOrigin = options?.expectedOrigin?.trim() || null;
-  const originMatchesApp = expectedOrigin ? parsed.origin === expectedOrigin : true;
+  const isProduction = nodeEnv === "production";
+  const originMatchesApp = expectedOrigin
+    ? areTikTokOriginsCompatible(parsed, expectedOrigin, isProduction)
+    : true;
   if (options?.enforceOriginMatch && expectedOrigin && !originMatchesApp) {
     return {
       valid: false,
@@ -783,6 +833,9 @@ export function validateTikTokEnvironment(
   if (modeResolution.mode === "production") {
     if (!expectedOrigin || /localhost|127\.0\.0\.1/i.test(expectedOrigin)) {
       expectedOrigin = CANONICAL_ORVA_PRODUCTION_ORIGIN;
+    }
+    if (expectedOrigin && expectedOrigin.startsWith("http://")) {
+      expectedOrigin = expectedOrigin.replace(/^http:\/\//i, "https://");
     }
   }
 

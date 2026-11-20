@@ -422,6 +422,7 @@ export function TikTokLeadsIntegrationCard({
     TIKTOK_API_ENDPOINTS.webhookPath,
   );
   const [copiedWebhook, setCopiedWebhook] = React.useState<boolean>(false);
+  const [copiedRedirect, setCopiedRedirect] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && window.location?.origin) {
@@ -767,6 +768,14 @@ export function TikTokLeadsIntegrationCard({
       void navigator.clipboard.writeText(webhookUrlDisplay);
       setCopiedWebhook(true);
       setTimeout(() => setCopiedWebhook(false), 2000);
+    }
+  };
+
+  const handleCopyRedirectUrl = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText("https://orva-store.com/api/integrations/tiktok/callback/");
+      setCopiedRedirect(true);
+      setTimeout(() => setCopiedRedirect(false), 2000);
     }
   };
 
@@ -1175,8 +1184,8 @@ export function TikTokLeadsIntegrationCard({
                     }`}
                   >
                     {readiness.configurationStatus === "MISCONFIGURED"
-                      ? "خطأ في تهيئة متغيرات بيئة TikTok على الخادم (MISCONFIGURED)"
-                      : "متغيرات بيئة TikTok على الخادم غير مكتملة"}
+                      ? "تنبيه بخصوص تهيئة متغيرات ربط TikTok على الخادم"
+                      : "إعدادات تكامل TikTok غير مكتملة على الخادم"}
                   </AlertTitle>
                   <AlertDescription
                     className={`text-xs space-y-2 mt-1 ${
@@ -1186,18 +1195,9 @@ export function TikTokLeadsIntegrationCard({
                     }`}
                   >
                     <p>
-                      يرجى إعداد أو تصحيح المتغيرات التالية في بيئة الخادم (Hostinger / Server Env — يمنع استخدام بادئة{" "}
-                      <code className="font-mono">NEXT_PUBLIC_</code>) قبل ربط الحساب:
+                      يرجى ضبط أو تصحيح المتغيرات التالية في لوحة تحكم الاستضافة (Hostinger / Server Env) قبل ربط الحساب:
                     </p>
                     <div className="flex flex-wrap gap-1.5" dir="ltr">
-                      {readiness.environmentMode && (
-                        <Badge
-                          variant="outline"
-                          className="font-mono text-[10px] bg-background"
-                        >
-                          MODE: {readiness.environmentMode}
-                        </Badge>
-                      )}
                       {readiness.missingKeys.map((envKey) => (
                         <Badge
                           key={envKey}
@@ -1224,23 +1224,30 @@ export function TikTokLeadsIntegrationCard({
                           TIKTOK_REDIRECT_URI (HTTPS required)
                         </Badge>
                       )}
-                      {readiness.redirectUriValid && readiness.redirectUriHttps === false && (
-                        <Badge
-                          variant="outline"
-                          className="font-mono text-[10px] border-amber-500 text-amber-800 dark:text-amber-300"
-                        >
-                          TIKTOK_REDIRECT_URI is HTTP — TikTok Portal requires HTTPS tunnel/domain
-                        </Badge>
-                      )}
-                      {readiness.apiBaseUrl && (
-                        <Badge
-                          variant="secondary"
-                          className="font-mono text-[10px]"
-                        >
-                          API: {readiness.apiBaseUrl}
-                        </Badge>
-                      )}
                     </div>
+
+                    {readiness.configurationErrors?.some(
+                      (e) => e.key === "TIKTOK_REDIRECT_URI"
+                    ) && (
+                      <div className="rounded border bg-background/90 p-2.5 space-y-1.5 text-xs text-foreground mt-2" dir="rtl">
+                        <div className="font-semibold text-primary">
+                          الرابط المعتمد المطلوب في منصة مطوري TikTok وبيئة الخادم:
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-1.5 rounded font-mono text-[11px] break-all" dir="ltr">
+                          <span>https://orva-store.com/api/integrations/tiktok/callback/</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1 shrink-0"
+                            onClick={handleCopyRedirectUrl}
+                          >
+                            {copiedRedirect ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                            <span>{copiedRedirect ? "تم النسخ" : "نسخ الرابط"}</span>
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
