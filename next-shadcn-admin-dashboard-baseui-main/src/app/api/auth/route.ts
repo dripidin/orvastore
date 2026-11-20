@@ -3,6 +3,7 @@ import {
   extractSessionToken,
   generateSessionToken,
   isValidPassword,
+  verifyCsrfOrigin,
   verifySessionToken,
   invalidateSession,
   SESSION_COOKIE_NAME,
@@ -10,17 +11,26 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+} as const;
+
+function jsonNoStore(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
+}
+
 export async function GET(request: NextRequest) {
   const token = extractSessionToken(request);
   const isValid = await verifySessionToken(token);
 
   if (isValid) {
-    return NextResponse.json({ success: true, authenticated: true });
+    return jsonNoStore({ success: true, authenticated: true });
   }
 
-  return NextResponse.json(
+  return jsonNoStore(
     { success: false, authenticated: false, error: "Unauthorized session" },
-    { status: 401 }
+    401
   );
 }
 
@@ -35,22 +45,29 @@ export async function POST(request: NextRequest) {
       const isValid = await verifySessionToken(token);
 
       if (isValid) {
-        return NextResponse.json({ success: true, authenticated: true });
+        return jsonNoStore({ success: true, authenticated: true });
       }
 
-      return NextResponse.json(
+      return jsonNoStore(
         { success: false, authenticated: false, error: "No active session" },
-        { status: 401 }
+        401
       );
     }
 
     // 2. Login
     if (action === "login") {
-      const password = typeof body?.password === "string" ? body.password : "";
+      const password = typeof body?.password === "string" ? body.password.trim() : "";
+
+      if (!password) {
+        return jsonNoStore(
+          { success: false, error: "يرجى إدخال كلمة المرور." },
+          400
+        );
+      }
 
       if (isValidPassword(password)) {
         const token = generateSessionToken();
-        const response = NextResponse.json({
+        const response = jsonNoStore({
           success: true,
           message: "Authenticated successfully",
           token,
@@ -70,26 +87,34 @@ export async function POST(request: NextRequest) {
         return response;
       }
 
-      return NextResponse.json(
+      return jsonNoStore(
         { success: false, error: "كلمة المرور غير صحيحة." },
-        { status: 401 }
+        401
       );
     }
 
     // 3. Logout
     if (action === "logout") {
+      const hasSessionCookie = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+      if (hasSessionCookie && !verifyCsrfOrigin(request)) {
+        return jsonNoStore(
+          { success: false, error: "Forbidden: CSRF origin mismatch" },
+          403
+        );
+      }
+
       const token = extractSessionToken(request);
       if (token) {
         const revoked = await invalidateSession(token);
         if (!revoked) {
-          return NextResponse.json(
+          return jsonNoStore(
             { success: false, error: "Database session revocation failed" },
-            { status: 500 }
+            500
           );
         }
       }
 
-      const response = NextResponse.json({
+      const response = jsonNoStore({
         success: true,
         message: "Logged out successfully",
       });
@@ -107,15 +132,15 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    return NextResponse.json(
+    return jsonNoStore(
       { success: false, error: "Invalid auth action" },
-      { status: 400 }
+      400
     );
   } catch (error) {
     console.error("[API /api/auth] Auth handler error:", error);
-    return NextResponse.json(
+    return jsonNoStore(
       { success: false, error: "Internal server error" },
-      { status: 500 }
+      500
     );
   }
 }

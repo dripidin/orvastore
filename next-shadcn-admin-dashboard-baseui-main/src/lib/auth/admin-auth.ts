@@ -340,19 +340,22 @@ export function validateUrlMatchesHost(rawUrl: string, expectedHost: string): bo
       return false;
     }
 
-    // 3. Complete host & port validation (parsed.host includes :port if present)
-    if (parsed.host.toLowerCase() !== expectedHost.toLowerCase()) {
+    // 3. Complete host & port validation (normalize default :443/:80 from reverse proxies)
+    const defaultPort = parsed.protocol === "https:" ? "443" : "80";
+    const normalizedExpectedHost = expectedHost
+      .trim()
+      .toLowerCase()
+      .replace(new RegExp(`:${defaultPort}$`), "");
+    if (parsed.host.toLowerCase() !== normalizedExpectedHost) {
       console.warn(`[CSRF Block]: Origin host '${parsed.host}' does not match expected host '${expectedHost}'`);
       return false;
     }
 
     // 4. Exact port resolution check
-    const expectedPort = expectedHost.includes(":")
-      ? expectedHost.split(":")[1]
-      : parsed.protocol === "https:"
-      ? "443"
-      : "80";
-    const actualPort = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+    const expectedPort = normalizedExpectedHost.includes(":")
+      ? normalizedExpectedHost.split(":")[1]
+      : defaultPort;
+    const actualPort = parsed.port || defaultPort;
 
     if (actualPort !== expectedPort) {
       console.warn(`[CSRF Block]: Origin port '${actualPort}' does not match expected port '${expectedPort}'`);
