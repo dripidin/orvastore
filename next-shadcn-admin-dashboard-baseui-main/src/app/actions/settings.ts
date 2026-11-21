@@ -3,6 +3,9 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import {
   AdminSettingsRecord,
+  MediaSettingsRecord,
+  clampMaxUploadSizeMb,
+  clampWebpQuality,
   fallbackSettingsStore,
   normalizeStoreLogoUrl,
 } from '@/lib/settings/settings-store';
@@ -67,6 +70,12 @@ export interface AdminSettingsPayload {
     projectId?: string;
     teamId?: string;
   };
+  media?: {
+    maxUploadSizeMb?: number;
+    webpCompressionEnabled?: boolean;
+    webpQuality?: number;
+    bridgeSecret?: string;
+  };
   action?: string;
   integration?: string;
   field?: string;
@@ -80,6 +89,8 @@ const fallbackRedexStore: RedexSettingsRecord = {
   apiToken: process.env.REDEX_API_TOKEN || '',
   updatedAt: new Date().toISOString(),
 };
+
+let fallbackMediaBridgeSecret = (process.env.MEDIA_UPLOAD_SECRET || '').trim();
 
 (fallbackSettingsStore as any).redex = fallbackRedexStore;
 
@@ -248,6 +259,21 @@ export async function saveSettingsAction(
     fallbackRedexStore.updatedAt = new Date().toISOString();
   }
 
+  if (payload.media) {
+    if (payload.media.maxUploadSizeMb !== undefined) {
+      fallbackSettingsStore.media.maxUploadSizeMb = clampMaxUploadSizeMb(payload.media.maxUploadSizeMb);
+    }
+    if (payload.media.webpCompressionEnabled !== undefined) {
+      fallbackSettingsStore.media.webpCompressionEnabled = Boolean(payload.media.webpCompressionEnabled);
+    }
+    if (payload.media.webpQuality !== undefined) {
+      fallbackSettingsStore.media.webpQuality = clampWebpQuality(payload.media.webpQuality);
+    }
+    if (typeof payload.media.bridgeSecret === 'string' && payload.media.bridgeSecret.trim().length >= 32) {
+      fallbackMediaBridgeSecret = payload.media.bridgeSecret.trim();
+    }
+  }
+
   fallbackSettingsStore.updatedAt = new Date().toISOString();
 
   // 2. Persist to Supabase if database connection is available
@@ -336,6 +362,21 @@ export async function saveSettingsAction(
           project_id: fallbackSettingsStore.vercelAnalytics.projectId,
           team_id: fallbackSettingsStore.vercelAnalytics.teamId,
           token: preservedToken,
+        };
+      }
+      if (payload.media) {
+        const preservedBridgeSecret =
+          fallbackMediaBridgeSecret ||
+          (typeof existingIntegrations.media?.bridge_secret === 'string'
+            ? existingIntegrations.media.bridge_secret
+            : '');
+        fallbackMediaBridgeSecret = preservedBridgeSecret;
+        mergedIntegrations.media = {
+          ...(existingIntegrations.media || {}),
+          max_upload_size_mb: fallbackSettingsStore.media.maxUploadSizeMb,
+          webp_compression_enabled: fallbackSettingsStore.media.webpCompressionEnabled,
+          webp_quality: fallbackSettingsStore.media.webpQuality,
+          ...(preservedBridgeSecret ? { bridge_secret: preservedBridgeSecret } : {}),
         };
       }
 
@@ -658,6 +699,21 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
         } else {
           fallbackSettingsStore.store.logoUrl = normalizeStoreLogoUrl(fallbackSettingsStore.store.logoUrl);
         }
+        if (data.integrations?.media) {
+          const md = data.integrations.media;
+          if (md.max_upload_size_mb !== undefined) {
+            fallbackSettingsStore.media.maxUploadSizeMb = clampMaxUploadSizeMb(md.max_upload_size_mb);
+          }
+          if (md.webp_compression_enabled !== undefined) {
+            fallbackSettingsStore.media.webpCompressionEnabled = Boolean(md.webp_compression_enabled);
+          }
+          if (md.webp_quality !== undefined) {
+            fallbackSettingsStore.media.webpQuality = clampWebpQuality(md.webp_quality);
+          }
+          if (!fallbackMediaBridgeSecret && typeof md.bridge_secret === 'string' && md.bridge_secret.trim().length >= 32) {
+            fallbackMediaBridgeSecret = md.bridge_secret.trim();
+          }
+        }
       }
     }
   } catch (err) {
@@ -831,4 +887,28 @@ export async function deleteVercelTokenAction(): Promise<{ success: boolean; mes
   }
 
   return { success: true, message: 'تم مسح رمز VERCEL_TOKEN بنجاح.' };
+}
+
+export async function getMediaSettingsAction(): Promise<MediaSettingsRecord> {
+  const settings = await getAdminSettingsAction();
+  return settings.media;
+}
+
+export async function saveMediaSettingsAction(
+  media: Partial<MediaSettingsRecord>
+): Promise<MediaSettingsRecord> {
+  const res = await saveSettingsAction({ media });
+  return res.settings.media;
+}
+
+export async function getMediaBridgeConfigAction(): Promise<{
+  publicBaseUrl: string;
+  endpoint: string;
+  secret: string;
+}> {
+  await getAdminSettingsAction();
+  const publicBaseUrl = (process.env.MEDIA_PUBLIC_BASE_URL || 'https://media.orva-store.com').replace(/\/+$/, '');
+  const endpoint = (process.env.MEDIA_UPLOAD_ENDPOINT || `${publicBaseUrl}/api-media.php`).trim();
+  const secret = (process.env.MEDIA_UPLOAD_SECRET || fallbackMediaBridgeSecret || '').trim();
+  return { publicBaseUrl, endpoint, secret };
 }

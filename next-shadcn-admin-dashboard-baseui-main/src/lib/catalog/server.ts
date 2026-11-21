@@ -1,4 +1,5 @@
 import { STOREFRONT_PACKS, type PackBoxItem, type StorefrontPack } from "@/data/storefront-packs";
+import { uploadMediaBuffer, uploadMediaDataUrl } from "@/lib/media/hostinger-media";
 import { createDefaultLayoutConfig, type ProductPageLayoutConfig } from "@/lib/repository/layout-types";
 import type { Product, ProductStatus } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -291,6 +292,9 @@ function toAdminProduct(row: ProductRow, priv?: { purchase: number; marketing: n
     layout: sp.layout,
     layoutDraft: row.metadata?.layoutDraft ?? null,
     showOutOfStock: sp.showOutOfStock,
+    categoryId: (row as ProductRow & { category_id?: string | null }).category_id ?? null,
+    categoryName: null,
+    categoryPath: null,
   };
 }
 
@@ -373,6 +377,7 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
       is_featured: true,
       stock_quantity: Math.max(0, Math.round(num(input.stockQuantity))),
       metadata,
+      category_id: input.categoryId ?? null,
     })
     .select("*")
     .single();
@@ -400,6 +405,7 @@ export async function adminUpdateProduct(id: string, input: AdminProductInput): 
   if (input.originalPrice !== undefined) patch.original_price = input.originalPrice || null;
   if (input.stockQuantity !== undefined) patch.stock_quantity = Math.max(0, Math.round(num(input.stockQuantity)));
   if (input.status !== undefined) patch.status = STATUS_TO_DB[input.status];
+  if (input.categoryId !== undefined) patch.category_id = input.categoryId || null;
   if (input.images !== undefined) meta.images = input.images;
   if (input.lowStockThreshold !== undefined) meta.lowStockThreshold = input.lowStockThreshold;
   if (input.highlights !== undefined) meta.landing = { ...(meta.landing ?? {}), highlightsAr: input.highlights };
@@ -443,24 +449,18 @@ export async function adminDeleteProduct(
   return { actionTaken: "deleted", orderReferenceCount: 0 };
 }
 
-const BUCKET = "product-images";
-
-/** Uploads a data: URL to Supabase Storage and returns its public URL. */
+/** Uploads a data: URL to Hostinger media storage (media.orva-store.com) and returns its public URL. */
 export async function uploadProductImage(dataUrl: string, name = "image"): Promise<string> {
-  const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(dataUrl);
-  if (!match) throw new Error("صيغة الصورة غير مدعومة");
-  const [, mime, b64] = match;
-  const bytes = Buffer.from(b64, "base64");
-  if (bytes.length > 4 * 1024 * 1024) throw new Error("حجم الصورة أكبر من 4MB");
-  const ext = mime.split("/")[1].replace("jpeg", "jpg").replace("svg+xml", "svg");
-  const path = `${Date.now().toString(36)}-${slugify(name).slice(0, 40)}.${ext}`;
+  const result = await uploadMediaDataUrl({ dataUrl, name, folder: "products" });
+  return result.url;
+}
 
-  const storage = db().storage;
-  let { error } = await storage.from(BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
-  if (error && /bucket/i.test(error.message)) {
-    await storage.createBucket(BUCKET, { public: true }).catch(() => undefined);
-    ({ error } = await storage.from(BUCKET).upload(path, bytes, { contentType: mime, upsert: false }));
-  }
-  if (error) throw new Error(error.message);
-  return storage.from(BUCKET).getPublicUrl(path).data.publicUrl as string;
+/** Uploads a binary image Buffer to Hostinger media storage (media.orva-store.com) and returns its public URL. */
+export async function uploadProductImageBuffer(
+  bytes: Buffer,
+  name = "image",
+  claimedMime?: string | null
+): Promise<{ url: string; provider: string }> {
+  const result = await uploadMediaBuffer({ bytes, name, folder: "products", claimedMime });
+  return { url: result.url, provider: result.provider };
 }

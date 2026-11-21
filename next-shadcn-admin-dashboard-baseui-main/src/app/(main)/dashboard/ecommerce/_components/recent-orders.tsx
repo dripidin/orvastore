@@ -17,6 +17,7 @@ import {
   Filter,
   MapPin,
   Package,
+  Phone,
   RefreshCw,
   RotateCcw,
   Search,
@@ -489,6 +490,24 @@ export function RecentOrders() {
     setOrders((prev) => prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
     setSelectedOrderForDetails((prev) => (prev?.id === updatedOrder.id ? updatedOrder : prev));
     toast.add({ title: "تم تحديث الطلبية", description: "تم تأكيد التعديل من خدمة الإدارة.", type: "success" });
+  }, []);
+
+  const handleDiscountUpdated = React.useCallback((orderId: string, discountDzd: number, finalTotalDzd: number, originalTotalDzd: number) => {
+    const patchDiscount = (order: OrderRow): OrderRow => {
+      const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
+      const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
+      const metadata = { ...oldMetadata } as Record<string, unknown>;
+      if (discountDzd > 0) metadata.orderDiscount = { amountDzd: discountDzd, originalTotalDzd, finalTotalDzd };
+      else delete metadata.orderDiscount;
+      return {
+        ...order,
+        total: formatDzd(finalTotalDzd),
+        rawOrder: { ...raw, total: finalTotalDzd, total_payable: finalTotalDzd, grand_total: `${finalTotalDzd} د.ج`, metadata },
+      };
+    };
+    setOrders((previous) => previous.map((order) => order.id === orderId ? patchDiscount(order) : order));
+    setSelectedOrderForDetails((previous) => previous?.id === orderId ? patchDiscount(previous) : previous);
+    window.dispatchEvent(new CustomEvent("orva:orders-updated"));
   }, []);
 
   const handleSyncRedexTracking = React.useCallback(async () => {
@@ -1080,7 +1099,22 @@ export function RecentOrders() {
       </CardHeader>
 
       <CardContent className="px-0 pb-0" dir="ltr">
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 md:hidden" dir="rtl">
+          {table.getRowModel().rows.length ? table.getRowModel().rows.map((row) => {
+            const order = row.original;
+            const transitions = getAvailableTransitions(order);
+            return <article key={order.id} className={`rounded-xl border p-3 ${row.getIsSelected() ? "border-primary bg-primary/5" : "bg-card"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start gap-2"><input type="checkbox" aria-label={`تحديد الطلبية ${order.id}`} checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} className="mt-1 size-4 shrink-0 accent-primary" /><div className="min-w-0"><p className="truncate font-mono text-xs font-bold">{order.id}</p><p className="mt-1 truncate font-semibold">{order.customer || "—"}</p><a className="inline-flex items-center gap-1 text-xs text-primary" href={`tel:${order.phone}`}><Phone className="size-3" />{order.phone}</a></div></div>
+                <Badge variant="outline" className="max-w-[44%] shrink-0 whitespace-normal text-center text-[10px] leading-tight">{STATUS_LABELS_AR[order.status] || order.status}</Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="min-w-0 rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">المنتج</span><span className="block truncate font-medium">{order.items || "—"}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">المبلغ</span><span className="font-bold">{order.total || "—"}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">الوجهة</span><span className="block truncate">{order.wilaya}{order.commune ? ` — ${order.commune}` : ""}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">تاريخ التسجيل</span><span>{order.date ? new Date(order.date).toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" }) : "غير مسجل"}</span></div></div>
+              <div className="mt-3 grid grid-cols-2 gap-2"><Button size="sm" variant="outline" className="w-full gap-1.5" onClick={() => handleOpenDetails(order)}><Package className="size-3.5" />التفاصيل</Button>{!order.in_redex && !order.redex_tracking_code && <Button size="sm" className="w-full gap-1.5" onClick={() => handleOpenPushDialog(order)}><Truck className="size-3.5" />إرسال للشحن</Button>}</div>
+              {transitions.length > 0 && <div className="mt-2"><Select onValueChange={(value) => { if (value) void handleUpdateStatus(order.id, value); }}><SelectTrigger className="h-9 w-full text-xs"><SelectValue placeholder="تحديث حالة الطلبية" /></SelectTrigger><SelectContent>{transitions.map((status) => <SelectItem key={status} value={status}>{STATUS_LABELS_AR[status] || status}</SelectItem>)}</SelectContent></Select></div>}
+            </article>;
+          }) : <p className="py-8 text-center text-sm text-muted-foreground">{isLoading ? "جارٍ تحميل الطلبات..." : "لا توجد طلبات مطابقة للفلاتر."}</p>}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <Table className="text-right">
             <TableHeader className="bg-muted/40 text-xs">
               {table.getHeaderGroups().map((headerGroup) => (
@@ -1184,6 +1218,7 @@ export function RecentOrders() {
           setPushDialogOpen(true);
         }}
         onUpdateStatus={handleUpdateStatus}
+        onDiscountUpdated={handleDiscountUpdated}
       />
 
       {/* Switch Order Modal */}

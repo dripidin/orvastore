@@ -20,6 +20,7 @@ export interface Database {
           name: string;
           slug: string;
           description: string | null;
+          parent_id: string | null;
           display_order: number;
           active: boolean;
           created_at: string;
@@ -30,6 +31,7 @@ export interface Database {
           name: string;
           slug: string;
           description?: string | null;
+          parent_id?: string | null;
           display_order?: number;
           active?: boolean;
           created_at?: string;
@@ -40,6 +42,7 @@ export interface Database {
           name?: string;
           slug?: string;
           description?: string | null;
+          parent_id?: string | null;
           display_order?: number;
           active?: boolean;
           created_at?: string;

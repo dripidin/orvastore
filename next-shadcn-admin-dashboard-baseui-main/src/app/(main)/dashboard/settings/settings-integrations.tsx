@@ -50,6 +50,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { IntegrationStatus } from "@/lib/settings/integrations-registry";
 import { getAppRepositoryMode } from "@/lib/orva-api";
+import { prepareImageForUpload } from "@/lib/media/client-image-compress";
+import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
 import { TikTokLeadsIntegrationCard } from "./tiktok-leads-integration-card";
 import {
   TIKTOK_API_ENDPOINTS,
@@ -100,6 +102,11 @@ interface PublicSettingsPayload {
     name?: string;
     updatedAt?: string | null;
   };
+  media?: {
+    maxUploadSizeMb: number;
+    webpCompressionEnabled: boolean;
+    webpQuality: number;
+  };
   geminiAi?: {
     enabled: boolean;
     name: string;
@@ -125,7 +132,7 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "operational":
     case "authenticated":
       return (
-        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1 text-[11px]">
+        <Badge className="min-w-0 max-w-full shrink whitespace-normal text-center leading-tight [&_svg]:shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1 text-[11px]">
           <CheckCircle2 className="size-3" />
           {label}
         </Badge>
@@ -133,14 +140,14 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "configured":
     case "reachable":
       return (
-        <Badge variant="outline" className="border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300 font-bold gap-1 text-[11px]">
+        <Badge variant="outline" className="min-w-0 max-w-full shrink whitespace-normal text-center leading-tight [&_svg]:shrink-0 border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300 font-bold gap-1 text-[11px]">
           <ShieldCheck className="size-3" />
           {label}
         </Badge>
       );
     case "demo_only":
       return (
-        <Badge variant="outline" className="border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-bold gap-1 text-[11px]">
+        <Badge variant="outline" className="max-w-full whitespace-normal text-center leading-tight border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-bold gap-1 text-[11px]">
           <Sparkles className="size-3" />
           {label}
         </Badge>
@@ -148,7 +155,7 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "not_connected":
     case "not_configured":
       return (
-        <Badge variant="outline" className="border-slate-300 text-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-slate-400 font-bold text-[11px]">
+        <Badge variant="outline" className="max-w-full whitespace-normal text-center leading-tight border-slate-300 text-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-slate-400 font-bold text-[11px]">
           {label}
         </Badge>
       );
@@ -156,7 +163,7 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "error":
     default:
       return (
-        <Badge variant="destructive" className="font-bold text-[11px]">
+        <Badge variant="destructive" className="max-w-full whitespace-normal text-center leading-tight font-bold text-[11px]">
           {label}
         </Badge>
       );
@@ -231,6 +238,7 @@ export function SettingsIntegrations() {
   const [storeLogoUrl, setStoreLogoUrl] = React.useState<string>("/images/orva-logo.png");
   const [storeLogoSaving, setStoreLogoSaving] = React.useState<boolean>(false);
   const [logoFeedback, setLogoFeedback] = React.useState<ActionFeedback | null>(null);
+  const [logoPickerOpen, setLogoPickerOpen] = React.useState<boolean>(false);
   const logoFileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Orva Agent AI (Google Gemini) State
@@ -346,6 +354,12 @@ export function SettingsIntegrations() {
     fetchSettings();
   }, [fetchSettings]);
 
+  React.useEffect(() => {
+    const reloadAfterSystemSync = () => { void fetchSettings(); };
+    window.addEventListener("orva:settings-sync", reloadAfterSystemSync);
+    return () => window.removeEventListener("orva:settings-sync", reloadAfterSystemSync);
+  }, [fetchSettings]);
+
   // Fetch local TikTok Ads connection summary for the Quick-Jump Strip (zero external TikTok API calls)
   React.useEffect(() => {
     let cancelled = false;
@@ -431,37 +445,50 @@ export function SettingsIntegrations() {
   const handleUploadLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      setStoreLogoSaving(true);
-      setLogoFeedback(null);
-      try {
-        const res = await fetch("/api/admin-settings", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: JSON.stringify({ action: "upload_logo", dataUrl }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || data?.success === false) {
-          throw new Error(data?.message || data?.error || "فشل رفع الشعار.");
-        }
-        if (data?.logoUrl) {
-          setStoreLogoUrl(data.logoUrl);
-        }
-        setLogoFeedback({ type: "success", message: "تم رفع وتطبيق شعار المتجر الجديد بنجاح." });
-        await fetchSettings();
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "فشل رفع الشعار.";
-        setLogoFeedback({ type: "error", message: msg });
-      } finally {
-        setStoreLogoSaving(false);
+    setStoreLogoSaving(true);
+    setLogoFeedback(null);
+    try {
+      const mediaCfg = serverSettings?.media;
+      const prepared = await prepareImageForUpload(file, {
+        webpEnabled: mediaCfg?.webpCompressionEnabled ?? true,
+        quality: mediaCfg?.webpQuality ?? 0.85,
+      });
+      const form = new FormData();
+      form.set("action", "upload_logo");
+      form.set("file", prepared.file, prepared.file.name);
+
+      const headers: Record<string, string> = {
+        "X-Requested-With": "XMLHttpRequest",
+      };
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("orva_admin_token");
+        if (token) headers["Authorization"] = `Bearer ${token}`;
       }
-    };
-    reader.readAsDataURL(file);
+
+      const res = await fetch("/api/admin-settings", {
+        method: "POST",
+        headers,
+        credentials: "same-origin",
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || data?.error || "فشل رفع الشعار.");
+      }
+      if (data?.logoUrl) {
+        setStoreLogoUrl(data.logoUrl);
+      }
+      setLogoFeedback({
+        type: "success",
+        message: "تم رفع الشعار إلى media.orva-store.com/branding/ وتطبيقه بنجاح.",
+      });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "فشل رفع الشعار.";
+      setLogoFeedback({ type: "error", message: msg });
+    } finally {
+      setStoreLogoSaving(false);
+    }
   };
 
   // ── RedEx Handlers ──────────────────────────────────────────────────────────
@@ -845,17 +872,21 @@ export function SettingsIntegrations() {
       </div>
 
       {/* Active Integrations Status & Quick-Jump Strip */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" dir="rtl">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" dir="rtl">
+        <button type="button" onClick={() => setActiveTab("general")} className={`min-w-0 cursor-pointer rounded-xl border p-3.5 text-right transition-all hover:shadow-md ${activeTab === "general" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"}`}>
+          <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground"><div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Globe className="size-4" /></div><span>Store Settings</span></div>
+          <div className="mt-2 text-[11px] text-muted-foreground">هوية المتجر والإعدادات العامة</div>
+        </button>
         <div
           onClick={() => setActiveTab("gemini")}
-          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+          className={`min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 transition-all hover:shadow-md ${
             activeTab === "gemini"
               ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30"
               : "border-emerald-500/30 bg-card hover:border-emerald-500/60"
           }`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
               <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
                 <Bot className="size-4" />
               </div>
@@ -874,12 +905,12 @@ export function SettingsIntegrations() {
 
         <div
           onClick={() => setActiveTab("delivery")}
-          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+          className={`min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 transition-all hover:shadow-md ${
             activeTab === "delivery" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
           }`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
               <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Truck className="size-4" />
               </div>
@@ -897,12 +928,12 @@ export function SettingsIntegrations() {
 
         <div
           onClick={() => setActiveTab("analytics")}
-          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+          className={`min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 transition-all hover:shadow-md ${
             activeTab === "analytics" ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20" : "bg-card"
           }`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
               <div className="flex size-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
                 <BarChart3 className="size-4" />
               </div>
@@ -923,12 +954,12 @@ export function SettingsIntegrations() {
 
         <div
           onClick={() => setActiveTab("tiktok")}
-          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+          className={`min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 transition-all hover:shadow-md ${
             activeTab === "tiktok" ? "border-indigo-500 bg-indigo-500/5 ring-1 ring-indigo-500/20" : "bg-card"
           }`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
               <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                 <Megaphone className="size-4" />
               </div>
@@ -949,12 +980,12 @@ export function SettingsIntegrations() {
 
         <div
           onClick={() => setActiveTab("notifications")}
-          className={`cursor-pointer rounded-xl border p-3.5 transition-all hover:shadow-md ${
+          className={`min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 transition-all hover:shadow-md ${
             activeTab === "notifications" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
           }`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-bold text-xs text-foreground">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
               <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Bell className="size-4" />
               </div>
@@ -971,36 +1002,16 @@ export function SettingsIntegrations() {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
+      {/* The integration cards above are the primary tab navigation. */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="h-auto p-1 bg-muted/60 flex flex-nowrap w-max gap-1">
-            <TabsTrigger value="general" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <Globe className="size-3.5" />
-              <span>Store Settings</span>
-            </TabsTrigger>
-            <TabsTrigger value="gemini" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <Sparkles className="size-3.5 text-emerald-500" />
-              <span>Gemini AI Integration (Orva Agent AI)</span>
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <BarChart3 className="size-3.5" />
-              <span>Meta Pixel & CAPI</span>
-            </TabsTrigger>
-            <TabsTrigger value="tiktok" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <Megaphone className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>TikTok Ads</span>
-            </TabsTrigger>
-            <TabsTrigger value="delivery" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <Truck className="size-3.5" />
-              <span>Delivery Integrations</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-1.5 text-xs py-2 px-3 cursor-pointer">
-              <Bell className="size-3.5" />
-              <span>Notifications (Telegram)</span>
-            </TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="sr-only" aria-label="إعدادات التكاملات">
+          <TabsTrigger value="general">Store Settings</TabsTrigger>
+          <TabsTrigger value="gemini">Gemini AI</TabsTrigger>
+          <TabsTrigger value="analytics">Meta Pixel</TabsTrigger>
+          <TabsTrigger value="tiktok">TikTok Ads</TabsTrigger>
+          <TabsTrigger value="delivery">Delivery</TabsTrigger>
+          <TabsTrigger value="notifications">Telegram</TabsTrigger>
+        </TabsList>
 
         {/* ── 1. General Settings ───────────────────────────────────────────── */}
         <TabsContent value="general" className="space-y-4 pt-2">
@@ -1063,11 +1074,11 @@ export function SettingsIntegrations() {
                           حفظ
                         </Button>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           ref={logoFileInputRef}
                           type="file"
-                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
                           className="hidden"
                           onChange={handleUploadLogoFile}
                         />
@@ -1080,9 +1091,35 @@ export function SettingsIntegrations() {
                           className="h-7 text-xs gap-1.5"
                         >
                           <Upload className="size-3" />
-                          <span>رفع ملف شعار جديد (PNG, SVG, WEBP)</span>
+                          <span>رفع شعار إلى Hostinger (PNG, JPG, WebP)</span>
                         </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setLogoPickerOpen(true)}
+                          disabled={storeLogoSaving}
+                          className="h-7 text-xs gap-1.5"
+                        >
+                          <ImageIcon className="size-3" />
+                          <span>اختيار من مكتبة الوسائط</span>
+                        </Button>
+                        <a
+                          href="/dashboard/media"
+                          className="text-[11px] text-primary hover:underline"
+                        >
+                          إعدادات المكتبة وحجم الرفع ←
+                        </a>
                       </div>
+                      <MediaPickerDialog
+                        open={logoPickerOpen}
+                        onOpenChange={setLogoPickerOpen}
+                        multiple={false}
+                        defaultFolder="branding"
+                        onSelect={(urls) => {
+                          if (urls[0]) void handleSaveLogo(urls[0]);
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

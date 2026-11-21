@@ -3,6 +3,11 @@ const nextConfig = {
   output: 'standalone',
   images: {
     unoptimized: true,
+    remotePatterns: [
+      { protocol: 'https', hostname: 'media.orva-store.com' },
+      { protocol: 'https', hostname: 'www.media.orva-store.com' },
+      { protocol: 'https', hostname: 'orva-store.com' },
+    ],
   },
   trailingSlash: true,
   typescript: {

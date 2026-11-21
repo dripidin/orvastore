@@ -56,6 +56,23 @@ function notify() {
 export class ApiProductsRepository implements IProductsRepository {
   private cache: Product[] = [];
 
+  /** Uploads a single binary File via multipart FormData (supports 4MB–100MB limit) and returns its public URL. */
+  async uploadImageFile(file: File, name?: string): Promise<string> {
+    const form = new FormData();
+    form.set("file", file, file.name || "image");
+    if (name) form.set("name", name);
+    const res = await orvaFetch("/api/store-products/upload", {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const body = (await res.json().catch(() => null)) as { success?: boolean; url?: string; error?: string } | null;
+    if (!res.ok || !body?.success || !body.url) {
+      throw new Error(body?.error || `تعذر رفع الصورة (HTTP ${res.status})`);
+    }
+    return body.url;
+  }
+
   async getProducts(): Promise<Product[]> {
     const { data } = await api<{ data: Product[] }>("/api/store-products");
     this.cache = data;

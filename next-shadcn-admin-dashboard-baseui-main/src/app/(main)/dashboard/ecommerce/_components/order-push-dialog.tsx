@@ -178,9 +178,16 @@ function OrderPushDialogForm({
       const courierToken = template.credentials[selectedCourier.id]?.token;
 
       const parsedTotal = typeof order.total === "string" ? parseInt(order.total.replace(/[^\d]/g, ""), 10) : undefined;
-      const calculatedCod = freeShipping
-        ? (typeof order.priceNum === "number" ? order.priceNum : parsedTotal)
-        : (parsedTotal || (typeof order.priceNum === "number" ? order.priceNum + 500 : undefined));
+      const rawOrder = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder as Record<string, unknown> : {};
+      const orderMetadata = rawOrder.metadata && typeof rawOrder.metadata === "object" ? rawOrder.metadata as Record<string, unknown> : {};
+      const discountRecord = orderMetadata.orderDiscount && typeof orderMetadata.orderDiscount === "object" ? orderMetadata.orderDiscount as Record<string, unknown> : {};
+      const hasSavedDiscount = Number(discountRecord.amountDzd) > 0;
+      const discountedFinalTotal = Number(discountRecord.finalTotalDzd);
+      const calculatedCod = hasSavedDiscount
+        ? (Number.isFinite(discountedFinalTotal) && discountedFinalTotal > 0 ? discountedFinalTotal : parsedTotal)
+        : freeShipping
+          ? (typeof order.priceNum === "number" ? order.priceNum : parsedTotal)
+          : (parsedTotal || (typeof order.priceNum === "number" ? order.priceNum + 500 : undefined));
 
       const result = await repo.pushOrder({
         orderId: order.id,

@@ -46,6 +46,43 @@ function buildOrderIdFilter(orderId: string): string {
   return parts.join(',');
 }
 
+const orderMutationLocks: Map<string, Promise<unknown>> =
+  (globalThis as any).__orvaOrderMutationLocks ||
+  ((globalThis as any).__orvaOrderMutationLocks = new Map());
+
+async function withOrderMutationLock<T>(orderKey: string, task: () => Promise<T>): Promise<T> {
+  const key = String(orderKey || '').trim().toLowerCase() || '__default__';
+  const previous = orderMutationLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  orderMutationLocks.set(key, gate);
+  try {
+    await previous.catch(() => undefined);
+    return await task();
+  } finally {
+    release();
+    if (orderMutationLocks.get(key) === gate) {
+      orderMutationLocks.delete(key);
+    }
+  }
+}
+
+function parseStrictDiscountDzd(raw: unknown): number | null {
+  if (raw === null || raw === undefined || typeof raw === 'boolean') return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+  if (typeof raw === 'number') {
+    return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+  }
+  return null;
+}
+
 /**
  * ORVA-only status change: writes orders.status in Supabase and never calls Redex.
  */
@@ -677,6 +714,7 @@ export async function GET(request: NextRequest) {
             carrier_status: deliveryInfo?.carrier_status || (resolvedTracking ? 'prete_a_expedier' : null),
             carrier_status_ar: deliveryInfo?.carrier_status_ar || (resolvedTracking ? 'جاهز للإرسال' : null),
             created_at: row.created_at || new Date().toISOString(),
+            metadata: row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ? row.metadata : {},
             remarks: Array.isArray(row.remarks) && row.remarks.length > 0
               ? row.remarks
               : Array.isArray(row.metadata?.conversionLog)
@@ -729,6 +767,7 @@ export async function GET(request: NextRequest) {
         carrier_status: resolvedTracking ? 'prete_a_expedier' : null,
         carrier_status_ar: resolvedTracking ? 'جاهز للإرسال' : null,
         created_at: fb.createdAt,
+        metadata: (fb as any).metadata && typeof (fb as any).metadata === 'object' && !Array.isArray((fb as any).metadata) ? (fb as any).metadata : {},
         remarks: fb.remarks || [],
       });
     }
@@ -817,6 +856,122 @@ export async function POST(request: NextRequest) {
         orderId,
         status: normalizedStatus.toLowerCase(),
         message: 'Order status updated successfully',
+      });
+    }
+
+    if (action === 'apply_discount') {
+      const { orderId, discountDzd } = body;
+      const discount = parseStrictDiscountDzd(discountDzd);
+      if (!orderId || !String(orderId).trim() || discount === null) {
+        return NextResponse.json({ success: false, error: 'رقم الطلبية والخصم الصحيح مطلوبان.' }, { status: 400 });
+      }
+      const cleanOrderId = String(orderId).trim();
+      return await withOrderMutationLock(cleanOrderId, async () => {
+        const supabase = getSupabaseServerClient() as any;
+        const filter = buildOrderIdFilter(cleanOrderId);
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const { data: existing, error: readError } = await supabase
+            .from('orders')
+            .select('id, order_id, order_number, status, in_redex, tracking_code, redex_tracking_code, redex_tracking_id, total, total_payable, grand_total, metadata, remarks, updated_at')
+            .or(filter)
+            .limit(1)
+            .maybeSingle();
+          if (readError) throw readError;
+          if (!existing) {
+            return NextResponse.json({ success: false, error: 'الطلبية غير موجودة.' }, { status: 404 });
+          }
+          if (existing.in_redex || existing.tracking_code || existing.redex_tracking_code || existing.redex_tracking_id) {
+            return NextResponse.json(
+              { success: false, error: 'تم تسجيل هذه الطلبية لدى شركة التوصيل. حدّث مبلغ التحصيل لدى شركة التوصيل أولاً.' },
+              { status: 409 }
+            );
+          }
+
+          const metadata =
+            existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+              ? { ...existing.metadata }
+              : {};
+          const previousDiscount =
+            metadata.orderDiscount && typeof metadata.orderDiscount === 'object' ? metadata.orderDiscount : null;
+          const amount = (value: unknown) => Number(String(value ?? '').replace(/[^\d.-]/g, '')) || 0;
+          const originalTotal =
+            amount(previousDiscount?.originalTotalDzd) ||
+            amount(existing.total_payable) ||
+            amount(existing.total) ||
+            amount(existing.grand_total);
+          if (originalTotal < 1 || discount >= originalTotal) {
+            return NextResponse.json(
+              { success: false, error: 'يجب أن يكون الخصم أقل من المبلغ الإجمالي للطلبية.' },
+              { status: 400 }
+            );
+          }
+
+          const finalTotal = originalTotal - discount;
+          if (discount === 0) delete metadata.orderDiscount;
+          else metadata.orderDiscount = { amountDzd: discount, originalTotalDzd: originalTotal, finalTotalDzd: finalTotal };
+
+          const timestamp = new Date().toISOString();
+          const remarks = Array.isArray(existing.remarks) ? existing.remarks : [];
+          const update = {
+            total: finalTotal,
+            total_payable: finalTotal,
+            grand_total: `${finalTotal} د.ج`,
+            metadata,
+            remarks: [
+              ...remarks,
+              {
+                event: 'ORDER_DISCOUNT',
+                originalTotalDzd: originalTotal,
+                discountDzd: discount,
+                finalTotalDzd: finalTotal,
+                actor: `admin:${String(adminSession.sid).slice(0, 8)}`,
+                timestamp_utc: timestamp,
+              },
+            ],
+            updated_at: timestamp,
+          };
+
+          let updateQuery = supabase
+            .from('orders')
+            .update(update)
+            .eq('id', existing.id)
+            .or('in_redex.eq.false,in_redex.is.null')
+            .is('tracking_code', null)
+            .is('redex_tracking_code', null)
+            .is('redex_tracking_id', null);
+
+          if (typeof existing.updated_at === 'string' && existing.updated_at.length > 0) {
+            updateQuery = updateQuery.eq('updated_at', existing.updated_at);
+          }
+
+          const { data: updatedRows, error: updateError } = await updateQuery.select('id');
+          if (updateError) throw updateError;
+          if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+            return NextResponse.json({
+              success: true,
+              orderId: cleanOrderId,
+              discountDzd: discount,
+              originalTotalDzd: originalTotal,
+              finalTotalDzd: finalTotal,
+            });
+          }
+        }
+
+        // Re-check final courier state after conflict retries
+        const { data: latest } = await supabase
+          .from('orders')
+          .select('in_redex, tracking_code, redex_tracking_code, redex_tracking_id')
+          .or(filter)
+          .limit(1)
+          .maybeSingle();
+        if (latest && (latest.in_redex || latest.tracking_code || latest.redex_tracking_code || latest.redex_tracking_id)) {
+          return NextResponse.json(
+            { success: false, error: 'تم تسجيل هذه الطلبية لدى شركة التوصيل. حدّث مبلغ التحصيل لدى شركة التوصيل أولاً.' },
+            { status: 409 }
+          );
+        }
+        return NextResponse.json({ success: false, error: 'تعارض تحديث متزامن على الطلبية، يرجى إعادة المحاولة.' }, { status: 409 });
       });
     }
 
@@ -1575,6 +1730,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'معرّف الطلبية (orderId) مطلوب للإرسال' }, { status: 400 });
       }
 
+      return await withOrderMutationLock(String(orderId), async () => {
       let clientName = body.fullName || body.customerName || body.client || '';
       let clientPhone = body.phone || body.customerPhone || '';
       let clientPhone2 = body.phone2 || body.customerPhone2 || '';
@@ -1613,7 +1769,16 @@ export async function POST(request: NextRequest) {
           if (existingRow.delivery_type) {
             stopDeskFlag = existingRow.delivery_type.includes('مكتب') || existingRow.delivery_type === 'STOP_DESK' ? 1 : 0;
           }
-          if (!codAmount) {
+          const savedDiscount = existingRow.metadata?.orderDiscount;
+          if (Number(savedDiscount?.amountDzd) > 0) {
+            // For discounted orders, the persisted final COD amount is authoritative for the waybill.
+            codAmount =
+              Number(savedDiscount?.finalTotalDzd) ||
+              Number(existingRow.total_payable) ||
+              Number(existingRow.total) ||
+              Number(String(existingRow.grand_total || '').replace(/[^\d]/g, '')) ||
+              0;
+          } else if (!codAmount) {
             codAmount = Number(
               existingRow.grand_total
                 ? String(existingRow.grand_total).replace(/[^\d]/g, '')
@@ -1853,6 +2018,7 @@ export async function POST(request: NextRequest) {
         validated: false,
         supabaseSynced: supabaseUpdated,
         message: `تم إنشاء إرسالية الطلبية #${orderId} بنجاح لدى Redex Express (جاهز للإرسال). رقم التتبع: ${trackingCode}`,
+      });
       });
     }
 

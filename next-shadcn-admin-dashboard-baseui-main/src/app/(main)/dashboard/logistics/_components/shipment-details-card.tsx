@@ -22,6 +22,7 @@ import { extractSwitchedOrderDetails } from "@/data/geoalgeria/geo-helper";
 
 interface OrderItem {
   id: string;
+  date?: string;
   customer: string;
   phone: string;
   wilaya: string;
@@ -51,6 +52,15 @@ export function ShipmentDetailsCard({ order, onClose, onOpenSwitch }: ShipmentDe
   const switchedRoute = React.useMemo(() => {
     if (!order) return null;
     return extractSwitchedOrderDetails(order);
+  }, [order]);
+  const statusHistory = React.useMemo(() => {
+    if (!order || !Array.isArray(order.remarks)) return [];
+    return order.remarks.flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== "object") return [];
+      const event = entry as { event?: string; from?: string; to?: string; timestamp_utc?: string; timestamp?: string; actor?: string };
+      if (event.event !== "STATUS_CHANGE") return [];
+      return [{ from: event.from ?? "—", to: event.to ?? "—", at: event.timestamp_utc ?? event.timestamp, actor: event.actor }];
+    }).reverse();
   }, [order]);
 
   const handleCopyTracking = React.useCallback(() => {
@@ -215,6 +225,10 @@ export function ShipmentDetailsCard({ order, onClose, onOpenSwitch }: ShipmentDe
               <span className="text-muted-foreground">رقم الهاتف:</span>
               <span className="font-mono text-foreground">{order.phone}</span>
             </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">تاريخ تسجيل الطلبية:</span>
+              <span className="font-medium text-foreground text-left">{formatOrderDate(order.date)}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">الولاية والبلدية:</span>
               <span className="font-medium text-foreground">
@@ -222,6 +236,12 @@ export function ShipmentDetailsCard({ order, onClose, onOpenSwitch }: ShipmentDe
               </span>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/20 p-3 text-[11px]">
+          <h3 className="mb-2 flex items-center justify-between border-b pb-2 font-bold text-foreground"><span>تاريخ الطلب وتسجيلات الحالة</span><span className="font-normal text-muted-foreground">{statusHistory.length} تحديثات</span></h3>
+          <div className="flex items-center justify-between gap-3 py-1.5"><span className="font-medium">تسجيل الطلبية</span><time className="text-muted-foreground">{formatOrderDate(order.date)}</time></div>
+          {statusHistory.length ? statusHistory.map((event, index) => <div key={`${event.at ?? "event"}-${index}`} className="flex items-center justify-between gap-3 border-t py-1.5"><span className="min-w-0 truncate">{event.from} → {event.to}{event.actor ? ` · ${event.actor}` : ""}</span><time className="shrink-0 text-muted-foreground">{formatOrderDate(event.at)}</time></div>) : <p className="border-t pt-2 text-muted-foreground">لا توجد تواريخ تغييرات مسجلة لهذه الطلبية بعد.</p>}
         </div>
 
         {/* Financial & Courier Tracking */}
@@ -277,4 +297,10 @@ export function ShipmentDetailsCard({ order, onClose, onOpenSwitch }: ShipmentDe
       </CardContent>
     </Card>
   );
+}
+
+function formatOrderDate(value?: string) {
+  if (!value) return "غير مسجل";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "غير مسجل" : date.toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" });
 }

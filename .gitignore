@@ -27,6 +27,8 @@ scratch/
 .env*.local
 !.env.example
 !.env.production.example
+hostinger-media/bridge-auth.php
+next-shadcn-admin-dashboard-baseui-main/public/uploads/
 *.pem
 *.key
 
@@ -38,3 +40,5 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 *.code-workspace
+
+migration-manifest-*.json

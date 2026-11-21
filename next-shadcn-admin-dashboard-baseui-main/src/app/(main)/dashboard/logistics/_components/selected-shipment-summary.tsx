@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MapPin, Package, Phone, Truck } from "lucide-react";
+import { CalendarDays, MapPin, Package, Phone, Truck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 interface SelectedShipmentSummaryProps {
   order: {
     id: string;
+    date?: string;
     customer: string;
     phone: string;
     wilaya: string;
@@ -45,7 +46,10 @@ export function SelectedShipmentSummary({ order }: SelectedShipmentSummaryProps)
         </div>
       </CardHeader>
 
-      <CardContent className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+      <CardContent className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <SummaryField icon={<CalendarDays aria-hidden="true" className="size-3.5" />} label="تاريخ تسجيل الطلبية">
+          {formatOrderDate(order.date)}
+        </SummaryField>
         <SummaryField icon={<Phone aria-hidden="true" className="size-3.5" />} label="الهاتف">
           {order.phone ? <a className="font-medium text-primary hover:underline" href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}>{order.phone}</a> : "غير متوفر"}
         </SummaryField>
@@ -62,6 +66,12 @@ export function SelectedShipmentSummary({ order }: SelectedShipmentSummaryProps)
       </CardContent>
     </Card>
   );
+}
+
+function formatOrderDate(value?: string) {
+  if (!value) return "غير مسجل";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "غير مسجل" : date.toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" });
 }
 
 function SummaryField({

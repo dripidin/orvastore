@@ -21,9 +21,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { formatDzd } from "@/lib/orva-api";
+import { formatDzd, orvaFetch } from "@/lib/orva-api";
 import { formatAttributionSourceLabel } from "@/lib/analytics/campaign-profitability";
 
 import { resolveOperationalOrderBucket, type OrderRow } from "./recent-orders-table/schema";
@@ -38,6 +39,20 @@ interface OrderDetailsDrawerProps {
   onOpenPushDialog?: (order: OrderRow) => void;
   onUpdateStatus?: (orderId: string, newStatus: string) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onDiscountUpdated?: (orderId: string, discountDzd: number, finalTotalDzd: number, originalTotalDzd: number) => void;
+}
+
+function numericAmount(value: unknown) {
+  const parsed = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseStrictDiscountInput(value: string | null, fallbackValue: number): number | null {
+  if (value === null) return fallbackValue;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function formatDate(dateStr?: string) {
@@ -109,12 +124,22 @@ export function OrderDetailsDrawer({
   onOpenSwitchDialog,
   onOpenPushDialog,
   onUpdateStatus,
+  onDiscountUpdated,
 }: OrderDetailsDrawerProps) {
   const [copied, setCopied] = React.useState<"id" | "tracking" | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
+  const [discountInput, setDiscountInput] = React.useState<string | null>(null);
+  const [savingDiscount, setSavingDiscount] = React.useState(false);
 
   React.useEffect(() => {
     setShowHistory(false);
+  }, [open, order?.id]);
+
+  React.useEffect(() => {
+    const raw = order?.rawOrder as Record<string, unknown> | undefined;
+    const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata as Record<string, unknown> : {};
+    const discount = metadata.orderDiscount && typeof metadata.orderDiscount === "object" ? metadata.orderDiscount as Record<string, unknown> : null;
+    setDiscountInput(Number(discount?.amountDzd) > 0 ? String(discount?.amountDzd) : "");
   }, [open, order?.id]);
 
   if (!order) return null;
@@ -148,6 +173,38 @@ export function OrderDetailsDrawer({
     } catch {
       toast.add({ title: "تعذر النسخ", type: "error" });
     }
+  };
+
+  const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata as Record<string, unknown> : {};
+  const discountMetadata = metadata.orderDiscount && typeof metadata.orderDiscount === "object" ? metadata.orderDiscount as Record<string, unknown> : null;
+  const originalTotalDzd = numericAmount(discountMetadata?.originalTotalDzd) || numericAmount(order.total);
+  const currentDiscountDzd = numericAmount(discountMetadata?.amountDzd);
+  const parsedDraftDiscount = parseStrictDiscountInput(discountInput, currentDiscountDzd);
+  const draftDiscountDzd = parsedDraftDiscount ?? currentDiscountDzd;
+  const isDraftValid = parsedDraftDiscount !== null && parsedDraftDiscount >= 0 && parsedDraftDiscount < originalTotalDzd;
+  const previewTotalDzd = isDraftValid ? Math.max(0, originalTotalDzd - parsedDraftDiscount) : Math.max(0, originalTotalDzd - currentDiscountDzd);
+  const discountChanged = parsedDraftDiscount !== null ? parsedDraftDiscount !== currentDiscountDzd : (discountInput !== null && discountInput.trim() !== (currentDiscountDzd ? String(currentDiscountDzd) : ""));
+  const saveDiscount = async () => {
+    if (parsedDraftDiscount === null || !Number.isInteger(parsedDraftDiscount) || parsedDraftDiscount < 0 || parsedDraftDiscount >= originalTotalDzd) {
+      toast.add({ title: "قيمة الخصم غير صالحة", description: "أدخل خصماً صحيحاً بدون كسور أو رموز وأقل من إجمالي الطلبية (أو 0 لإلغاء الخصم).", type: "error" });
+      return;
+    }
+    setSavingDiscount(true);
+    try {
+      const response = await orvaFetch("/api/delivery?action=apply_discount", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, discountDzd: parsedDraftDiscount }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) throw new Error(result?.error || "تعذر حفظ الخصم.");
+      const savedDiscount = Number(result.discountDzd) || 0;
+      setDiscountInput(savedDiscount ? String(savedDiscount) : "");
+      onDiscountUpdated?.(order.id, savedDiscount, Number(result.finalTotalDzd), Number(result.originalTotalDzd));
+      toast.add({ title: savedDiscount ? "تم حفظ الخصم" : "تم إلغاء الخصم", description: `المبلغ الجديد عند الاستلام: ${formatDzd(Number(result.finalTotalDzd))}`, type: "success" });
+    } catch (error) {
+      toast.add({ title: "تعذر حفظ الخصم", description: error instanceof Error ? error.message : "حاول مرة أخرى.", type: "error" });
+    } finally { setSavingDiscount(false); }
   };
 
   const runStatus = (status: string) => onUpdateStatus?.(order.id, status);
@@ -232,10 +289,20 @@ export function OrderDetailsDrawer({
                 <InfoRow label="المنتج / العرض">{order.items}</InfoRow>
                 <InfoRow label="سعر المنتج">{formatDzd(order.priceNum)}</InfoRow>
                 <InfoRow label="مصاريف الشحن">{order.shippingFee}</InfoRow>
+                {currentDiscountDzd > 0 && <InfoRow label="الإجمالي قبل الخصم">{formatDzd(originalTotalDzd)}</InfoRow>}
+                {(isDraftValid ? draftDiscountDzd : currentDiscountDzd) > 0 && <InfoRow label="الخصم الحالي">− {formatDzd(isDraftValid ? draftDiscountDzd : currentDiscountDzd)}</InfoRow>}
+              </div>
+              <div className="mt-3 space-y-2 rounded-lg border border-dashed p-3">
+                <label htmlFor="order-discount" className="block font-semibold text-foreground">خصم من إجمالي الطلبية (د.ج)</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input id="order-discount" type="number" min="0" max={Math.max(0, originalTotalDzd - 1)} step="1" value={discountInput ?? (currentDiscountDzd ? String(currentDiscountDzd) : "")} onChange={(event) => setDiscountInput(event.target.value)} className="h-9 min-w-0 flex-1" placeholder="0" />
+                  <Button type="button" size="sm" variant="outline" onClick={() => void saveDiscount()} disabled={savingDiscount || !discountChanged || sentToCourier} className="shrink-0">{savingDiscount ? "جارٍ الحفظ..." : currentDiscountDzd && parsedDraftDiscount === 0 ? "إلغاء الخصم" : "حفظ الخصم"}</Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">الإجمالي بعد الخصم: <strong className="text-foreground">{formatDzd(previewTotalDzd)}</strong>{sentToCourier ? " · لا يمكن تعديل الخصم بعد تسجيل الشحنة لدى شركة التوصيل." : " · بعد الحفظ يُرسل هذا المبلغ تلقائياً كمبلغ تحصيل في البوليصة."}</p>
               </div>
               <div className="mt-3 flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2.5">
-                <span className="font-semibold text-muted-foreground">المبلغ عند الاستلام</span>
-                <span className="font-bold text-base text-primary tabular-nums">{order.total}</span>
+                <span className="font-semibold text-muted-foreground">{discountChanged ? "المبلغ بعد الخصم (معاينة)" : "المبلغ عند الاستلام"}</span>
+                <span className="font-bold text-base text-primary tabular-nums">{formatDzd(previewTotalDzd)}</span>
               </div>
             </section>
           </div>

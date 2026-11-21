@@ -1,0 +1,22 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  <FilesMatch "\.(jpg|jpeg|png|webp|gif|avif)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+  </FilesMatch>
+  <FilesMatch "^api-media\.php$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, private"
+  </FilesMatch>
+</IfModule>
+
+<FilesMatch "^(bridge-auth\.php|bridge-auth\.example\.php|\.user\.ini|\.htaccess)$">
+  Require all denied
+</FilesMatch>

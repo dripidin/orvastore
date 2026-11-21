@@ -3,6 +3,7 @@ import {
   Forklift,
   Gauge,
   Globe,
+  Images,
   LayoutTemplate,
   type LucideIcon,
   MapPin,
@@ -90,6 +91,12 @@ export const sidebarItems: NavGroup[] = [
         title: "Products & Inventory",
         url: "/dashboard/products",
         icon: Boxes,
+      },
+      {
+        id: "media-library",
+        title: "Media Library",
+        url: "/dashboard/media",
+        icon: Images,
       },
       {
         id: "top-products",

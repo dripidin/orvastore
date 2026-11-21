@@ -58,11 +58,12 @@ import {
   computeEstimatedOrderProfit,
 } from "@/lib/repository/product-types";
 import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
-import { storeProductImage, deleteProductImageById } from "@/lib/product-image-db";
+import { prepareImageForUpload } from "@/lib/media/client-image-compress";
+import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
 import { useOrvaOrders } from "@/lib/use-orva-orders";
+import { ProductCategoriesPanel } from "./_components/product-categories-panel";
 
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
 
 export default function ProductsManagementPage() {
   const { orders } = useOrvaOrders();
@@ -92,6 +93,15 @@ export default function ProductsManagementPage() {
   const [formStatus, setFormStatus] = useState<ProductStatus>("active");
   const [formImages, setFormImages] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [mediaSettings, setMediaSettings] = useState<{ maxUploadSizeMb: number; webpCompressionEnabled: boolean; webpQuality: number }>({
+    maxUploadSizeMb: 10,
+    webpCompressionEnabled: true,
+    webpQuality: 0.85,
+  });
+  const [aiBrief, setAiBrief] = useState("");
+  const [isGeneratingCopy, setIsGeneratingCopy] = useState(false);
 
   // ── State: Table Filters & Pagination ─────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,6 +183,32 @@ export default function ProductsManagementPage() {
     return () => window.removeEventListener("orva:products-updated", handleUpdate);
   }, [repo]);
 
+  useEffect(() => {
+    const headers: Record<string, string> = {};
+    const token = typeof window !== "undefined" ? localStorage.getItem("orva_admin_token") : null;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    fetch("/api/media/settings", { headers, credentials: "same-origin", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.success && j.settings) {
+          setMediaSettings(j.settings);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (products.length === 0) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) {
+      const target = products.find((p) => p.id === editId || p.slug === editId);
+      if (target) {
+        window.history.replaceState(null, "", window.location.pathname);
+        startEditProduct(target);
+      }
+    }
+  }, [products]);
+
   // Quick Create → "منتج جديد" opens the empty product form (/dashboard/products?create=1)
   useEffect(() => {
     const openNew = () => {
@@ -205,6 +241,7 @@ export default function ProductsManagementPage() {
     setFormLowStockThreshold(5);
     setFormStatus("active");
     setFormImages([]);
+    setAiBrief("");
   };
 
   const startEditProduct = (prod: Product) => {
@@ -232,41 +269,106 @@ export default function ProductsManagementPage() {
   const handleImageFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setIsUploadingImage(true);
-    const newImages: string[] = [];
+    const uploadedUrls: string[] = [];
+    const maxBytes = mediaSettings.maxUploadSizeMb * 1024 * 1024;
+    let totalSavedBytes = 0;
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      const rawFile = files[i];
+      if (!ALLOWED_IMAGE_TYPES.includes(rawFile.type)) {
         setFeedbackMessage({
           type: "error",
-          text: `الملف ${file.name} غير مدعوم. الصيغ المقبولة: JPG, PNG, WebP فقط.`,
-        });
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setFeedbackMessage({
-          type: "error",
-          text: `حجم الصورة ${file.name} يتجاوز الحد الأقصى (5 ميجابايت).`,
+          text: `الملف ${rawFile.name} غير مدعوم. الصيغ المقبولة: JPG, PNG, WebP, GIF, AVIF فقط.`,
         });
         continue;
       }
 
       try {
-        const stored = await storeProductImage(file);
-        newImages.push(stored.dataUrl);
+        const prepared = await prepareImageForUpload(rawFile, {
+          webpEnabled: mediaSettings.webpCompressionEnabled,
+          quality: mediaSettings.webpQuality,
+        });
+
+        if (prepared.file.size > maxBytes) {
+          setFeedbackMessage({
+            type: "error",
+            text: `حجم الصورة ${prepared.file.name} (${(prepared.file.size / (1024 * 1024)).toFixed(2)} MB) يتجاوز الحد المضبوط (${mediaSettings.maxUploadSizeMb} MB).`,
+          });
+          continue;
+        }
+
+        const publicUrl = await repo.uploadImageFile(prepared.file, prepared.file.name);
+        uploadedUrls.push(publicUrl);
+        totalSavedBytes += Math.max(0, prepared.originalBytes - prepared.finalBytes);
       } catch (err) {
-        console.warn("Failed to store image in IDB", err);
+        setFeedbackMessage({
+          type: "error",
+          text: err instanceof Error ? err.message : `فشل رفع الصورة ${rawFile.name}`,
+        });
       }
     }
 
-    if (newImages.length > 0) {
-      setFormImages((prev) => [...prev, ...newImages]);
+    if (uploadedUrls.length > 0) {
+      setFormImages((prev) => [...prev, ...uploadedUrls]);
       setFeedbackMessage({
         type: "success",
-        text: `تمت إضافة ${newImages.length} صورة بنجاح وحفظها محلياً في IndexedDB.`,
+        text:
+          totalSavedBytes > 0
+            ? `تم رفع ${uploadedUrls.length} صورة إلى Hostinger (media.orva-store.com) مع توفير ${(totalSavedBytes / 1024).toFixed(0)} KB عبر WebP.`
+            : `تم رفع ${uploadedUrls.length} صورة بنجاح إلى Hostinger (media.orva-store.com).`,
       });
     }
     setIsUploadingImage(false);
+  };
+
+  const handleAddImageUrl = () => {
+    const rawUrl = imageUrlInput.trim();
+    if (!rawUrl) return;
+    if (!/^https?:\/\/.+|^\/[a-z0-9_.\-/]+/i.test(rawUrl)) {
+      setFeedbackMessage({
+        type: "error",
+        text: "يرجى إدخال رابط صورة صالح يبدأ بـ https:// أو /images/...",
+      });
+      return;
+    }
+    if (/supabase\.co\/storage/i.test(rawUrl)) {
+      setFeedbackMessage({
+        type: "error",
+        text: "تحذير: روابط Supabase Storage تستهلك حصة Cached Egress. استخدم رابط Hostinger (media.orva-store.com) أو رابطاً خارجياً.",
+      });
+      return;
+    }
+    setFormImages((prev) => (prev.includes(rawUrl) ? prev : [...prev, rawUrl]));
+    setImageUrlInput("");
+    setFeedbackMessage({
+      type: "success",
+      text: "تمت إضافة رابط الصورة المباشر بنجاح.",
+    });
+  };
+
+  const generateProductCopy = async () => {
+    if (!aiBrief.trim()) {
+      setFeedbackMessage({ type: "error", text: "اكتب وصفاً مختصراً للمنتج حتى يتمكن الوكيل من إعداد بيانات دقيقة." });
+      return;
+    }
+    setIsGeneratingCopy(true);
+    try {
+      const response = await fetch("/api/store-products/generate-copy", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: aiBrief, images: formImages }),
+      });
+      const result = await response.json() as { success?: boolean; error?: string; data?: { title: string; subtitle: string; description: string; highlights: string[] } };
+      if (!response.ok || !result.success || !result.data) throw new Error(result.error || "تعذر توليد بيانات المنتج.");
+      setFormTitle(result.data.title);
+      setFormSubtitle(result.data.subtitle);
+      setFormDescription(result.data.description);
+      setFormHighlights(result.data.highlights.join("\n"));
+      setFeedbackMessage({ type: "success", text: "جهّز الوكيل الاسم والوصف والمميزات. راجعها وعدّلها قبل الحفظ." });
+    } catch (error) {
+      setFeedbackMessage({ type: "error", text: error instanceof Error ? error.message : "تعذر توليد بيانات المنتج." });
+    } finally { setIsGeneratingCopy(false); }
   };
 
   const moveImage = (index: number, direction: "up" | "down") => {
@@ -288,12 +390,7 @@ export default function ProductsManagementPage() {
   };
 
   const removeImage = async (index: number) => {
-    const targetUrl = formImages[index];
     setFormImages((prev) => prev.filter((_, i) => i !== index));
-    if (targetUrl) {
-      const otherProds = products.filter((p) => p.id !== editingId);
-      await deleteProductImageById(targetUrl, otherProds);
-    }
   };
 
   const handleSaveProduct = async (statusOverride?: ProductStatus) => {
@@ -465,7 +562,7 @@ export default function ProductsManagementPage() {
         if (filterLowStockOnly && p.stockQuantity > p.lowStockThreshold) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          return p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+          return [p.title, p.subtitle, p.description, p.sku].some((value) => value.toLowerCase().includes(q));
         }
         return true;
       })
@@ -667,6 +764,8 @@ export default function ProductsManagementPage() {
         </Card>
       </div>
 
+      <ProductCategoriesPanel products={products} onChanged={loadData} />
+
       {/* ── Section 1: Product Form ──────────────────────────────────────────── */}
       <Card ref={formSectionRef} className="border shadow-sm">
         <CardHeader className="bg-muted/40 border-b pb-4">
@@ -706,10 +805,10 @@ export default function ProductsManagementPage() {
               <div>
                 <Label className="text-sm font-semibold flex items-center gap-2">
                   <ImageIcon className="h-4 w-4 text-primary" />
-                  صور المنتج (Drag & Drop)
+                  صور المنتج (Hostinger Media)
                 </Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  ارفع صورة واحدة أو أكثر (JPG, PNG, WebP حتى 5MB). الصورة الأولى تُعتمد كغلاف رئيسي.
+                  مقاسات غير مقيدة · الحد الأقصى {mediaSettings.maxUploadSizeMb} MB · {mediaSettings.webpCompressionEnabled ? "ضغط WebP مفعّل" : "الصيغة الأصلية"}. الصورة الأولى تُعتمد كغلاف رئيسي.
                 </p>
               </div>
 
@@ -726,18 +825,75 @@ export default function ProductsManagementPage() {
                   type="file"
                   id="imageUploadInput"
                   multiple
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
                   className="hidden"
                   onChange={(e) => handleImageFiles(e.target.files)}
                 />
                 <label htmlFor="imageUploadInput" className="cursor-pointer space-y-2 block">
                   <div className="mx-auto size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <ImageIcon className="h-6 w-6" />
+                    {isUploadingImage ? <RefreshCw className="h-6 w-6 animate-spin" /> : <ImageIcon className="h-6 w-6" />}
                   </div>
-                  <div className="text-sm font-medium">اسحب الصور وأفلتها هنا، أو اضغط للاختيار</div>
-                  <div className="text-xs text-muted-foreground">تخزين آمن في IndexedDB بدون استهلاك الذاكرة</div>
+                  <div className="text-sm font-medium">
+                    {isUploadingImage ? "جارٍ الرفع إلى media.orva-store.com..." : "اسحب الصور وأفلتها هنا، أو اضغط للاختيار"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    رفع مباشر إلى Hostinger (باندويث غير محدود · 0 استهلاك من Supabase)
+                  </div>
                 </label>
               </div>
+
+              {/* Library Picker + Direct URL Paste */}
+              <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsMediaPickerOpen(true)}
+                    className="gap-1.5 text-xs"
+                  >
+                    <Layers className="h-3.5 w-3.5 text-primary" />
+                    اختيار من مكتبة الوسائط
+                  </Button>
+                  <Link href="/dashboard/media" className="text-[11px] text-primary hover:underline">
+                    إدارة المكتبة وتخصيص الحجم ←
+                  </Link>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Input
+                    type="url"
+                    dir="ltr"
+                    value={imageUrlInput}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddImageUrl();
+                      }
+                    }}
+                    placeholder="https://media.orva-store.com/products/image.webp"
+                    className="h-8 flex-1 font-mono text-xs"
+                  />
+                  <Button type="button" size="sm" variant="secondary" onClick={handleAddImageUrl} className="shrink-0 text-xs h-8">
+                    إضافة رابط
+                  </Button>
+                </div>
+              </div>
+
+              <MediaPickerDialog
+                open={isMediaPickerOpen}
+                onOpenChange={setIsMediaPickerOpen}
+                multiple
+                defaultFolder="products"
+                onSelect={(urls) => {
+                  setFormImages((prev) => {
+                    const set = new Set(prev);
+                    for (const u of urls) set.add(u);
+                    return Array.from(set);
+                  });
+                }}
+              />
 
               {/* Uploaded Images Preview & Reordering */}
               {formImages.length > 0 && (
@@ -822,6 +978,15 @@ export default function ProductsManagementPage() {
             {/* ── Column 2: Product Information ────────────────────────────────── */}
             <div className="lg:col-span-7 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="aiBrief" className="text-sm font-semibold">وصف مختصر لتوليد بيانات المنتج</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input id="aiBrief" value={aiBrief} onChange={(event) => setAiBrief(event.target.value)} placeholder="مثال: منفاخ هواء للسيارة يعمل على 12V مع طقم مفاتيح..." />
+                    <Button type="button" variant="outline" onClick={generateProductCopy} disabled={isGeneratingCopy || isUploadingImage} className="shrink-0 gap-2"><RefreshCw className={`size-4 ${isGeneratingCopy ? "animate-spin" : ""}`} />{isGeneratingCopy ? "الوكيل يكتب..." : "توليد بالوكيل"}</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">يحلل الوكيل الصور المختارة مع الوصف المقترح. راجع النتيجة قبل حفظ المنتج.</p>
+                </div>
+
                 <div className="space-y-1.5 md:col-span-2">
                   <Label htmlFor="formTitle" className="text-sm font-semibold">اسم المنتج *</Label>
                   <Input
@@ -1124,7 +1289,24 @@ export default function ProductsManagementPage() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="space-y-3 p-3 md:hidden">
+            {paginatedProducts.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد منتجات مطابقة لخيارات البحث أو الفلترة.</p>
+            ) : paginatedProducts.map((prod) => {
+              const inv = getInventoryForProduct(prod.id);
+              const reserved = inv?.reservedQuantity || 0;
+              const isLow = prod.stockQuantity <= prod.lowStockThreshold;
+              const coverImg = prod.images[0] || "/placeholder.svg";
+              return (
+                <article key={prod.id} className={`rounded-xl border p-3 ${isLow ? "border-amber-300 bg-amber-50/40" : "bg-card"}`}>
+                  <div className="flex gap-3"><div className="relative size-14 shrink-0 overflow-hidden rounded-lg border bg-muted"><Image src={coverImg} alt={prod.title} fill className="object-cover" unoptimized={coverImg.startsWith("data:")} /></div><div className="min-w-0 flex-1"><h3 className="truncate font-bold text-sm">{prod.title}</h3><p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{prod.sku}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="font-bold text-primary">{new Intl.NumberFormat("fr-DZ").format(prod.sellingPrice)} د.ج</span><Badge variant={prod.status === "active" ? "default" : "secondary"}>{prod.status === "active" ? "نشط" : prod.status === "draft" ? "مسودة" : "مؤرشف"}</Badge></div></div></div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">المتاح</span><b className={isLow ? "text-destructive" : ""}>{prod.stockQuantity}</b></div><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">المحجوز</span><b>{reserved}</b></div><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">الحالة</span><b>{isLow ? "نقص مخزون" : "مستقر"}</b></div></div>
+                  <div className="mt-3 grid grid-cols-3 gap-2"><Button size="sm" variant="outline" onClick={() => startEditProduct(prod)}>تعديل</Button><Button size="sm" variant="outline" onClick={() => { setPriceDialogProduct(prod); setNewPriceValue(prod.sellingPrice); }}>السعر</Button><Button size="sm" variant="outline" onClick={() => { setStockDialogProduct(prod); setStockAdjustmentChange(""); }}>المخزون</Button></div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 text-xs">

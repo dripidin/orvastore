@@ -54,6 +54,12 @@ interface OrderItem {
   isSwitched?: boolean;
 }
 
+function orderDate(value?: string) {
+  if (!value) return "غير مسجل";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "غير مسجل" : date.toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" });
+}
+
 interface ShipmentsTableProps {
   orders: OrderItem[];
   selectedOrderId: string | null;
@@ -269,11 +275,28 @@ export function ShipmentsTable({
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 md:hidden" dir="rtl">
+          {pageOrders.map((order) => {
+            const isSelected = selectedOrderId === order.id;
+            return (
+              <article key={order.id} className={`rounded-xl border p-4 shadow-xs ${isSelected ? "border-primary bg-primary/5" : "bg-card"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><p className="truncate font-mono text-xs font-bold">{order.id}</p><p className="mt-1 font-bold">{order.customer}</p><a className="text-xs text-primary" href={`tel:${order.phone}`}>{order.phone}</a></div>
+                  <Badge variant={order.status === "delivered" ? "default" : "outline"} className="shrink-0 capitalize">{order.status}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">الوجهة</span>{order.wilaya} {order.commune && `— ${order.commune}`}</div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">تاريخ الطلب</span>{orderDate(order.date)}</div></div>
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(5rem,auto)] gap-2"><Button size="sm" className="inline-flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap px-2.5 [&_svg]:shrink-0" variant={isSelected ? "default" : "outline"} onClick={() => onSelectOrder(order)}><MapPin className="size-3.5" />{isSelected ? "محدد" : "عرض التفاصيل"}</Button><Button size="sm" variant="outline" className="inline-flex min-w-[5rem] items-center justify-center gap-1.5 whitespace-nowrap px-2.5 leading-none [&_svg]:shrink-0" render={<a href={`tel:${order.phone}`} />}><Phone className="size-3.5" /><span>اتصال</span></Button></div>
+              </article>
+            );
+          })}
+          {pageOrders.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">لم يتم العثور على أي شحنات تطابق الفلاتر المحددة.</p>}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <Table className="text-right">
             <TableHeader className="bg-muted/40 text-xs">
               <TableRow>
-                <TableHead className="text-right font-bold py-2.5 px-3">رقم الطلب</TableHead>
+            <TableHead className="text-right font-bold py-2.5 px-3">رقم الطلب</TableHead>
+                <TableHead className="text-right font-bold py-2.5 px-3">تاريخ الطلب</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">المستلم والهاتف</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">وجهة التوصيل</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">نقطة الانطلاق</TableHead>
@@ -308,6 +331,7 @@ export function ShipmentsTable({
                           )}
                         </div>
                       </TableCell>
+                      <TableCell className="py-2.5 px-3 text-[11px] text-muted-foreground whitespace-nowrap">{orderDate(order.date)}</TableCell>
 
                       <TableCell className="py-2.5 px-3">
                         <div className="space-y-0.5">
@@ -385,7 +409,7 @@ export function ShipmentsTable({
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-28 text-center text-muted-foreground text-xs">
+                  <TableCell colSpan={10} className="h-28 text-center text-muted-foreground text-xs">
                     لم يتم العثور على أي شحنات تطابق الفلاتر المحددة.
                   </TableCell>
                 </TableRow>

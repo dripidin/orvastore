@@ -39,6 +39,9 @@ export interface Product {
   layout?: ProductPageLayoutConfig | null; // live landing-page section layout (designer)
   layoutDraft?: ProductPageLayoutConfig | null; // unpublished designer draft
   showOutOfStock?: boolean;        // admin switch: show "نفدت الكمية مؤقتاً" on cards and landing page
+  categoryId?: string | null;
+  categoryName?: string | null;
+  categoryPath?: string | null;
 }
 
 export type ProductCreateInput = Omit<Product, "id" | "createdAt" | "updatedAt"> & {

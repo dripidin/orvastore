@@ -15,6 +15,28 @@ export function normalizeStoreLogoUrl(url?: string | null): string {
   return trimmed;
 }
 
+export const MEDIA_MIN_UPLOAD_MB = 4;
+export const MEDIA_MAX_UPLOAD_MB = 100;
+export const MEDIA_DEFAULT_UPLOAD_MB = 10;
+
+export function clampMaxUploadSizeMb(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return MEDIA_DEFAULT_UPLOAD_MB;
+  return Math.min(MEDIA_MAX_UPLOAD_MB, Math.max(MEDIA_MIN_UPLOAD_MB, Math.round(num)));
+}
+
+export function clampWebpQuality(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0.85;
+  return Math.min(0.95, Math.max(0.5, Math.round(num * 100) / 100));
+}
+
+export interface MediaSettingsRecord {
+  maxUploadSizeMb: number;
+  webpCompressionEnabled: boolean;
+  webpQuality: number;
+}
+
 export interface AdminSettingsPayload {
   metaPixel?: {
     pixelId?: string;
@@ -61,6 +83,12 @@ export interface AdminSettingsPayload {
     token?: string;
     projectId?: string;
     teamId?: string;
+  };
+  media?: {
+    maxUploadSizeMb?: number;
+    webpCompressionEnabled?: boolean;
+    webpQuality?: number;
+    bridgeSecret?: string;
   };
 }
 
@@ -112,6 +140,7 @@ export interface AdminSettingsRecord {
     projectId: string;
     teamId: string;
   };
+  media: MediaSettingsRecord;
   updatedAt: string;
 }
 
@@ -162,6 +191,11 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     token: (process.env.VERCEL_TOKEN || process.env.VERCEL_ACCESS_TOKEN || '').trim(),
     projectId: process.env.VERCEL_PROJECT_ID || 'prj_Zm7DPG2CymNdDKu0KxupUZdGp0rx',
     teamId: process.env.VERCEL_TEAM_ID || 'team_cYT8gZkkTTbR60uqUXL6aRPH',
+  },
+  media: {
+    maxUploadSizeMb: MEDIA_DEFAULT_UPLOAD_MB,
+    webpCompressionEnabled: true,
+    webpQuality: 0.85,
   },
   updatedAt: new Date().toISOString(),
 };

@@ -2,7 +2,7 @@
 
 import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
-import { Inbox, Lightbulb, MapPin, Phone, RefreshCw, Trash2 } from "lucide-react";
+import { Inbox, Lightbulb, Mail, MapPin, Phone, RefreshCw, Server, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,15 @@ interface ProductRequest {
   created_at: string;
 }
 
+interface MailboxMessage {
+  id: string;
+  subject: string;
+  from: string;
+  date: string;
+  unread: boolean;
+  text: string;
+}
+
 export const REQUESTS_READ_EVENT = "orva:requests-read";
 
 function timeAgo(iso: string) {
@@ -34,6 +43,10 @@ export function RequestsInbox() {
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [freshIds, setFreshIds] = React.useState<Set<string>>(new Set());
+  const [mailMessages, setMailMessages] = React.useState<MailboxMessage[]>([]);
+  const [mailLoading, setMailLoading] = React.useState(false);
+  const [mailError, setMailError] = React.useState<string | null>(null);
+  const [mailQuery, setMailQuery] = React.useState("");
 
   const load = React.useCallback(async (markRead: boolean) => {
     setLoading(true);
@@ -67,6 +80,21 @@ export function RequestsInbox() {
     void load(true);
   }, [load]);
 
+  const loadMailbox = React.useCallback(async () => {
+    setMailLoading(true);
+    setMailError(null);
+    try {
+      const res = await orvaFetch("/api/mailbox", { credentials: "same-origin", cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) throw new Error(data?.error || "تعذر تحميل الرسائل.");
+      setMailMessages(data.messages as MailboxMessage[]);
+    } catch (err) {
+      setMailError(err instanceof Error ? err.message : "تعذر الاتصال بصندوق البريد.");
+    } finally { setMailLoading(false); }
+  }, []);
+
+  React.useEffect(() => { void loadMailbox(); }, [loadMailbox]);
+
   const remove = async (id: string) => {
     if (!window.confirm("حذف هذا الطلب؟")) return;
     const res = await orvaFetch(`/api/product-requests?id=${encodeURIComponent(id)}`, {
@@ -83,6 +111,7 @@ export function RequestsInbox() {
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
+  const filteredMail = mailMessages.filter((message) => `${message.from} ${message.subject} ${message.text}`.toLowerCase().includes(mailQuery.trim().toLowerCase()));
 
   // Most requested products (simple word grouping on the requested product text)
   const top = React.useMemo(() => {
@@ -128,6 +157,17 @@ export function RequestsInbox() {
           </AlertDescription>
         </Alert>
       )}
+
+      <Card className="border-primary/20">
+        <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><CardTitle className="flex items-center gap-2 text-base"><Mail className="size-4 text-primary" /> صندوق البريد المهني</CardTitle><CardDescription className="mt-1">الرسائل الواردة إلى contact@orva-store.com عبر IMAP.</CardDescription></div>
+          <div className="flex gap-2"><Input aria-label="بحث في البريد" value={mailQuery} onChange={(event) => setMailQuery(event.target.value)} placeholder="بحث في الرسائل..." className="h-9 min-w-0 sm:w-52" /><Button size="sm" variant="outline" onClick={() => void loadMailbox()} disabled={mailLoading} className="shrink-0 gap-1.5"><RefreshCw className={`size-3.5 ${mailLoading ? "animate-spin" : ""}`} />تحديث البريد</Button></div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1"><Mail className="size-3.5" />contact@orva-store.com</span><span className="inline-flex items-center gap-1"><Server className="size-3.5" />IMAP: imap.hostinger.com · SSL/993</span></div>
+          {mailError ? <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">{mailError}<p className="mt-1 text-xs">إعداد الخادم: HOSTINGER_IMAP_USER و HOSTINGER_IMAP_PASSWORD. لا تضع كلمة المرور في المتصفح.</p></div> : mailLoading && mailMessages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">جارٍ جلب الرسائل...</p> : filteredMail.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">لا توجد رسائل مطابقة.</p> : <div className="max-h-[32rem] space-y-2 overflow-auto">{filteredMail.map((message) => <details key={message.id} className="rounded-lg border bg-background p-3"><summary className="cursor-pointer list-none"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{message.subject}{message.unread && <span className="ms-2 inline-block size-2 rounded-full bg-primary" aria-label="غير مقروءة" />}</p><p className="mt-1 truncate text-xs text-muted-foreground">{message.from}</p></div><time className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(message.date)}</time></div></summary><p className="mt-3 whitespace-pre-wrap border-t pt-3 text-sm leading-relaxed text-foreground">{message.text || "(لا يوجد نص للرسالة)"}</p></details>)}</div>}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-1">

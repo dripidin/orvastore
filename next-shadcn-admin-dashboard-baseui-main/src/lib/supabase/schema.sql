@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
     name TEXT NOT NULL UNIQUE,
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
+      parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE,
     display_order INTEGER DEFAULT 0,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now(),

@@ -16,6 +16,7 @@ import {
 import { fallbackSettingsStore } from '@/lib/settings/settings-store';
 import { verifyAdminSession } from '@/lib/auth/admin-auth';
 import { runGeminiSettingsTestReport } from '@/lib/ai/store-ai-context';
+import { uploadMediaBuffer, uploadMediaDataUrl } from '@/lib/media/hostinger-media';
 
 export async function GET(request: NextRequest) {
   if (!await verifyAdminSession(request)) {
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
       },
       couriers: settings.couriers,
       store: settings.store,
+      media: settings.media,
       redex: {
         enabled: redex.enabled,
         baseUrl: redex.baseUrl,
@@ -108,6 +110,29 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const contentType = (request.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData();
+      const action = String(form.get('action') || '');
+      const file = form.get('file');
+      if (action === 'upload_logo' && file instanceof File && file.size > 0) {
+        const bytes = Buffer.from(await file.arrayBuffer());
+        const uploaded = await uploadMediaBuffer({
+          bytes,
+          name: file.name || 'store-logo',
+          folder: 'branding',
+          claimedMime: file.type || null,
+        });
+        await saveSettingsAction({ store: { logoUrl: uploaded.url } });
+        return NextResponse.json({
+          success: true,
+          logoUrl: uploaded.url,
+          provider: uploaded.provider,
+        });
+      }
+      return NextResponse.json({ success: false, error: 'ملف الشعار غير صالح.' }, { status: 400 });
+    }
+
     const body = await request.json();
 
     // 1. Handle Test action for all integrations
@@ -271,10 +296,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === 'upload_logo' && body.dataUrl) {
-      fallbackSettingsStore.store.logoUrl = body.dataUrl;
+      const uploaded = await uploadMediaDataUrl({
+        dataUrl: String(body.dataUrl),
+        name: String(body.name || 'store-logo'),
+        folder: 'branding',
+      });
+      await saveSettingsAction({ store: { logoUrl: uploaded.url } });
       return NextResponse.json({
         success: true,
-        logoUrl: body.dataUrl,
+        logoUrl: uploaded.url,
+        provider: uploaded.provider,
       });
     }
 
