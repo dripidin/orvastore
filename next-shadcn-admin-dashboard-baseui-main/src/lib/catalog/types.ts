@@ -38,6 +38,11 @@ export interface StoreProduct {
   status: CatalogStatus;
   isFeatured: boolean;
   sortOrder: number;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  categorySlug?: string | null;
+  categoryIcon?: string | null;
+  categoryPath?: string | null;
   updatedAt: string;
   landing: StorefrontPack;
   layout: ProductPageLayoutConfig | null;

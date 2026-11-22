@@ -1,6 +1,7 @@
--- Hierarchical product categories (parent rows are categories, children are subcategories).
+-- Hierarchical product categories (parent rows are categories, children are subcategories) + icons.
 ALTER TABLE public.categories
-  ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE;
+  ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS icon_name TEXT DEFAULT 'folder-tree';
 
 CREATE INDEX IF NOT EXISTS idx_categories_parent_order
   ON public.categories(parent_id, display_order, name);
@@ -16,14 +17,21 @@ SET search_path = public
 AS $$
 DECLARE
   assignment JSONB;
+  target_cat UUID;
 BEGIN
   IF jsonb_typeof(p_assignments) <> 'array' THEN
     RAISE EXCEPTION 'Assignments must be an array';
   END IF;
   FOR assignment IN SELECT value FROM jsonb_array_elements(p_assignments)
   LOOP
+    IF NULLIF(BTRIM(COALESCE(assignment->>'categoryId', '')), '') IS NULL THEN
+      target_cat := NULL;
+    ELSE
+      target_cat := (assignment->>'categoryId')::UUID;
+    END IF;
+
     UPDATE public.products
-       SET category_id = (assignment->>'categoryId')::UUID,
+       SET category_id = target_cat,
            updated_at = now()
      WHERE id = (assignment->>'productId')::UUID;
     IF NOT FOUND THEN
@@ -35,3 +43,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.assign_product_categories(JSONB) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.assign_product_categories(JSONB) TO service_role;
+
+NOTIFY pgrst, 'reload schema';

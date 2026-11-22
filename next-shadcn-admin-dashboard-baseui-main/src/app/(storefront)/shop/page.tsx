@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 
 import { ShieldCheck, Truck, Wallet } from "lucide-react";
 
-import { ProductGrid } from "@/components/storefront/catalog/product-card";
+import { ShopCatalogClient } from "@/components/storefront/shop/shop-catalog-client";
 import { listPublishedProducts } from "@/lib/catalog/server";
+import { publicListActiveCategories } from "@/lib/categories/server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,10 @@ const PROMISES = [
 ];
 
 export default async function ShopPage() {
-  const products = await listPublishedProducts();
+  const [products, categories] = await Promise.all([
+    listPublishedProducts(),
+    publicListActiveCategories().catch(() => []),
+  ]);
 
   return (
     <div className="space-y-10 pb-20">
@@ -31,7 +35,7 @@ export default async function ShopPage() {
           <p className="mb-2 font-bold text-amber-600 text-sm">متجر أورفا</p>
           <h1 className="font-black text-3xl text-slate-900 sm:text-4xl">كل المنتجات</h1>
           <p className="mt-2 max-w-2xl text-slate-600">
-            {products.length} منتج أصلي متوفر الآن. اختر ما يناسبك واطلب في أقل من دقيقة.
+            {products.length} منتج أصلي متوفر الآن. اختر التصنيف أو الباقة التي تناسبك واطلب في أقل من دقيقة.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {PROMISES.map(({ icon: Icon, title, text }) => (
@@ -50,7 +54,7 @@ export default async function ShopPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 sm:px-6">
-        <ProductGrid products={products} />
+        <ShopCatalogClient products={products} categories={categories} />
       </section>
     </div>
   );

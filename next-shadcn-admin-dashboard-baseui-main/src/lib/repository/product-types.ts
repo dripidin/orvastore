@@ -41,6 +41,7 @@ export interface Product {
   showOutOfStock?: boolean;        // admin switch: show "نفدت الكمية مؤقتاً" on cards and landing page
   categoryId?: string | null;
   categoryName?: string | null;
+  categoryIcon?: string | null;
   categoryPath?: string | null;
 }
 

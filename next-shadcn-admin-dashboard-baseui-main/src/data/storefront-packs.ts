@@ -70,8 +70,8 @@ export const STOREFRONT_PACKS: Record<"PACK1" | "PACK2" | "PACK3", StorefrontPac
     savingsDzd: 4800,
     rating: 4.9,
     reviewsCount: 184,
-    heroImage: "/images/packs/pack-1/hero.webp",
-    allProductsImage: "/images/packs/pack-1/all-products.jpg",
+    heroImage: "https://media.orva-store.com/products/pack1-hero.webp",
+    allProductsImage: "https://media.orva-store.com/products/pack1-all-products.webp",
     heroImageAlt: "باك الخدمة والصيانة 4 في 1 — منفاخ TOYOTA وطقم مفاتيح ومفكات",
     descriptionAr:
       "باك الخدمة والصيانة 4 في 1 للسيارة والمنزل: منفاخ عجلات TOYOTA، طقم مفاتيح 46 قطعة STARCLE PRO، مفك مرن 11 قطعة، وطقم 6 مفكات بـ 4,950 د.ج مع التوصيل والدفع عند الاستلام.",
@@ -142,8 +142,8 @@ export const STOREFRONT_PACKS: Record<"PACK1" | "PACK2" | "PACK3", StorefrontPac
     savingsDzd: 8300,
     rating: 4.9,
     reviewsCount: 142,
-    heroImage: "/images/packs/pack-2/hero.webp",
-    allProductsImage: "/images/packs/pack-2/all-products.jpg",
+    heroImage: "https://media.orva-store.com/products/pack2-hero.webp",
+    allProductsImage: "https://media.orva-store.com/products/pack2-all-products.webp",
     heroImageAlt: "باك المحترفين والورشة 5 في 1 — ماكينة CROWN 20V وطقم مفكات وطقم مفاتيح",
     descriptionAr:
       "باك المحترفين 5 في 1 للورشة والصيانة: ماكينة CROWN 20V ببطاريتين و29 قطعة، طقم مفكات 6 قطع، علبة مفاتيح 46 قطعة، مفك مرن 11 قطعة، وقفازات GILAN بـ 12,950 د.ج.",
@@ -221,8 +221,8 @@ export const STOREFRONT_PACKS: Record<"PACK1" | "PACK2" | "PACK3", StorefrontPac
     savingsDzd: 8550,
     rating: 4.9,
     reviewsCount: 96,
-    heroImage: "/images/packs/pack-3/hero.webp",
-    allProductsImage: "/images/packs/pack-3/all-products.jpg",
+    heroImage: "https://media.orva-store.com/products/pack3-hero.webp",
+    allProductsImage: "https://media.orva-store.com/products/pack3-all-products.webp",
     heroImageAlt: "باك اللحام والورشة — ماكينة لحام CROWN MMA-200 MINI مع قفازات حماية GILAN وملحقات",
     descriptionAr:
       "باك اللحام والورشة: ماكينة لحام CROWN CT33102 MMA-200 MINI مع قفازات حماية GILAN Anti-Cut، قناع لحام، فرشاة سلك، طقم مفكات 6 قطع، وكوابل لحام بـ 15,950 د.ج.",

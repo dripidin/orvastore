@@ -3,9 +3,10 @@
  * ORVA Store — Safe Supabase Storage -> Hostinger Media Migration Script
  *
  * Modes:
- *   --dry-run                   (default) Scans Supabase DB & bucket, prints migration plan without mutating.
- *   --apply                     Downloads images from Supabase Storage, uploads to media.orva-store.com,
- *                               verifies HTTP 200, updates DB rows, and saves rollback manifest.
+ *   --dry-run                   (default) Scans Supabase DB, bucket & local pack paths, prints migration plan.
+ *   --apply                     Downloads/migrates Supabase Storage URLs to media.orva-store.com & updates DB.
+ *   --migrate-local-packs       Converts local /images/packs/pack-{1,2,3}/* files to WebP preserving pixels,
+ *                               uploads to media.orva-store.com/products/, and updates DB product metadata.
  *   --rollback <manifest.json>  Restores original DB URLs recorded in the manifest.
  *   --cleanup-supabase-bucket   Deletes objects from Supabase `product-images` bucket ONLY after verifying
  *                               no DB rows still point to Supabase Storage.
@@ -13,6 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 
 const SUPABASE_STORAGE_RE = /https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/[^\s"'`<>]+/gi;
 
@@ -44,10 +46,17 @@ const MEDIA_SECRET = (process.env.MEDIA_UPLOAD_SECRET || "").trim();
 function parseArgs() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
+  const migrateLocalPacks = args.includes("--migrate-local-packs");
   const cleanup = args.includes("--cleanup-supabase-bucket");
   const rbIdx = args.indexOf("--rollback");
   const rollbackPath = rbIdx !== -1 ? args[rbIdx + 1] : null;
-  return { apply, cleanup, rollbackPath, dryRun: !apply && !cleanup && !rollbackPath };
+  return {
+    apply,
+    migrateLocalPacks,
+    cleanup,
+    rollbackPath,
+    dryRun: !apply && !migrateLocalPacks && !cleanup && !rollbackPath,
+  };
 }
 
 async function sbFetch(relPath, init = {}) {
@@ -136,12 +145,25 @@ function safeNameFromUrl(rawUrl) {
   return /^[a-z0-9]/.test(base) ? base : `migrated-${base}`;
 }
 
+async function listHostingerOriginItems(folder) {
+  const sep = MEDIA_ENDPOINT.includes("?") ? "&" : "?";
+  const res = await fetch(`${MEDIA_ENDPOINT}${sep}action=list&folder=${encodeURIComponent(folder)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${MEDIA_SECRET}`,
+      "X-Media-Secret": MEDIA_SECRET,
+    },
+    cache: "no-store",
+  }).catch(() => null);
+  const json = await res?.json().catch(() => null);
+  return Array.isArray(json?.items) ? json.items : [];
+}
+
 async function uploadToHostingerBridge(bytes, mimeType, filename, folder = "products") {
   const candidateUrl = `${MEDIA_PUBLIC_BASE_URL}/${folder}/${encodeURIComponent(filename)}`;
-  const existingHead = await fetch(candidateUrl, { method: "HEAD" }).catch(() => null);
-  const existingLen = Number(existingHead?.headers.get("content-length") || 0);
-  const existingType = (existingHead?.headers.get("content-type") || "").toLowerCase();
-  if (existingHead?.ok && existingType.startsWith("image/") && existingLen === bytes.length) {
+  const existingItems = await listHostingerOriginItems(folder);
+  const existing = existingItems.find((it) => it.folder === folder && it.filename === filename);
+  if (existing && Number(existing.sizeBytes) === bytes.length) {
     return candidateUrl;
   }
 
@@ -164,8 +186,12 @@ async function uploadToHostingerBridge(bytes, mimeType, filename, folder = "prod
     throw new Error(`Hostinger bridge upload failed (${res.status}): ${JSON.stringify(json)}`);
   }
 
-  // Verify live public URL returns HTTP 200 and image content-type
-  const headRes = await fetch(json.item.url, { method: "HEAD" });
+  // Verify live public URL (bypass negative edge cache with ?verify= query)
+  let headRes = await fetch(`${json.item.url}?verify=${Date.now()}`, { method: "HEAD" });
+  if (!headRes.ok) {
+    await new Promise((r) => setTimeout(r, 1000));
+    headRes = await fetch(`${json.item.url}?verify=${Date.now()}`, { method: "HEAD" });
+  }
   if (!headRes.ok) {
     throw new Error(`Uploaded file verification failed (${headRes.status}) at ${json.item.url}`);
   }
@@ -242,8 +268,98 @@ async function main() {
     return;
   }
 
+  if (opts.migrateLocalPacks) {
+    if (!MEDIA_SECRET || MEDIA_SECRET.length < 32) {
+      throw new Error("MEDIA_UPLOAD_SECRET missing or too short for --migrate-local-packs.");
+    }
+
+    const LOCAL_PACK_SPECS = [
+      {
+        slug: "pack1",
+        files: [
+          { localRel: "public/images/packs/pack-1/hero.webp", targetName: "pack1-hero.webp" },
+          { localRel: "public/images/packs/pack-1/all-products.jpg", targetName: "pack1-all-products.webp" },
+        ],
+      },
+      {
+        slug: "pack2",
+        files: [
+          { localRel: "public/images/packs/pack-2/hero.webp", targetName: "pack2-hero.webp" },
+          { localRel: "public/images/packs/pack-2/all-products.jpg", targetName: "pack2-all-products.webp" },
+        ],
+      },
+      {
+        slug: "pack3",
+        files: [
+          { localRel: "public/images/packs/pack-3/hero.webp", targetName: "pack3-hero.webp" },
+          { localRel: "public/images/packs/pack-3/all-products.jpg", targetName: "pack3-all-products.webp" },
+        ],
+      },
+    ];
+
+    const manifest = {
+      migratedAt: new Date().toISOString(),
+      mode: "migrate-local-packs",
+      products: [],
+    };
+
+    for (const spec of LOCAL_PACK_SPECS) {
+      const product = products.find((p) => p.slug === spec.slug);
+      if (!product) {
+        console.warn(`[WARN] Product with slug '${spec.slug}' not found in Supabase, skipping DB update.`);
+      }
+      const uploadedUrls = [];
+      for (const entry of spec.files) {
+        const absPath = path.resolve(process.cwd(), entry.localRel);
+        if (!fs.existsSync(absPath)) {
+          throw new Error(`Local pack image missing: ${absPath}`);
+        }
+        const rawBytes = fs.readFileSync(absPath);
+        const origMeta = await sharp(rawBytes).metadata();
+        const { data: convertedBuf, info } = await sharp(rawBytes)
+          .rotate()
+          .webp({ quality: 85, effort: 5 })
+          .toBuffer({ resolveWithObject: true });
+
+        const keepOriginalWebp =
+          origMeta.format === "webp" && convertedBuf.length >= rawBytes.length && !origMeta.orientation;
+        const webpBuf = keepOriginalWebp ? rawBytes : convertedBuf;
+
+        console.log(
+          `[WEBP] ${entry.localRel}: ${(rawBytes.length / 1024).toFixed(0)} KB -> ${(webpBuf.length / 1024).toFixed(0)} KB (${origMeta.width}x${origMeta.height} -> ${info.width}x${info.height})`
+        );
+
+        const publicUrl = await uploadToHostingerBridge(webpBuf, "image/webp", entry.targetName, "products");
+        uploadedUrls.push(publicUrl);
+        console.log(`[HOSTINGER] Verified live: ${publicUrl}`);
+      }
+
+      if (product) {
+        manifest.products.push({ id: product.id, slug: product.slug, oldMetadata: product.metadata });
+        const nextMeta = {
+          ...(product.metadata && typeof product.metadata === "object" ? product.metadata : {}),
+          images: uploadedUrls,
+          heroAsset: uploadedUrls[0],
+        };
+        await sbPatch(`/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
+          metadata: nextMeta,
+          updated_at: new Date().toISOString(),
+        });
+        console.log(`[DB] Updated ${product.slug} (${product.name}) -> ${JSON.stringify(uploadedUrls)}`);
+      }
+    }
+
+    const manifestPath = path.resolve(
+      process.cwd(),
+      `migration-manifest-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+    );
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+    console.log(`\n[DONE] Local packs WebP migration completed! Manifest: ${manifestPath}`);
+    return;
+  }
+
   if (opts.dryRun) {
-    console.log("\n[DRY-RUN] No modifications made. Run with --apply to migrate.");
+    console.log("\n[DRY-RUN] No modifications made. Run with --apply or --migrate-local-packs to migrate.");
     return;
   }
 

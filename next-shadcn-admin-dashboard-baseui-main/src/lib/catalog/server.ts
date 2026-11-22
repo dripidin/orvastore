@@ -1,4 +1,6 @@
 import { STOREFRONT_PACKS, type PackBoxItem, type StorefrontPack } from "@/data/storefront-packs";
+import { adminListCategories } from "@/lib/categories/server";
+import type { CategoryRecord } from "@/lib/categories/types";
 import { uploadMediaBuffer, uploadMediaDataUrl } from "@/lib/media/hostinger-media";
 import { createDefaultLayoutConfig, type ProductPageLayoutConfig } from "@/lib/repository/layout-types";
 import type { Product, ProductStatus } from "@/lib/repository/product-types";
@@ -112,9 +114,13 @@ function buildLanding(row: ProductRow, images: string[]): StorefrontPack {
   };
 }
 
-function toStoreProduct(row: ProductRow): StoreProduct {
+function toStoreProduct(row: ProductRow, categoryMap?: Map<string, CategoryRecord>): StoreProduct {
   const meta = row.metadata ?? {};
   const images = rowImages(row);
+  const categoryId = (row as ProductRow & { category_id?: string | null }).category_id ?? null;
+  const cat = categoryId ? categoryMap?.get(categoryId) : undefined;
+  const parentCat = cat?.parent_id ? categoryMap?.get(cat.parent_id) : undefined;
+  const categoryPath = cat ? (parentCat ? `${parentCat.name} / ${cat.name}` : cat.name) : null;
   return {
     id: row.id,
     slug: row.slug,
@@ -132,6 +138,11 @@ function toStoreProduct(row: ProductRow): StoreProduct {
     status: row.status,
     isFeatured: row.is_featured !== false,
     sortOrder: num(meta.sortOrder, 100),
+    categoryId,
+    categoryName: cat?.name ?? null,
+    categorySlug: cat?.slug ?? null,
+    categoryIcon: cat?.icon_name ?? null,
+    categoryPath,
     updatedAt: row.updated_at,
     landing: buildLanding(row, images),
     layout: meta.layout ?? null,
@@ -167,11 +178,23 @@ function sortProducts(list: StoreProduct[]): StoreProduct[] {
 
 // ── Storefront reads ─────────────────────────────────────────────────────────
 
+async function readCategoryLookupMap(): Promise<Map<string, CategoryRecord>> {
+  try {
+    const { categories } = await adminListCategories();
+    return new Map(categories.map((c) => [c.id, c]));
+  } catch {
+    return new Map();
+  }
+}
+
 export async function listPublishedProducts(): Promise<StoreProduct[]> {
   try {
-    const { data, error } = await db().from("products").select("*").eq("status", "PUBLISHED");
+    const [{ data, error }, categoryMap] = await Promise.all([
+      db().from("products").select("*").eq("status", "PUBLISHED"),
+      readCategoryLookupMap(),
+    ]);
     if (error) throw error;
-    return sortProducts((data as ProductRow[]).map(toStoreProduct));
+    return sortProducts((data as ProductRow[]).map((row) => toStoreProduct(row, categoryMap)));
   } catch (err) {
     console.warn("[catalog] listPublishedProducts fallback:", err);
     return legacyFallback();
@@ -180,14 +203,17 @@ export async function listPublishedProducts(): Promise<StoreProduct[]> {
 
 export async function getPublishedProductBySlug(slug: string): Promise<StoreProduct | null> {
   try {
-    const { data, error } = await db()
-      .from("products")
-      .select("*")
-      .eq("slug", slug)
-      .eq("status", "PUBLISHED")
-      .maybeSingle();
+    const [{ data, error }, categoryMap] = await Promise.all([
+      db()
+        .from("products")
+        .select("*")
+        .eq("slug", slug)
+        .eq("status", "PUBLISHED")
+        .maybeSingle(),
+      readCategoryLookupMap(),
+    ]);
     if (error) throw error;
-    return data ? toStoreProduct(data as ProductRow) : null;
+    return data ? toStoreProduct(data as ProductRow, categoryMap) : null;
   } catch (err) {
     console.warn("[catalog] getPublishedProductBySlug fallback:", err);
     return legacyFallback().find((p) => p.slug === slug) ?? null;
@@ -268,8 +294,12 @@ async function readPrivate(ids: string[]): Promise<Map<string, { purchase: numbe
   return map;
 }
 
-function toAdminProduct(row: ProductRow, priv?: { purchase: number; marketing: number }): Product {
-  const sp = toStoreProduct(row);
+function toAdminProduct(
+  row: ProductRow,
+  priv?: { purchase: number; marketing: number },
+  categoryMap?: Map<string, CategoryRecord>
+): Product {
+  const sp = toStoreProduct(row, categoryMap);
   return {
     id: row.id,
     sku: row.sku ?? "",
@@ -292,26 +322,33 @@ function toAdminProduct(row: ProductRow, priv?: { purchase: number; marketing: n
     layout: sp.layout,
     layoutDraft: row.metadata?.layoutDraft ?? null,
     showOutOfStock: sp.showOutOfStock,
-    categoryId: (row as ProductRow & { category_id?: string | null }).category_id ?? null,
-    categoryName: null,
-    categoryPath: null,
+    categoryId: sp.categoryId ?? null,
+    categoryName: sp.categoryName ?? null,
+    categoryIcon: sp.categoryIcon ?? null,
+    categoryPath: sp.categoryPath ?? null,
   };
 }
 
 export async function adminListProducts(): Promise<Product[]> {
-  const { data, error } = await db().from("products").select("*").order("created_at", { ascending: true });
+  const [{ data, error }, categoryMap] = await Promise.all([
+    db().from("products").select("*").order("created_at", { ascending: true }),
+    readCategoryLookupMap(),
+  ]);
   if (error) throw new Error(error.message);
   const rows = data as ProductRow[];
   const priv = await readPrivate(rows.map((r) => r.id));
-  return rows.map((r) => toAdminProduct(r, priv.get(r.id)));
+  return rows.map((r) => toAdminProduct(r, priv.get(r.id), categoryMap));
 }
 
 export async function adminGetProduct(id: string): Promise<Product | null> {
-  const { data, error } = await db().from("products").select("*").eq("id", id).maybeSingle();
+  const [{ data, error }, categoryMap] = await Promise.all([
+    db().from("products").select("*").eq("id", id).maybeSingle(),
+    readCategoryLookupMap(),
+  ]);
   if (error) throw new Error(error.message);
   if (!data) return null;
   const priv = await readPrivate([id]);
-  return toAdminProduct(data as ProductRow, priv.get(id));
+  return toAdminProduct(data as ProductRow, priv.get(id), categoryMap);
 }
 
 async function uniqueSlug(base: string): Promise<string> {

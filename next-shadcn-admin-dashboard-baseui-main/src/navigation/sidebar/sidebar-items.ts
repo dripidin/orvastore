@@ -1,5 +1,6 @@
 import {
   Boxes,
+  FolderTree,
   Forklift,
   Gauge,
   Globe,
@@ -91,6 +92,13 @@ export const sidebarItems: NavGroup[] = [
         title: "Products & Inventory",
         url: "/dashboard/products",
         icon: Boxes,
+      },
+      {
+        id: "categories",
+        title: "Categories",
+        url: "/dashboard/categories",
+        icon: FolderTree,
+        badge: "new",
       },
       {
         id: "media-library",

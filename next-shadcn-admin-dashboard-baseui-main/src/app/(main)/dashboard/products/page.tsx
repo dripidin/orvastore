@@ -24,6 +24,7 @@ import {
   Layers,
   LayoutTemplate,
   MapPin,
+  FolderTree,
 } from "lucide-react";
 
 import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
@@ -60,8 +61,9 @@ import {
 import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import { prepareImageForUpload } from "@/lib/media/client-image-compress";
 import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
+import type { CategoryRecord } from "@/lib/categories/types";
+import { orvaFetch } from "@/lib/orva-api";
 import { useOrvaOrders } from "@/lib/use-orva-orders";
-import { ProductCategoriesPanel } from "./_components/product-categories-panel";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
 
@@ -91,6 +93,8 @@ export default function ProductsManagementPage() {
   const [formStockQuantity, setFormStockQuantity] = useState<number | "">("");
   const [formLowStockThreshold, setFormLowStockThreshold] = useState<number | "">(5);
   const [formStatus, setFormStatus] = useState<ProductStatus>("active");
+  const [formCategoryId, setFormCategoryId] = useState<string>("");
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [formImages, setFormImages] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState("");
@@ -128,11 +132,17 @@ export default function ProductsManagementPage() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [prods, invs, anList] = await Promise.all([
+      const [prods, invs, anList, catRes] = await Promise.all([
         repo.getProducts(),
         repo.getInventory(),
         repo.getAllProductsAnalytics(),
+        orvaFetch("/api/product-categories", { credentials: "same-origin", cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null),
       ]);
+      if (catRes?.success && Array.isArray(catRes.data)) {
+        setCategories(catRes.data as CategoryRecord[]);
+      }
 
       // Ensure canonical Arabic pack titles are respected even if prior session had legacy English titles cached
       let needsSync = false;
@@ -240,6 +250,7 @@ export default function ProductsManagementPage() {
     setFormStockQuantity("");
     setFormLowStockThreshold(5);
     setFormStatus("active");
+    setFormCategoryId("");
     setFormImages([]);
     setAiBrief("");
   };
@@ -259,6 +270,7 @@ export default function ProductsManagementPage() {
     setFormStockQuantity(prod.stockQuantity);
     setFormLowStockThreshold(prod.lowStockThreshold);
     setFormStatus(prod.status);
+    setFormCategoryId(prod.categoryId ?? "");
     setFormImages([...prod.images]);
     setIsFormOpen(true);
     setTimeout(() => {
@@ -429,6 +441,7 @@ export default function ProductsManagementPage() {
           stockQuantity,
           lowStockThreshold,
           status,
+          categoryId: formCategoryId || null,
           images: formImages.length > 0 ? formImages : ["/placeholder.svg"],
           originalPrice: Number(formOriginalPrice) > sellingPrice ? Number(formOriginalPrice) : null,
           highlights: formHighlights
@@ -450,6 +463,7 @@ export default function ProductsManagementPage() {
           stockQuantity,
           lowStockThreshold,
           status,
+          categoryId: formCategoryId || null,
           images: formImages.length > 0 ? formImages : ["/placeholder.svg"],
           originalPrice: Number(formOriginalPrice) > sellingPrice ? Number(formOriginalPrice) : null,
           highlights: formHighlights
@@ -764,7 +778,28 @@ export default function ProductsManagementPage() {
         </Card>
       </div>
 
-      <ProductCategoriesPanel products={products} onChanged={loadData} />
+      {/* Quick shortcut to dedicated Categories & AI Studio page */}
+      <Card className="border shadow-2xs bg-muted/20">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+              <FolderTree className="size-4" />
+            </span>
+            <div>
+              <div className="text-sm font-bold">إدارة التصنيفات ومخطط الذكاء الاصطناعي</div>
+              <div className="text-xs text-muted-foreground">
+                أصبح للتصنيفات صفحة مخصصة متكاملة ({categories.length} تصنيف) لاختيار الأيقونات والربط الجماعي وتنظيم المتجر عبر الذكاء الاصطناعي.
+              </div>
+            </div>
+          </div>
+          <Link href="/dashboard/categories">
+            <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs">
+              <FolderTree className="size-3.5 text-primary" />
+              فتح صفحة التصنيفات
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* ── Section 1: Product Form ──────────────────────────────────────────── */}
       <Card ref={formSectionRef} className="border shadow-sm">
@@ -1039,6 +1074,34 @@ export default function ProductsManagementPage() {
                     <option value="active">نشط (معروض للبيع)</option>
                     <option value="draft">مسودة (غير معروض)</option>
                     <option value="archived">مؤرشف</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="formCategory" className="text-sm font-semibold flex items-center justify-between">
+                    <span>التصنيف في المتجر (Category)</span>
+                    <Link href="/dashboard/categories" className="text-xs font-normal text-primary hover:underline">
+                      إدارة التصنيفات ←
+                    </Link>
+                  </Label>
+                  <select
+                    id="formCategory"
+                    value={formCategoryId}
+                    onChange={(e) => setFormCategoryId(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">بدون تصنيف</option>
+                    {categories.map((cat) => {
+                      const parentName = cat.parent_id
+                        ? categories.find((p) => p.id === cat.parent_id)?.name
+                        : null;
+                      return (
+                        <option key={cat.id} value={cat.id}>
+                          {parentName ? `${parentName} / ` : ""}
+                          {cat.name}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 

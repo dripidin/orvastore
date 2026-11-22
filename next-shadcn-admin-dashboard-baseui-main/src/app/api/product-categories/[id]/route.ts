@@ -1,57 +1,82 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  adminDeleteCategory,
+  adminUpdateCategory,
+  CategoryDeleteConflictError,
+} from "@/lib/categories/server";
+import type { CategoryDeleteMode } from "@/lib/categories/types";
 
 export const dynamic = "force-dynamic";
-const db = () => getSupabaseServerClient() as any;
+
 type Ctx = { params: Promise<{ id: string }> };
-const slugify = (name: string) => name.trim().toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "");
+
+function unauthorized() {
+  return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+}
 
 export async function PATCH(request: NextRequest, { params }: Ctx) {
-  if (!(await verifyAdminSession(request))) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await verifyAdminSession(request))) return unauthorized();
   try {
     const { id } = await params;
-    const body = await request.json() as { name?: string; description?: string | null; parentId?: string | null; displayOrder?: number; active?: boolean };
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.name !== undefined) {
-      const name = body.name.trim();
-      if (!name || name.length > 80) throw new Error("اسم التصنيف مطلوب (حتى 80 حرفاً).");
-      patch.name = name;
-      patch.slug = `${slugify(name)}-${Date.now().toString(36)}`;
+    const body = (await request.json().catch(() => null)) as {
+      name?: string;
+      slug?: string;
+      description?: string | null;
+      parentId?: string | null;
+      iconName?: string | null;
+      displayOrder?: number;
+      active?: boolean;
+    } | null;
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ success: false, error: "بيانات التحديث غير صالحة." }, { status: 400 });
     }
-    if (body.description !== undefined) patch.description = body.description?.trim() || null;
-    if (body.parentId !== undefined) patch.parent_id = body.parentId || null;
-    if (body.displayOrder !== undefined) patch.display_order = body.displayOrder;
-    if (body.active !== undefined) patch.active = body.active;
-    if (patch.parent_id === id) throw new Error("لا يمكن جعل التصنيف أباً لنفسه.");
-    if (typeof patch.parent_id === "string") {
-      const { data: parent, error: parentError } = await db().from("categories").select("id,parent_id").eq("id", patch.parent_id).maybeSingle();
-      if (parentError) throw parentError;
-      if (!parent || parent.parent_id) throw new Error("التصنيف الفرعي يجب أن يتصل بتصنيف رئيسي.");
-    }
-    const { data, error } = await db().from("categories").update(patch).eq("id", id).select("id,name,slug,description,parent_id,display_order,active").single();
-    if (error) throw error;
-    return NextResponse.json({ success: true, data });
+
+    const updated = await adminUpdateCategory(id, {
+      name: body.name,
+      slug: body.slug,
+      description: body.description,
+      parentId: body.parentId,
+      iconName: body.iconName,
+      displayOrder: body.displayOrder,
+      active: body.active,
+    });
+
+    return NextResponse.json({ success: true, data: updated });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "تعذر تحديث التصنيف" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "تعذر تحديث التصنيف" },
+      { status: 400 }
+    );
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: Ctx) {
-  if (!(await verifyAdminSession(request))) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await verifyAdminSession(request))) return unauthorized();
   try {
     const { id } = await params;
-    const client = db();
-    const { data: children, error: childError } = await client.from("categories").select("id").eq("parent_id", id).limit(1);
-    if (childError) throw childError;
-    if (children?.length) throw new Error("انقل التصنيفات الفرعية أو احذفها أولاً.");
-    const { data: assigned, error: assignedError } = await client.from("products").select("id").eq("category_id", id).limit(1);
-    if (assignedError) throw assignedError;
-    if (assigned?.length) throw new Error("أعد تصنيف المنتجات المرتبطة قبل حذف هذا التصنيف.");
-    const { error } = await client.from("categories").delete().eq("id", id);
-    if (error) throw error;
-    return NextResponse.json({ success: true });
+    const body = (await request.json().catch(() => ({}))) as {
+      mode?: CategoryDeleteMode;
+      reassignToCategoryId?: string | null;
+    };
+
+    const rawMode = request.nextUrl.searchParams.get("mode") || body.mode;
+    const mode: CategoryDeleteMode =
+      rawMode === "unlink" || rawMode === "reassign" ? rawMode : "restrict";
+    const reassignToCategoryId =
+      request.nextUrl.searchParams.get("reassignToCategoryId") || body.reassignToCategoryId || null;
+
+    await adminDeleteCategory(id, { mode, reassignToCategoryId });
+    return NextResponse.json({ success: true, mode });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "تعذر حذف التصنيف" }, { status: 400 });
+    if (error instanceof CategoryDeleteConflictError) {
+      return NextResponse.json({ success: false, ...error.conflict }, { status: 409 });
+    }
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "تعذر حذف التصنيف" },
+      { status: 400 }
+    );
   }
 }
