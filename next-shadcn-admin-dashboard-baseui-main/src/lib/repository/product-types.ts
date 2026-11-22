@@ -16,6 +16,23 @@ import type { OrderStatus } from "./types";
 
 export type ProductStatus = "active" | "draft" | "archived";
 
+export interface ProductMetaAdLink {
+  enabled: boolean;
+  campaignId?: string | null;
+  campaignName?: string | null;
+  adsetId?: string | null;
+  adsetName?: string | null;
+  adId?: string | null;
+  adName?: string | null;
+  costMode: "meta_live_cpa" | "campaign_budget_cpa" | "fixed_cpa";
+  campaignSpendUsd?: number | null;
+  campaignSpendDzd?: number | null;
+  exchangeRateDzd?: number | null;
+  attributedOrdersCount?: number | null;
+  computedCpaDzd: number;
+  lastSyncedAt?: string | null;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -26,6 +43,7 @@ export interface Product {
   sellingPrice: number;            // in DZD
   purchaseCost: number;            // in DZD (Internal/Confidential — never exposed on public storefront)
   marketingCostPerOrder: number;   // in DZD (Internal/Confidential — never exposed on public storefront)
+  metaAdsLink?: ProductMetaAdLink | null; // Linked Meta Ads campaign/ad for automatic CPA calculation (Confidential)
   stockQuantity: number;
   lowStockThreshold: number;
   status: ProductStatus;

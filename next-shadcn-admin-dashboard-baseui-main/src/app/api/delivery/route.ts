@@ -83,6 +83,15 @@ function parseStrictDiscountDzd(raw: unknown): number | null {
   return null;
 }
 
+export function parseStrictCustomerName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const clean = raw.replace(/\s+/g, ' ').trim();
+  if (clean.length < 2 || clean.length > 120) return null;
+  if (/[\u0000-\u001F\u007F<>]/.test(clean)) return null;
+  if (!/[\p{L}]/u.test(clean)) return null;
+  return clean;
+}
+
 /**
  * ORVA-only status change: writes orders.status in Supabase and never calls Redex.
  */
@@ -856,6 +865,192 @@ export async function POST(request: NextRequest) {
         orderId,
         status: normalizedStatus.toLowerCase(),
         message: 'Order status updated successfully',
+      });
+    }
+
+    if (action === 'update_customer_name') {
+      const rawOrderId = body.orderId ?? body.order_id ?? body.orderNumber ?? body.id;
+      const cleanName = parseStrictCustomerName(body.customerName ?? body.newCustomerName ?? body.fullName);
+      const cleanReason =
+        typeof body.reason === 'string' && body.reason.trim().length > 0
+          ? body.reason.replace(/\s+/g, ' ').trim().slice(0, 200)
+          : 'تعديل اسم الزبون بناءً على طلبه';
+
+      if (!rawOrderId || !String(rawOrderId).trim() || !cleanName) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'رقم الطلبية واسم الزبون الصحيح (حرفان على الأقل بدون رموز غير صالحة) مطلوبان.',
+          },
+          { status: 400 }
+        );
+      }
+
+      const cleanOrderId = String(rawOrderId).trim();
+      const actorLabel = `admin:${String(adminSession.sid).slice(0, 8)}`;
+
+      return await withOrderMutationLock(cleanOrderId, async () => {
+        const timestamp = new Date().toISOString();
+        let supabase: any = null;
+        try {
+          supabase = getSupabaseServerClient() as any;
+        } catch {
+          supabase = null;
+        }
+
+        let updatedInSupabase = false;
+        let previousName = '—';
+        let canonicalOrderId = cleanOrderId;
+        let linkedCustomerUpdated = false;
+
+        if (supabase) {
+          const filter = buildOrderIdFilter(cleanOrderId);
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const { data: existing, error: readError } = await supabase
+              .from('orders')
+              .select('id, order_id, order_number, customer_id, customer_name, full_name, status, in_redex, tracking_code, redex_tracking_code, metadata, remarks, updated_at')
+              .or(filter)
+              .limit(1)
+              .maybeSingle();
+
+            if (readError) throw readError;
+            if (!existing) break;
+
+            canonicalOrderId = existing.order_id || existing.order_number || cleanOrderId;
+            previousName = String(existing.full_name || existing.customer_name || '—').trim() || '—';
+
+            const metadata =
+              existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+                ? { ...existing.metadata }
+                : {};
+            const prevHistory = Array.isArray(metadata.customerNameHistory) ? metadata.customerNameHistory : [];
+            const historyEntry = {
+              previousName,
+              newName: cleanName,
+              reason: cleanReason,
+              actor: actorLabel,
+              timestamp_utc: timestamp,
+            };
+            metadata.customerNameOverride = historyEntry;
+            metadata.customerNameHistory = [...prevHistory, historyEntry];
+
+            const remarks = Array.isArray(existing.remarks) ? existing.remarks : [];
+            const updatePayload = {
+              customer_name: cleanName,
+              full_name: cleanName,
+              metadata,
+              remarks: [
+                ...remarks,
+                {
+                  event: 'CUSTOMER_NAME_UPDATED',
+                  previousName,
+                  newName: cleanName,
+                  reason: cleanReason,
+                  actor: actorLabel,
+                  timestamp_utc: timestamp,
+                },
+              ],
+              updated_at: timestamp,
+            };
+
+            let updateQuery = supabase
+              .from('orders')
+              .update(updatePayload)
+              .eq('id', existing.id);
+
+            if (typeof existing.updated_at === 'string' && existing.updated_at.length > 0) {
+              updateQuery = updateQuery.eq('updated_at', existing.updated_at);
+            }
+
+            const { data: updatedRows, error: updateError } = await updateQuery.select('id, customer_name, full_name');
+            if (updateError) throw updateError;
+
+            if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+              updatedInSupabase = true;
+
+              // Referential integrity sync: safely update linked customers row if customer_id exists
+              if (existing.customer_id && UUID_PATTERN.test(String(existing.customer_id))) {
+                try {
+                  const { data: custRows, error: custErr } = await supabase
+                    .from('customers')
+                    .update({ name: cleanName, updated_at: timestamp })
+                    .eq('id', existing.customer_id)
+                    .select('id');
+                  if (!custErr && Array.isArray(custRows) && custRows.length > 0) {
+                    linkedCustomerUpdated = true;
+                  }
+                } catch {
+                  // Non-fatal if customer row is restricted or absent
+                }
+              }
+
+              // Record non-blocking timeline event if order_id exists
+              if (existing.order_id) {
+                try {
+                  await supabase.from('order_timeline_events').insert({
+                    order_id: existing.order_id,
+                    event_type: 'CUSTOMER_NAME_UPDATED',
+                    title: 'تغيير اسم الزبون',
+                    description: `تم تغيير اسم الزبون من "${previousName}" إلى "${cleanName}" (${cleanReason})`,
+                    actor: actorLabel,
+                    metadata: historyEntry,
+                  });
+                } catch {
+                  // Ignore timeline table errors in lightweight test schemas
+                }
+              }
+              break;
+            }
+          }
+        }
+
+        // Also mirror in fallback persistent store if present
+        let updatedInFallback = false;
+        try {
+          const allStored = getStoredFallbackOrders();
+          for (const fb of allStored) {
+            if (fb.id === cleanOrderId || fb.orderNumber === cleanOrderId || fb.id === canonicalOrderId || fb.orderNumber === canonicalOrderId) {
+              if (previousName === '—' && fb.customerName) previousName = fb.customerName;
+              fb.customerName = cleanName;
+              (fb as any).fullName = cleanName;
+              (fb as any).full_name = cleanName;
+              (fb as any).customer_name = cleanName;
+              const fbRemarks = Array.isArray(fb.remarks) ? fb.remarks : [];
+              fb.remarks = [
+                ...fbRemarks,
+                {
+                  event: 'CUSTOMER_NAME_UPDATED',
+                  previousName,
+                  newName: cleanName,
+                  reason: cleanReason,
+                  actor: actorLabel,
+                  timestamp_utc: timestamp,
+                },
+              ];
+              updatedInFallback = true;
+            }
+          }
+          if (updatedInFallback) {
+            saveAllFallbackOrders(allStored);
+          }
+        } catch {
+          // Ignore fallback write issues
+        }
+
+        if (!updatedInSupabase && !updatedInFallback) {
+          return NextResponse.json({ success: false, error: 'الطلبية غير موجودة.' }, { status: 404 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          orderId: canonicalOrderId,
+          previousName,
+          customerName: cleanName,
+          reason: cleanReason,
+          linkedCustomerUpdated,
+          updatedAt: timestamp,
+          message: 'تم تحديث اسم الزبون بنجاح في الطلبية والسجلات المرتبطة.',
+        });
       });
     }
 
@@ -1759,7 +1954,15 @@ export async function POST(request: NextRequest) {
 
         if (existingRow) {
           existingTracking = existingRow.redex_tracking_code || existingRow.tracking_code || null;
-          clientName = clientName || existingRow.full_name || existingRow.customer_name || 'Client';
+          const savedNameOverride = existingRow.metadata?.customerNameOverride;
+          if (
+            savedNameOverride?.newName &&
+            (!clientName || clientName === savedNameOverride.previousName)
+          ) {
+            clientName = String(savedNameOverride.newName);
+          } else {
+            clientName = clientName || existingRow.full_name || existingRow.customer_name || 'Client';
+          }
           clientPhone = clientPhone || existingRow.phone || existingRow.customer_phone || '';
           clientPhone2 = clientPhone2 || existingRow.phone2 || '';
           wilayaName = wilayaName || existingRow.wilaya || existingRow.wilaya_name || '';

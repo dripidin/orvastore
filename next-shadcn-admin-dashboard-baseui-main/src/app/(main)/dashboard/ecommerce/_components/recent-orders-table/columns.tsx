@@ -12,6 +12,7 @@ import {
   Copy,
   Eye,
   MoreHorizontal,
+  Pencil,
   Phone,
   Printer,
   RefreshCw,
@@ -207,6 +208,7 @@ export function createRecentOrdersColumns(
   onPushOrder?: (order: OrderRow) => void,
   onViewRisk?: (order: OrderRow) => void,
   onDeleteOrder?: (order: OrderRow) => void,
+  onEditCustomerName?: (order: OrderRow) => void,
 ): ColumnDef<DataTableFeatures, OrderRow>[] {
   return [
     {
@@ -268,7 +270,23 @@ export function createRecentOrdersColumns(
       header: "الزبون والاتصال (Customer)",
       cell: ({ row }) => (
         <div className="flex flex-col gap-0.5">
-          <div className="font-semibold text-xs text-foreground">{row.original.customer}</div>
+          <div className="flex items-center gap-1 font-semibold text-xs text-foreground">
+            <span>{row.original.customer}</span>
+            {onEditCustomerName && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditCustomerName(row.original);
+                }}
+                className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                title="تغيير اسم الزبون"
+                aria-label={`تغيير اسم الزبون للطلبية ${row.original.id}`}
+              >
+                <Pencil className="size-3" />
+              </button>
+            )}
+          </div>
           <div className="text-muted-foreground font-mono text-[11px] flex items-center gap-1.5">
             <a
               href={row.original.phone ? `tel:${row.original.phone}` : undefined}
@@ -469,6 +487,18 @@ export function createRecentOrdersColumns(
                       <div className="flex items-center gap-2">
                         <Eye className="size-3.5 text-primary" />
                         <span>View Order Details</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+
+                  {onEditCustomerName && (
+                    <DropdownMenuItem
+                      onClick={() => onEditCustomerName(row.original)}
+                      className="cursor-pointer font-medium flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Pencil className="size-3.5 text-primary" />
+                        <span>تغيير اسم الزبون (Edit Name)</span>
                       </div>
                     </DropdownMenuItem>
                   )}

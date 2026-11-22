@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getAdminSettingsAction } from "@/app/actions/settings";
 import {
+  buildStoreReportSnapshot,
   formatGeminiUserErrorMessage,
   probeOrvaGeminiConnection,
   runOrvaGeminiAgentQuery,
@@ -16,6 +17,13 @@ export async function GET(request: NextRequest) {
   }
 
   const mode = request.nextUrl.searchParams.get("mode");
+  if (mode === "marketing_snapshot") {
+    const { snapshot } = await buildStoreReportSnapshot();
+    return NextResponse.json({
+      success: true,
+      snapshot,
+    });
+  }
   if (mode === "status" || mode === "probe") {
     const probe = await probeOrvaGeminiConnection({ forceLiveCheck: mode === "probe" });
     return NextResponse.json({

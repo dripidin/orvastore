@@ -1,7 +1,10 @@
 import { getAdminSettingsAction } from "@/app/actions/settings";
+import { computeCampaignProfitability, type CampaignProfitabilityRow } from "@/lib/analytics/campaign-profitability";
 import { adminListProducts } from "@/lib/catalog/server";
+import { normalizeOrvaOrder } from "@/lib/orva-api";
 import { getStoredFallbackOrders } from "@/lib/orders-store";
 import { DEFAULT_MOCK_ORDERS } from "@/lib/repository/mock-orders-dataset";
+import { computeEstimatedOrderProfit, computeUnitMargin, type Product } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface NormalizedAiOrder {
@@ -18,6 +21,31 @@ export interface NormalizedAiOrder {
   campaign: string;
   source: string;
   createdAt: string;
+}
+
+export interface ProductEconomicsSummary {
+  id: string;
+  sku: string;
+  title: string;
+  sellingPriceDzd: number;
+  purchaseCostDzd: number;
+  unitMarginDzd: number;
+  marketingCostPerOrderDzd: number;
+  estimatedProfitPerOrderDzd: number;
+  breakEvenCpaDzd: number;
+  linkedMetaCampaign: string | null;
+  stockQuantity: number;
+  stockStatus: string;
+}
+
+export interface WilayaMarketingEfficiency {
+  wilaya: string;
+  totalOrders: number;
+  deliveredOrders: number;
+  returnedOrders: number;
+  cancelledOrders: number;
+  deliveryRatePct: number;
+  recommendation: "SCALE" | "HOLD" | "OPTIMIZE_CONFIRMATION";
 }
 
 export interface StoreReportSnapshot {
@@ -37,6 +65,19 @@ export interface StoreReportSnapshot {
   topWilayas: Array<{ wilaya: string; count: number }>;
   topProducts: Array<{ product: string; count: number; revenueDzd: number }>;
   catalogSummary: Array<{ id: string; title: string; priceDzd: number; status: string; stockStatus: string }>;
+  marketingAnalytics?: {
+    totalAdSpendDzd: number;
+    totalCogsDzd: number;
+    totalReturnLossDzd: number;
+    estimatedNetProfitDzd: number;
+    overallRoas: number | null;
+    overallCpaDzd: number | null;
+    overallCpdDzd: number | null;
+    overallDeliveryRatePct: number;
+    campaigns: CampaignProfitabilityRow[];
+    productEconomics: ProductEconomicsSummary[];
+    wilayaEfficiency: WilayaMarketingEfficiency[];
+  };
 }
 
 function normalizeStatus(raw: unknown): string {
@@ -204,9 +245,10 @@ export async function buildStoreReportSnapshot(): Promise<{
     .slice(0, 6);
 
   let catalogSummary: StoreReportSnapshot["catalogSummary"] = [];
+  let loadedProducts: Product[] = [];
   try {
-    const products = await adminListProducts();
-    catalogSummary = products.slice(0, 20).map((p) => {
+    loadedProducts = await adminListProducts();
+    catalogSummary = loadedProducts.slice(0, 20).map((p) => {
       let stockStatus = "in_stock";
       if (p.showOutOfStock || p.stockQuantity <= 0) {
         stockStatus = "out_of_stock";
@@ -225,6 +267,128 @@ export async function buildStoreReportSnapshot(): Promise<{
     catalogSummary = [];
   }
 
+  // Build Marketing & Campaign Profitability Analytics (Meta Ads Expert Engine)
+  const orvaOrdersForProfitability = allOrders
+    .map((o) =>
+      normalizeOrvaOrder({
+        orderId: o.id,
+        fullName: o.customer,
+        phone: o.phone,
+        wilaya: o.wilaya,
+        commune: o.commune,
+        deliveryType: o.deliveryType,
+        productName: o.productName,
+        grandTotal: o.totalDzd,
+        priceNum: o.totalDzd,
+        status: o.status,
+        in_redex: Boolean(o.redexTrackingId),
+        redex_tracking_id: o.redexTrackingId || null,
+        utm_campaign: o.campaign || null,
+        attribution_source: o.source || "direct",
+        created_at: o.createdAt,
+      }),
+    )
+    .filter((o): o is NonNullable<typeof o> => o !== null);
+
+  const campaigns = computeCampaignProfitability(orvaOrdersForProfitability, {}, {}, loadedProducts);
+
+  let totalAdSpendDzd = 0;
+  let totalCogsDzd = 0;
+  let totalReturnLossDzd = 0;
+  let estimatedNetProfitDzd = 0;
+
+  for (const c of campaigns) {
+    totalAdSpendDzd += c.adSpendDzd;
+    totalCogsDzd += c.totalCogsDzd;
+    totalReturnLossDzd += c.totalReturnLossDzd;
+    estimatedNetProfitDzd += c.netProfitDzd;
+  }
+
+  const outcomesTotal = statusCounts.delivered + statusCounts.returned;
+  const overallDeliveryRatePct =
+    outcomesTotal > 0 ? Math.round((statusCounts.delivered / outcomesTotal) * 100) : 0;
+  const overallRoas =
+    totalAdSpendDzd > 0 ? Number((deliveredRevenueDzd / totalAdSpendDzd).toFixed(2)) : null;
+  const overallCpaDzd =
+    totalAdSpendDzd > 0 && allOrders.length > 0 ? Math.round(totalAdSpendDzd / allOrders.length) : null;
+  const overallCpdDzd =
+    totalAdSpendDzd > 0 && statusCounts.delivered > 0
+      ? Math.round(totalAdSpendDzd / statusCounts.delivered)
+      : null;
+
+  const productEconomics: ProductEconomicsSummary[] = loadedProducts.slice(0, 15).map((p) => {
+    const unitMarginDzd = computeUnitMargin(p.sellingPrice, p.purchaseCost);
+    const marketingCostPerOrderDzd =
+      p.metaAdsLink?.enabled && Number(p.metaAdsLink.computedCpaDzd) > 0
+        ? Math.round(Number(p.metaAdsLink.computedCpaDzd))
+        : p.marketingCostPerOrder || 850;
+    const estimatedProfitPerOrderDzd = computeEstimatedOrderProfit(
+      p.sellingPrice,
+      p.purchaseCost,
+      marketingCostPerOrderDzd,
+      1,
+    );
+    const breakEvenCpaDzd = Math.max(0, unitMarginDzd - 200);
+    let stockStatus = "in_stock";
+    if (p.showOutOfStock || p.stockQuantity <= 0) stockStatus = "out_of_stock";
+    else if (p.stockQuantity <= p.lowStockThreshold) stockStatus = "low_stock";
+
+    return {
+      id: p.id,
+      sku: p.sku,
+      title: p.title,
+      sellingPriceDzd: p.sellingPrice,
+      purchaseCostDzd: p.purchaseCost,
+      unitMarginDzd,
+      marketingCostPerOrderDzd,
+      estimatedProfitPerOrderDzd,
+      breakEvenCpaDzd,
+      linkedMetaCampaign: p.metaAdsLink?.enabled
+        ? p.metaAdsLink.campaignName || p.metaAdsLink.adName || p.metaAdsLink.campaignId || "Meta Ads Linked"
+        : null,
+      stockQuantity: p.stockQuantity,
+      stockStatus,
+    };
+  });
+
+  const wilayaBreakdownMap = new Map<
+    string,
+    { total: number; delivered: number; returned: number; cancelled: number }
+  >();
+  for (const order of allOrders) {
+    if (!order.wilaya || order.wilaya === "—") continue;
+    const entry = wilayaBreakdownMap.get(order.wilaya) ?? {
+      total: 0,
+      delivered: 0,
+      returned: 0,
+      cancelled: 0,
+    };
+    entry.total += 1;
+    if (order.status === "delivered") entry.delivered += 1;
+    else if (order.status === "returned") entry.returned += 1;
+    else if (order.status === "cancelled") entry.cancelled += 1;
+    wilayaBreakdownMap.set(order.wilaya, entry);
+  }
+
+  const wilayaEfficiency: WilayaMarketingEfficiency[] = Array.from(wilayaBreakdownMap.entries())
+    .map(([wilaya, st]) => {
+      const finished = st.delivered + st.returned;
+      const rate = finished > 0 ? Math.round((st.delivered / finished) * 100) : 70;
+      const recommendation: WilayaMarketingEfficiency["recommendation"] =
+        rate >= 70 ? "SCALE" : rate >= 50 ? "HOLD" : "OPTIMIZE_CONFIRMATION";
+      return {
+        wilaya,
+        totalOrders: st.total,
+        deliveredOrders: st.delivered,
+        returnedOrders: st.returned,
+        cancelledOrders: st.cancelled,
+        deliveryRatePct: rate,
+        recommendation,
+      };
+    })
+    .sort((a, b) => b.totalOrders - a.totalOrders)
+    .slice(0, 10);
+
   return {
     allOrders,
     snapshot: {
@@ -237,6 +401,19 @@ export async function buildStoreReportSnapshot(): Promise<{
       topWilayas,
       topProducts,
       catalogSummary,
+      marketingAnalytics: {
+        totalAdSpendDzd,
+        totalCogsDzd,
+        totalReturnLossDzd,
+        estimatedNetProfitDzd,
+        overallRoas,
+        overallCpaDzd,
+        overallCpdDzd,
+        overallDeliveryRatePct,
+        campaigns,
+        productEconomics,
+        wilayaEfficiency,
+      },
     },
   };
 }
@@ -778,12 +955,19 @@ export async function runOrvaGeminiAgentQuery(options: {
     };
   }
 
+  const mkt = snapshot.marketingAnalytics;
   const systemPrompt = [
-    `أنت "${agentName}"، المساعد الذكي الرسمي للوحة تحكم متجر ORVA Store في الجزائر (المشروع: ${projectName} / رقم: ${projectNumber}).`,
-    `قواعد المحادثة والإجابة:`,
-    `1. أجب دائماً بنفس لغة رسالة المستخدم (العربية، الإنجليزية، أو الفرنسية) وبأسلوب طبيعي ولطيف ومهني.`,
-    `2. إذا أرسل المستخدم تحية عامة أو دردشة قصيرة (مثل: hi، hello، مرحبا، السلام عليكم، كيف حالك)، رد بتحية ودودة ومختصرة في سطرين أو ثلاثة وعرّف بإمكانياتك (الاستعلام عن الطلبيات، البحث برقم الطلب أو الهاتف، تقارير المبيعات والمخزون، وتتبع شحنات Redex) — ولا تسرد تقارير أو جداول طلبيات غير مطلوبة.`,
-    `3. إذا طلب المستخدم تقريراً أو سأل عن طلبية أو ولاية أو منتج أو شحن، أجب بدقة وبالأرقام الحقيقية المستخلصة حصراً من البيانات الحية أدناه ولا تختلق أي رقم.`,
+    `أنت "${agentName}"، المساعد الذكي والمستشار التسويقي الخبير (Expert Media Buyer & E-Commerce Strategist) للوحة تحكم متجر ORVA Store في الجزائر (المشروع: ${projectName} / رقم: ${projectNumber}).`,
+    `قواعد المحادثة والاستشارة التسويقية (Meta Ads Expert Skill):`,
+    `1. أجب دائماً بنفس لغة رسالة المستخدم (العربية، الإنجليزية، أو الفرنسية) وبأسلوب مهني ومنظم وواضح.`,
+    `2. إذا أرسل المستخدم تحية عامة أو دردشة قصيرة (مثل: hi، hello، مرحبا، السلام عليكم)، رد بتحية ودودة ومختصرة وعرّف بإمكانياتك (تحليل ربحية حملات Meta Ads، حساب ROAS وCPA وBreak-Even CPA، استشارات زيادة الميزانية أو إيقاف الإعلانات الخاسرة، ترشيح أفضل الولايات للاستهداف، ومتابعة الطلبيات وشحنات Redex).`,
+    `3. عندما يطلب المستخدم استشارة تسويقية أو تحليل الحملات أو ربحية المنتجات:`,
+    `   - اعتمد حصراً على الأرقام الحقيقية أدناه (صافي الربح، الإنفاق الإعلاني التقديري/الفعلي، CPA تكلفة الطلب، CPD تكلفة الطلب المسلّم، ROAS، نسبة التسليم الفعلي، وخسائر المرتجعات).`,
+    `   - طبّق منهجية (Meta Ads Expert Skill):`,
+    `     أ) الملخص التنفيذي للمؤشرات المالية (الإيراد المحصل، تكلفة الإعلانات، تكلفة البضاعة COGS، خسائر المرتجعات، وصافي الربح).`,
+    `     ب) قرارات الميزانية للحملات والمنتجات (أي حملة/منتج يجب توسيع ميزانيته Scale لأن ROAS مرتفع وصافي الربح إيجابي، وأي حملة تحتاج مراجعة الكرييتف أو التوقف بسبب ارتفاع CPA أو المرتجعات).`,
+    `     ج) استراتيجية استهداف الولايات في الجزائر (التركيز على الولايات ذات نسبة التسليم العالية ≥70%، وتشديد التأكيد الهاتفي في الولايات ذات المرتجعات المرتفعة).`,
+    `     د) حدود الأمان المالية لكل منتج (Break-Even CPA: أقصى تكلفة إعلان للطلب الواحد قبل الدخول في خسارة).`,
     ``,
     `البيانات الحية الحالية لمتجر ORVA Store:`,
     `- إجمالي الطلبيات: ${snapshot.totalOrders}`,
@@ -791,6 +975,17 @@ export async function runOrvaGeminiAgentQuery(options: {
     `- إجمالي المبيعات المحصّلة (Delivered): ${snapshot.deliveredRevenueDzd} د.ج`,
     `- إجمالي قيمة الطلبيات النشطة: ${snapshot.totalPipelineDzd} د.ج`,
     `- الطلبيات المربوطة بـ Redex: ${snapshot.redexTrackedCount}`,
+    `- المؤشرات التسويقية والربحية الشاملة (Meta Ads & Profitability Engine):`,
+    `  * إجمالي تكلفة الإعلانات (Meta Ads Spend): ${mkt?.totalAdSpendDzd ?? 0} د.ج`,
+    `  * إجمالي تكلفة البضاعة المسلّمة (COGS): ${mkt?.totalCogsDzd ?? 0} د.ج`,
+    `  * إجمالي خسائر شحن المرتجعات: ${mkt?.totalReturnLossDzd ?? 0} د.ج`,
+    `  * صافي الربح النهائي بعد الإعلانات والمرتجعات: ${mkt?.estimatedNetProfitDzd ?? 0} د.ج`,
+    `  * العائد على الإنفاق الإعلاني (ROAS): ${mkt?.overallRoas !== null && mkt?.overallRoas !== undefined ? `${mkt.overallRoas}x` : "غير محدد"}`,
+    `  * متوسط تكلفة الطلب الإعلانية (CPA): ${mkt?.overallCpaDzd ?? 0} د.ج | تكلفة الطلب المسلّم (CPD): ${mkt?.overallCpdDzd ?? 0} د.ج`,
+    `  * نسبة التسليم الفعلي الإجمالية: ${mkt?.overallDeliveryRatePct ?? 0}%`,
+    `- تفصيل ربحية الحملات الإعلانية (Campaigns Breakdown): ${JSON.stringify(mkt?.campaigns ?? [])}`,
+    `- اقتصاديات المنتجات والباقات وربط الإعلانات (Product Unit Economics & Break-Even CPA): ${JSON.stringify(mkt?.productEconomics ?? [])}`,
+    `- كفاءة الولايات التسويقية ونسب التسليم (Wilaya Targeting Efficiency): ${JSON.stringify(mkt?.wilayaEfficiency ?? [])}`,
     `- أعلى الولايات طلباً: ${JSON.stringify(snapshot.topWilayas)}`,
     `- أداء المنتجات: ${JSON.stringify(snapshot.topProducts)}`,
     `- كتالوج المنتجات والمخزون: ${JSON.stringify(snapshot.catalogSummary)}`,

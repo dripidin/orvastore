@@ -300,6 +300,22 @@ function toAdminProduct(
   categoryMap?: Map<string, CategoryRecord>
 ): Product {
   const sp = toStoreProduct(row, categoryMap);
+  const rawMeta = (row.metadata ?? {}) as Record<string, any>;
+  const metaAdsLink =
+    rawMeta.metaAdsLink && typeof rawMeta.metaAdsLink === "object"
+      ? (rawMeta.metaAdsLink as Product["metaAdsLink"])
+      : null;
+  const resolvedMarketingCost =
+    priv?.marketing && priv.marketing > 0
+      ? priv.marketing
+      : metaAdsLink?.enabled && Number(metaAdsLink.computedCpaDzd) > 0
+        ? Math.round(Number(metaAdsLink.computedCpaDzd))
+        : num(rawMeta.marketingCostPerOrder, 0);
+  const resolvedPurchaseCost =
+    priv?.purchase && priv.purchase > 0
+      ? priv.purchase
+      : num(rawMeta.purchaseCost, 0);
+
   return {
     id: row.id,
     sku: row.sku ?? "",
@@ -308,8 +324,9 @@ function toAdminProduct(
     description: row.description ?? "",
     images: sp.images,
     sellingPrice: sp.priceDzd,
-    purchaseCost: priv?.purchase ?? 0,
-    marketingCostPerOrder: priv?.marketing ?? 0,
+    purchaseCost: resolvedPurchaseCost,
+    marketingCostPerOrder: resolvedMarketingCost,
+    metaAdsLink,
     stockQuantity: sp.stockQuantity,
     lowStockThreshold: num(row.metadata?.lowStockThreshold, 5),
     status: STATUS_FROM_DB[row.status] ?? "draft",
@@ -391,13 +408,20 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
   if (price <= 0) throw new Error("سعر البيع غير صالح");
 
   const slug = await uniqueSlug(slugify(input.slug || input.sku || title));
-  const metadata = {
+  const resolvedMarketingCost =
+    input.metaAdsLink?.enabled && Number(input.metaAdsLink.computedCpaDzd) > 0
+      ? Math.round(Number(input.metaAdsLink.computedCpaDzd))
+      : num(input.marketingCostPerOrder, 0);
+  const metadata: Record<string, any> = {
     subtitle: input.subtitle ?? "",
     images: input.images?.length ? input.images : [],
     lowStockThreshold: input.lowStockThreshold ?? 5,
     sortOrder: 100,
     landing: { highlightsAr: input.highlights ?? [], showOutOfStock: input.showOutOfStock === true },
     layout: input.layout ?? createDefaultLayoutConfig(slug),
+    purchaseCost: num(input.purchaseCost, 0),
+    marketingCostPerOrder: resolvedMarketingCost,
+    ...(input.metaAdsLink !== undefined ? { metaAdsLink: input.metaAdsLink } : {}),
   };
 
   const { data, error } = await db()
@@ -419,7 +443,7 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  await writePrivate(data.id, input);
+  await writePrivate(data.id, { ...input, marketingCostPerOrder: resolvedMarketingCost });
   return (await adminGetProduct(data.id)) as Product;
 }
 
@@ -449,6 +473,18 @@ export async function adminUpdateProduct(id: string, input: AdminProductInput): 
   if (input.landing !== undefined) meta.landing = { ...(meta.landing ?? {}), ...input.landing };
   if (input.showOutOfStock !== undefined) {
     meta.landing = { ...(meta.landing ?? {}), showOutOfStock: input.showOutOfStock === true };
+  }
+  if (input.purchaseCost !== undefined) {
+    meta.purchaseCost = Math.max(0, num(input.purchaseCost, 0));
+  }
+  if (input.metaAdsLink !== undefined) {
+    meta.metaAdsLink = input.metaAdsLink;
+    if (input.metaAdsLink?.enabled && Number(input.metaAdsLink.computedCpaDzd) > 0 && input.marketingCostPerOrder === undefined) {
+      input.marketingCostPerOrder = Math.round(Number(input.metaAdsLink.computedCpaDzd));
+    }
+  }
+  if (input.marketingCostPerOrder !== undefined) {
+    meta.marketingCostPerOrder = Math.max(0, num(input.marketingCostPerOrder, 0));
   }
   if (input.layoutDraft !== undefined) meta.layoutDraft = input.layoutDraft;
   if (input.layout !== undefined) {

@@ -8,14 +8,17 @@ import {
   CheckCircle2,
   Copy,
   History,
+  Loader2,
   MapPin,
   Package,
+  Pencil,
   Phone,
   Printer,
   RefreshCw,
   RotateCcw,
   Truck,
   User,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -40,6 +43,7 @@ interface OrderDetailsDrawerProps {
   onUpdateStatus?: (orderId: string, newStatus: string) => void;
   onDeleteOrder?: (orderId: string) => void;
   onDiscountUpdated?: (orderId: string, discountDzd: number, finalTotalDzd: number, originalTotalDzd: number) => void;
+  onCustomerNameUpdated?: (orderId: string, newCustomerName: string, previousName: string) => void;
 }
 
 function numericAmount(value: unknown) {
@@ -125,15 +129,21 @@ export function OrderDetailsDrawer({
   onOpenPushDialog,
   onUpdateStatus,
   onDiscountUpdated,
+  onCustomerNameUpdated,
 }: OrderDetailsDrawerProps) {
   const [copied, setCopied] = React.useState<"id" | "tracking" | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
   const [discountInput, setDiscountInput] = React.useState<string | null>(null);
   const [savingDiscount, setSavingDiscount] = React.useState(false);
+  const [isEditingName, setIsEditingName] = React.useState(false);
+  const [customerNameDraft, setCustomerNameDraft] = React.useState("");
+  const [savingCustomerName, setSavingCustomerName] = React.useState(false);
 
   React.useEffect(() => {
     setShowHistory(false);
-  }, [open, order?.id]);
+    setIsEditingName(false);
+    setCustomerNameDraft(order?.customer && order.customer !== "—" ? order.customer : "");
+  }, [open, order?.id, order?.customer]);
 
   React.useEffect(() => {
     const raw = order?.rawOrder as Record<string, unknown> | undefined;
@@ -209,6 +219,51 @@ export function OrderDetailsDrawer({
 
   const runStatus = (status: string) => onUpdateStatus?.(order.id, status);
 
+  const saveCustomerName = async () => {
+    const clean = customerNameDraft.replace(/\s+/g, " ").trim();
+    if (clean.length < 2 || clean.length > 120 || /[\u0000-\u001F\u007F<>]/.test(clean) || !/[\p{L}]/u.test(clean)) {
+      toast.add({
+        title: "اسم الزبون غير صالح",
+        description: "يرجى إدخال اسم صحيح لا يقل عن حرفين ويحتوي على أحرف صالحة.",
+        type: "error",
+      });
+      return;
+    }
+    if (clean === (order.customer || "").trim()) {
+      setIsEditingName(false);
+      return;
+    }
+    setSavingCustomerName(true);
+    try {
+      const response = await orvaFetch("/api/delivery?action=update_customer_name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, customerName: clean }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || "تعذر تحديث اسم الزبون.");
+      }
+      const savedName = String(result.customerName || clean);
+      const prevName = String(result.previousName || order.customer || "—");
+      onCustomerNameUpdated?.(order.id, savedName, prevName);
+      setIsEditingName(false);
+      toast.add({
+        title: "تم تحديث اسم الزبون",
+        description: `"${prevName}" ← "${savedName}"`,
+        type: "success",
+      });
+    } catch (error) {
+      toast.add({
+        title: "تعذر تحديث اسم الزبون",
+        description: error instanceof Error ? error.message : "حاول مرة أخرى.",
+        type: "error",
+      });
+    } finally {
+      setSavingCustomerName(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -262,7 +317,70 @@ export function OrderDetailsDrawer({
               <h3 className="mb-2 font-bold text-foreground text-sm">الزبون والتوصيل</h3>
               <div className="divide-y">
                 <InfoRow icon={<User className="size-3.5 text-primary" />} label="الاسم">
-                  {order.customer}
+                  {isEditingName ? (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={customerNameDraft}
+                        onChange={(e) => setCustomerNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void saveCustomerName();
+                          } else if (e.key === "Escape") {
+                            setIsEditingName(false);
+                            setCustomerNameDraft(order.customer && order.customer !== "—" ? order.customer : "");
+                          }
+                        }}
+                        className="h-7 w-40 text-xs"
+                        placeholder="اسم الزبون..."
+                        autoFocus
+                        disabled={savingCustomerName}
+                      />
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="default"
+                        onClick={() => void saveCustomerName()}
+                        disabled={savingCustomerName}
+                        title="حفظ الاسم"
+                        className="size-7"
+                      >
+                        {savingCustomerName ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsEditingName(false);
+                          setCustomerNameDraft(order.customer && order.customer !== "—" ? order.customer : "");
+                        }}
+                        disabled={savingCustomerName}
+                        title="إلغاء"
+                        className="size-7"
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span>{order.customer}</span>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => {
+                          setCustomerNameDraft(order.customer && order.customer !== "—" ? order.customer : "");
+                          setIsEditingName(true);
+                        }}
+                        className="size-6 text-muted-foreground hover:text-primary"
+                        title="تغيير اسم الزبون"
+                        aria-label="تغيير اسم الزبون"
+                      >
+                        <Pencil className="size-3" />
+                      </Button>
+                    </div>
+                  )}
                 </InfoRow>
                 <InfoRow icon={<Phone className="size-3.5 text-primary" />} label="الهاتف">
                   {order.phone ? (

@@ -70,6 +70,7 @@ import { OrderDetailsDrawer } from "./order-details-drawer";
 import { OrderSwitchDialog } from "./order-switch-dialog";
 import { OrderPushDialog } from "./order-push-dialog";
 import { RiskOverrideDialog } from "./risk-override-dialog";
+import { CustomerNameEditDialog } from "./customer-name-edit-dialog";
 import { createRecentOrdersColumns } from "./recent-orders-table/columns";
 import {
   matchesOrderFilter,
@@ -227,6 +228,8 @@ export function RecentOrders() {
   const [pushDialogOpen, setPushDialogOpen] = React.useState(false);
   const [selectedOrderForRisk, setSelectedOrderForRisk] = React.useState<OrderRow | null>(null);
   const [riskDialogOpen, setRiskDialogOpen] = React.useState(false);
+  const [selectedOrderForNameEdit, setSelectedOrderForNameEdit] = React.useState<OrderRow | null>(null);
+  const [nameEditDialogOpen, setNameEditDialogOpen] = React.useState(false);
 
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
   const [pendingStatusById, setPendingStatusById] = React.useState<Record<string, boolean>>({});
@@ -475,6 +478,48 @@ export function RecentOrders() {
     setRiskDialogOpen(true);
   }, []);
 
+  const handleOpenNameEditDialog = React.useCallback((row: OrderRow) => {
+    setSelectedOrderForNameEdit(row);
+    setNameEditDialogOpen(true);
+  }, []);
+
+  const handleCustomerNameUpdated = React.useCallback((orderId: string, newCustomerName: string, previousName: string) => {
+    const patchCustomerName = (order: OrderRow): OrderRow => {
+      const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
+      const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
+      const prevHistory = Array.isArray((oldMetadata as any).customerNameHistory)
+        ? (oldMetadata as any).customerNameHistory
+        : [];
+      const historyEntry = {
+        previousName,
+        newName: newCustomerName,
+        timestamp_utc: new Date().toISOString(),
+      };
+      const metadata = {
+        ...oldMetadata,
+        customerNameOverride: historyEntry,
+        customerNameHistory: [...prevHistory, historyEntry],
+      };
+      return {
+        ...order,
+        customer: newCustomerName,
+        rawOrder: {
+          ...raw,
+          customer_name: newCustomerName,
+          full_name: newCustomerName,
+          fullName: newCustomerName,
+          metadata,
+        },
+      };
+    };
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? patchCustomerName(o) : o)));
+    setSelectedOrderForDetails((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
+    setSelectedOrderForNameEdit((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+    }
+  }, []);
+
   const handleRiskUpdated = React.useCallback((orderId: string, patch: Partial<OrderRow>) => {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...patch } : o)));
     setSelectedOrderForDetails((prev) => (prev?.id === orderId ? { ...prev, ...patch } : prev));
@@ -719,6 +764,7 @@ export function RecentOrders() {
         handleOpenPushDialog,
         handleOpenRiskDialog,
         handleDeleteOrder,
+        handleOpenNameEditDialog,
       ),
     [
       handleOpenDetails,
@@ -729,6 +775,7 @@ export function RecentOrders() {
       handleOpenPushDialog,
       handleOpenRiskDialog,
       handleDeleteOrder,
+      handleOpenNameEditDialog,
     ],
   );
 
@@ -1219,6 +1266,14 @@ export function RecentOrders() {
         }}
         onUpdateStatus={handleUpdateStatus}
         onDiscountUpdated={handleDiscountUpdated}
+        onCustomerNameUpdated={handleCustomerNameUpdated}
+      />
+
+      <CustomerNameEditDialog
+        order={selectedOrderForNameEdit}
+        open={nameEditDialogOpen}
+        onOpenChange={setNameEditDialogOpen}
+        onCustomerNameUpdated={handleCustomerNameUpdated}
       />
 
       {/* Switch Order Modal */}

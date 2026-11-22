@@ -25,9 +25,12 @@ import {
   LayoutTemplate,
   MapPin,
   FolderTree,
+  Megaphone,
+  Link2,
 } from "lucide-react";
 
 import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
+import { ProductMetaAdLinkDialog } from "./_components/product-meta-ad-link-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,7 +55,13 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-import type { Product, InventoryRecord, ProductStatus, ProductAnalytics } from "@/lib/repository/product-types";
+import type {
+  Product,
+  InventoryRecord,
+  ProductStatus,
+  ProductAnalytics,
+  ProductMetaAdLink,
+} from "@/lib/repository/product-types";
 import {
   matchOrderToProduct,
   computeUnitMargin,
@@ -90,6 +99,9 @@ export default function ProductsManagementPage() {
   const [formShowOutOfStock, setFormShowOutOfStock] = useState(false);
   const [formPurchaseCost, setFormPurchaseCost] = useState<number | "">("");
   const [formMarketingCost, setFormMarketingCost] = useState<number | "">("");
+  const [formMetaAdsLink, setFormMetaAdsLink] = useState<ProductMetaAdLink | null>(null);
+  const [isFormAdLinkDialogOpen, setIsFormAdLinkDialogOpen] = useState(false);
+  const [quickAdLinkProduct, setQuickAdLinkProduct] = useState<Product | null>(null);
   const [formStockQuantity, setFormStockQuantity] = useState<number | "">("");
   const [formLowStockThreshold, setFormLowStockThreshold] = useState<number | "">(5);
   const [formStatus, setFormStatus] = useState<ProductStatus>("active");
@@ -247,6 +259,7 @@ export default function ProductsManagementPage() {
     setFormShowOutOfStock(false);
     setFormPurchaseCost("");
     setFormMarketingCost("");
+    setFormMetaAdsLink(null);
     setFormStockQuantity("");
     setFormLowStockThreshold(5);
     setFormStatus("active");
@@ -267,6 +280,7 @@ export default function ProductsManagementPage() {
     setFormShowOutOfStock(prod.showOutOfStock === true);
     setFormPurchaseCost(prod.purchaseCost);
     setFormMarketingCost(prod.marketingCostPerOrder);
+    setFormMetaAdsLink(prod.metaAdsLink ?? null);
     setFormStockQuantity(prod.stockQuantity);
     setFormLowStockThreshold(prod.lowStockThreshold);
     setFormStatus(prod.status);
@@ -438,6 +452,7 @@ export default function ProductsManagementPage() {
           sellingPrice,
           purchaseCost,
           marketingCostPerOrder: marketingCost,
+          metaAdsLink: formMetaAdsLink,
           stockQuantity,
           lowStockThreshold,
           status,
@@ -460,6 +475,7 @@ export default function ProductsManagementPage() {
           sellingPrice,
           purchaseCost,
           marketingCostPerOrder: marketingCost,
+          metaAdsLink: formMetaAdsLink,
           stockQuantity,
           lowStockThreshold,
           status,
@@ -1183,18 +1199,39 @@ export default function ProductsManagementPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="formMarketingCost" className="text-sm font-semibold flex items-center justify-between">
+                  <Label htmlFor="formMarketingCost" className="text-sm font-semibold flex items-center justify-between gap-2">
                     <span className="text-amber-600 dark:text-amber-400">تكلفة التسويق للطلب (د.ج) *</span>
-                    <span className="text-[11px] text-muted-foreground font-mono">سري - داخلي</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsFormAdLinkDialogOpen(true)}
+                      className="inline-flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-500/20 dark:text-blue-300 cursor-pointer"
+                    >
+                      <Megaphone className="size-3" />
+                      <span>{formMetaAdsLink?.enabled ? "تعديل ربط إعلان Meta" : "ربط بإعلان Meta (حساب تلقائي)"}</span>
+                    </button>
                   </Label>
-                  <Input
-                    id="formMarketingCost"
-                    type="number"
-                    min="0"
-                    value={formMarketingCost}
-                    onChange={(e) => setFormMarketingCost(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="850"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="formMarketingCost"
+                      type="number"
+                      min="0"
+                      value={formMarketingCost}
+                      onChange={(e) => setFormMarketingCost(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="850"
+                      className="flex-1"
+                    />
+                  </div>
+                  {formMetaAdsLink?.enabled && (
+                    <div className="flex flex-wrap items-center justify-between gap-1 rounded-md border border-blue-500/25 bg-blue-500/5 px-2.5 py-1 text-[11px]">
+                      <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-medium">
+                        <Link2 className="size-3" />
+                        مربوط تلقائياً بـ: <strong>{formMetaAdsLink.campaignName || formMetaAdsLink.adName || "Meta Ad"}</strong>
+                      </span>
+                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        CPA: {formMetaAdsLink.computedCpaDzd} د.ج
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -1239,7 +1276,7 @@ export default function ProductsManagementPage() {
                           • ربح الطلب التقديري (لقطعة واحدة) = هامش القطعة - تكلفة التسويق للطلب ({Number(formMarketingCost) || 0} د.ج) ={" "}
                           <span className="font-bold text-foreground">
                             {new Intl.NumberFormat("fr-DZ").format(
-                              computeEstimatedOrderProfit(Number(formSellingPrice), Number(formPurchaseCost), 1, Number(formMarketingCost) || 0)
+                              computeEstimatedOrderProfit(Number(formSellingPrice), Number(formPurchaseCost), Number(formMarketingCost) || 0, 1)
                             )} د.ج
                           </span>
                         </div>
@@ -1464,7 +1501,28 @@ export default function ProductsManagementPage() {
 
                         {/* Marketing Cost (Confidential) */}
                         <TableCell className="tabular-nums text-xs text-amber-600 dark:text-amber-400 font-mono">
-                          {new Intl.NumberFormat("fr-DZ").format(prod.marketingCostPerOrder)} د.ج
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="font-bold">
+                              {new Intl.NumberFormat("fr-DZ").format(prod.marketingCostPerOrder)} د.ج
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setQuickAdLinkProduct(prod)}
+                              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans transition-colors cursor-pointer ${
+                                prod.metaAdsLink?.enabled
+                                  ? "border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-semibold"
+                                  : "border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary"
+                              }`}
+                              title="ربط المنتج بإعلان Meta Ads لحساب تكلفة التسويق تلقائياً"
+                            >
+                              <Megaphone className="size-2.5" />
+                              <span className="truncate max-w-[115px]">
+                                {prod.metaAdsLink?.enabled
+                                  ? prod.metaAdsLink.campaignName || prod.metaAdsLink.adName || "مربوط بـ Meta"
+                                  : "ربط بإعلان Meta"}
+                              </span>
+                            </button>
+                          </div>
                         </TableCell>
 
                         {/* Unit Margin & Order Profit */}
@@ -1698,6 +1756,60 @@ export default function ProductsManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Dialog: Form Meta Ads Link & Auto CPA Calculator ─────────────────── */}
+      <ProductMetaAdLinkDialog
+        open={isFormAdLinkDialogOpen}
+        onOpenChange={setIsFormAdLinkDialogOpen}
+        productTitle={formTitle || "منتج جديد"}
+        sellingPriceDzd={Number(formSellingPrice) || 0}
+        purchaseCostDzd={Number(formPurchaseCost) || 0}
+        defaultOrdersCount={
+          editingId
+            ? (() => {
+                const target = products.find((p) => p.id === editingId);
+                return target ? Math.max(1, getProductOrderCount(target)) : 10;
+              })()
+            : 10
+        }
+        currentMarketingCostDzd={Number(formMarketingCost) || 850}
+        currentLink={formMetaAdsLink}
+        saveImmediately={false}
+        onApply={(link, computedCpaDzd) => {
+          setFormMetaAdsLink(link);
+          setFormMarketingCost(computedCpaDzd);
+        }}
+      />
+
+      {/* ── Dialog: Quick Table Row Meta Ads Link & Auto CPA Calculator ──────── */}
+      <ProductMetaAdLinkDialog
+        open={Boolean(quickAdLinkProduct)}
+        onOpenChange={(open) => !open && setQuickAdLinkProduct(null)}
+        productId={quickAdLinkProduct?.id ?? null}
+        productTitle={quickAdLinkProduct?.title || ""}
+        sellingPriceDzd={quickAdLinkProduct?.sellingPrice || 0}
+        purchaseCostDzd={quickAdLinkProduct?.purchaseCost || 0}
+        defaultOrdersCount={quickAdLinkProduct ? Math.max(1, getProductOrderCount(quickAdLinkProduct)) : 10}
+        currentMarketingCostDzd={quickAdLinkProduct?.marketingCostPerOrder || 850}
+        currentLink={quickAdLinkProduct?.metaAdsLink ?? null}
+        saveImmediately={true}
+        onApply={(link, computedCpaDzd, updatedProduct) => {
+          if (quickAdLinkProduct) {
+            setProducts((prev) =>
+              prev.map((p) =>
+                p.id === quickAdLinkProduct.id
+                  ? updatedProduct ?? { ...p, marketingCostPerOrder: computedCpaDzd, metaAdsLink: link }
+                  : p,
+              ),
+            );
+            if (editingId === quickAdLinkProduct.id) {
+              setFormMarketingCost(computedCpaDzd);
+              setFormMetaAdsLink(link);
+            }
+          }
+          window.dispatchEvent(new CustomEvent("orva:catalog-updated"));
+        }}
+      />
     </div>
   );
 }
