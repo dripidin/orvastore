@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_products_category_id
 CREATE OR REPLACE FUNCTION public.assign_product_categories(p_assignments JSONB)
 RETURNS VOID
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = public
 AS $$
 DECLARE
@@ -43,7 +43,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.assign_product_categories(JSONB) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.assign_product_categories(JSONB) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.assign_product_categories(JSONB) TO service_role;
 
 NOTIFY pgrst, 'reload schema';
