@@ -1,6 +1,5 @@
-import type { Metadata } from "next";
-
 import { ShieldCheck, Truck, Wallet } from "lucide-react";
+import type { Metadata } from "next";
 
 import { ShopCatalogClient } from "@/components/storefront/shop/shop-catalog-client";
 import { listPublishedProducts } from "@/lib/catalog/server";
@@ -10,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "كل المنتجات | متجر أورفا ORVA STORE DZ",
-  description: "جميع باقات وأدوات متجر أورفا الأصلية — الدفع عند الاستلام والتوصيل إلى 58 ولاية.",
+  description: "جميع باقات وأدوات متجر أورفا الأصلية — الدفع عند الاستلام والتوصيل إلى 69 ولاية.",
   alternates: {
     canonical: "https://orva-store.com/shop/",
   },
@@ -19,7 +18,7 @@ export const metadata: Metadata = {
 const PROMISES = [
   { icon: Wallet, title: "الدفع عند الاستلام", text: "لا تدفع أي شيء قبل وصول الطرد" },
   { icon: ShieldCheck, title: "المعاينة قبل الدفع", text: "افحص السلعة يداً بيد" },
-  { icon: Truck, title: "توصيل لـ 58 ولاية", text: "للمنزل أو لمكتب التوصيل" },
+  { icon: Truck, title: "توصيل لـ 69 ولاية", text: "للمنزل أو لمكتب التوصيل" },
 ];
 
 export default async function ShopPage() {

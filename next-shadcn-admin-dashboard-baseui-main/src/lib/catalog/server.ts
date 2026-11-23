@@ -1,4 +1,4 @@
-import { STOREFRONT_PACKS, type PackBoxItem, type StorefrontPack } from "@/data/storefront-packs";
+import { type PackBoxItem, STOREFRONT_PACKS, type StorefrontPack } from "@/data/storefront-packs";
 import { adminListCategories } from "@/lib/categories/server";
 import type { CategoryRecord } from "@/lib/categories/types";
 import { uploadMediaBuffer, uploadMediaDataUrl } from "@/lib/media/hostinger-media";
@@ -9,9 +9,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   type CatalogStatus,
   type LandingOverrides,
-  type StoreProduct,
   packIdFromSlug,
   productRoute,
+  type StoreProduct,
   slugify,
 } from "./types";
 
@@ -74,11 +74,11 @@ function buildLanding(row: ProductRow, images: string[]): StorefrontPack {
   const highlights =
     landing.highlightsAr && landing.highlightsAr.length > 0
       ? landing.highlightsAr
-      : legacy?.highlightsAr ?? seedItems;
+      : (legacy?.highlightsAr ?? seedItems);
   const boxItems =
     landing.boxItems && landing.boxItems.length > 0
       ? landing.boxItems
-      : legacy?.boxItems ?? boxItemsFromList(highlights);
+      : (legacy?.boxItems ?? boxItemsFromList(highlights));
   const originalPrice = original && original > price ? original : price;
 
   return {
@@ -102,12 +102,16 @@ function buildLanding(row: ProductRow, images: string[]): StorefrontPack {
     descriptionAr: description,
     highlightsAr: highlights,
     boxItems,
-    crossSellTargetId: landing.crossSellSlug ? packIdFromSlug(landing.crossSellSlug) : (legacy?.crossSellTargetId ?? ""),
+    crossSellTargetId: landing.crossSellSlug
+      ? packIdFromSlug(landing.crossSellSlug)
+      : (legacy?.crossSellTargetId ?? ""),
     crossSellHeading: legacy?.crossSellHeading ?? "منتجات أخرى قد تعجبك",
-    crossSellSubtitle: legacy?.crossSellSubtitle ?? "اكتشف باقي منتجات متجر أورفا بنفس شروط التوصيل والدفع عند الاستلام",
+    crossSellSubtitle:
+      legacy?.crossSellSubtitle ?? "اكتشف باقي منتجات متجر أورفا بنفس شروط التوصيل والدفع عند الاستلام",
     crossSellCtaText: legacy?.crossSellCtaText ?? "شاهد المنتج",
     seo: {
-      title: landing.seoTitle || `${row.name} — ${new Intl.NumberFormat("fr-DZ").format(price)} د.ج | متجر أورفا ORVA Store`,
+      title:
+        landing.seoTitle || `${row.name} — ${new Intl.NumberFormat("fr-DZ").format(price)} د.ج | متجر أورفا ORVA Store`,
       description: landing.seoDescription || description,
       keywords: legacy?.seo.keywords ?? [row.name, "ORVA", "الجزائر", "الدفع عند الاستلام"],
     },
@@ -204,12 +208,7 @@ export async function listPublishedProducts(): Promise<StoreProduct[]> {
 export async function getPublishedProductBySlug(slug: string): Promise<StoreProduct | null> {
   try {
     const [{ data, error }, categoryMap] = await Promise.all([
-      db()
-        .from("products")
-        .select("*")
-        .eq("slug", slug)
-        .eq("status", "PUBLISHED")
-        .maybeSingle(),
+      db().from("products").select("*").eq("slug", slug).eq("status", "PUBLISHED").maybeSingle(),
       readCategoryLookupMap(),
     ]);
     if (error) throw error;
@@ -294,27 +293,124 @@ async function readPrivate(ids: string[]): Promise<Map<string, { purchase: numbe
   return map;
 }
 
+async function readCampaignLinksMap(ids: string[]): Promise<Map<string, Product["metaAdsLinks"]>> {
+  const map = new Map<string, NonNullable<Product["metaAdsLinks"]>>();
+  if (ids.length === 0) return map;
+  try {
+    const { data, error } = await db().from("product_campaign_links").select("*").in("product_id", ids);
+    if (error || !Array.isArray(data)) return map;
+    for (const r of data) {
+      const pid = String(r.product_id);
+      const list = map.get(pid) ?? [];
+      list.push({
+        id: String(r.id),
+        enabled: r.enabled !== false,
+        campaignId: r.campaign_id ?? null,
+        campaignName: r.campaign_name ?? null,
+        adsetId: r.adset_id ?? null,
+        adsetName: r.adset_name ?? null,
+        adId: r.ad_id ?? null,
+        adName: r.ad_name ?? null,
+        costMode: r.cost_mode || "campaign_budget_cpa",
+        campaignSpendUsd: r.campaign_spend_usd != null ? Number(r.campaign_spend_usd) : null,
+        campaignSpendDzd: r.campaign_spend_dzd != null ? Number(r.campaign_spend_dzd) : null,
+        exchangeRateDzd: r.exchange_rate_dzd != null ? Number(r.exchange_rate_dzd) : 245,
+        attributedOrdersCount: r.attributed_orders_count != null ? Number(r.attributed_orders_count) : null,
+        allocationWeight: r.allocation_weight != null ? Number(r.allocation_weight) : 1,
+        isPrimary: Boolean(r.is_primary),
+        computedCpaDzd: Number(r.computed_cpa_dzd ?? 0),
+        lastSyncedAt: r.last_synced_at ?? null,
+      });
+      map.set(pid, list);
+    }
+  } catch {
+    // Migration pending fallback -> metadata.metaAdsLinks
+  }
+  return map;
+}
+
+async function writeCampaignLinks(productId: string, links: NonNullable<Product["metaAdsLinks"]>) {
+  try {
+    await db().from("product_campaign_links").delete().eq("product_id", productId);
+    if (links.length === 0) return;
+    const rows = links.map((l, idx) => ({
+      product_id: productId,
+      campaign_key:
+        (l.campaignId?.trim() && `fb:${l.campaignId.trim()}`) ||
+        (l.campaignName?.trim() && `utm:${l.campaignName.trim()}`) ||
+        l.id ||
+        `lnk-${idx}`,
+      campaign_id: l.campaignId?.trim() || null,
+      campaign_name: l.campaignName?.trim() || null,
+      adset_id: l.adsetId?.trim() || null,
+      adset_name: l.adsetName?.trim() || null,
+      ad_id: l.adId?.trim() || null,
+      ad_name: l.adName?.trim() || null,
+      cost_mode: l.costMode || "campaign_budget_cpa",
+      campaign_spend_usd: l.campaignSpendUsd ?? 0,
+      campaign_spend_dzd: l.campaignSpendDzd ?? 0,
+      exchange_rate_dzd: l.exchangeRateDzd ?? 245,
+      attributed_orders_count: Math.max(1, Math.round(Number(l.attributedOrdersCount ?? 1))),
+      allocation_weight: Math.max(0.01, Number(l.allocationWeight ?? 1)),
+      computed_cpa_dzd: Math.max(0, Math.round(Number(l.computedCpaDzd ?? 0))),
+      is_primary: l.isPrimary ?? idx === 0,
+      enabled: l.enabled !== false,
+      last_synced_at: l.lastSyncedAt || new Date().toISOString(),
+    }));
+    await db().from("product_campaign_links").insert(rows);
+  } catch {
+    // Graceful skip when live DB lacks product_campaign_links
+  }
+}
+
 function toAdminProduct(
   row: ProductRow,
   priv?: { purchase: number; marketing: number },
-  categoryMap?: Map<string, CategoryRecord>
+  categoryMap?: Map<string, CategoryRecord>,
+  tableLinks?: Product["metaAdsLinks"],
 ): Product {
   const sp = toStoreProduct(row, categoryMap);
   const rawMeta = (row.metadata ?? {}) as Record<string, any>;
-  const metaAdsLink =
+  const legacySingle =
     rawMeta.metaAdsLink && typeof rawMeta.metaAdsLink === "object"
-      ? (rawMeta.metaAdsLink as Product["metaAdsLink"])
+      ? (rawMeta.metaAdsLink as NonNullable<Product["metaAdsLink"]>)
       : null;
+  const metaListFromMeta = Array.isArray(rawMeta.metaAdsLinks)
+    ? (rawMeta.metaAdsLinks as NonNullable<Product["metaAdsLinks"]>)
+    : [];
+  const resolvedLinks =
+    tableLinks && tableLinks.length > 0
+      ? tableLinks
+      : metaListFromMeta.length > 0
+        ? metaListFromMeta
+        : legacySingle
+          ? [legacySingle]
+          : [];
+  const primaryLink =
+    resolvedLinks.find((l) => l.isPrimary && l.enabled) ?? resolvedLinks.find((l) => l.enabled) ?? legacySingle ?? null;
+
+  const activeWeighted = resolvedLinks.filter((l) => l.enabled && Number(l.computedCpaDzd) > 0);
+  let weightedCpa = 0;
+  if (activeWeighted.length > 0) {
+    let sum = 0;
+    let weights = 0;
+    for (const l of activeWeighted) {
+      const w = Math.max(0.01, Number(l.allocationWeight ?? l.attributedOrdersCount ?? 1));
+      sum += Number(l.computedCpaDzd) * w;
+      weights += w;
+    }
+    weightedCpa = weights > 0 ? Math.round(sum / weights) : 0;
+  }
+
   const resolvedMarketingCost =
     priv?.marketing && priv.marketing > 0
       ? priv.marketing
-      : metaAdsLink?.enabled && Number(metaAdsLink.computedCpaDzd) > 0
-        ? Math.round(Number(metaAdsLink.computedCpaDzd))
-        : num(rawMeta.marketingCostPerOrder, 0);
-  const resolvedPurchaseCost =
-    priv?.purchase && priv.purchase > 0
-      ? priv.purchase
-      : num(rawMeta.purchaseCost, 0);
+      : weightedCpa > 0
+        ? weightedCpa
+        : primaryLink?.enabled && Number(primaryLink.computedCpaDzd) > 0
+          ? Math.round(Number(primaryLink.computedCpaDzd))
+          : num(rawMeta.marketingCostPerOrder, 0);
+  const resolvedPurchaseCost = priv?.purchase && priv.purchase > 0 ? priv.purchase : num(rawMeta.purchaseCost, 0);
 
   return {
     id: row.id,
@@ -326,7 +422,8 @@ function toAdminProduct(
     sellingPrice: sp.priceDzd,
     purchaseCost: resolvedPurchaseCost,
     marketingCostPerOrder: resolvedMarketingCost,
-    metaAdsLink,
+    metaAdsLink: primaryLink,
+    metaAdsLinks: resolvedLinks,
     stockQuantity: sp.stockQuantity,
     lowStockThreshold: num(row.metadata?.lowStockThreshold, 5),
     status: STATUS_FROM_DB[row.status] ?? "draft",
@@ -353,8 +450,9 @@ export async function adminListProducts(): Promise<Product[]> {
   ]);
   if (error) throw new Error(error.message);
   const rows = data as ProductRow[];
-  const priv = await readPrivate(rows.map((r) => r.id));
-  return rows.map((r) => toAdminProduct(r, priv.get(r.id), categoryMap));
+  const ids = rows.map((r) => r.id);
+  const [priv, linksMap] = await Promise.all([readPrivate(ids), readCampaignLinksMap(ids)]);
+  return rows.map((r) => toAdminProduct(r, priv.get(r.id), categoryMap, linksMap.get(r.id)));
 }
 
 export async function adminGetProduct(id: string): Promise<Product | null> {
@@ -364,8 +462,8 @@ export async function adminGetProduct(id: string): Promise<Product | null> {
   ]);
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const priv = await readPrivate([id]);
-  return toAdminProduct(data as ProductRow, priv.get(id), categoryMap);
+  const [priv, linksMap] = await Promise.all([readPrivate([id]), readCampaignLinksMap([id])]);
+  return toAdminProduct(data as ProductRow, priv.get(id), categoryMap, linksMap.get(id));
 }
 
 async function uniqueSlug(base: string): Promise<string> {
@@ -408,9 +506,16 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
   if (price <= 0) throw new Error("سعر البيع غير صالح");
 
   const slug = await uniqueSlug(slugify(input.slug || input.sku || title));
+  const normalizedLinks = input.metaAdsLinks ?? (input.metaAdsLink ? [input.metaAdsLink] : []);
+  const primaryFromLinks =
+    normalizedLinks.find((l) => l.isPrimary && l.enabled) ??
+    normalizedLinks.find((l) => l.enabled) ??
+    input.metaAdsLink ??
+    null;
+
   const resolvedMarketingCost =
-    input.metaAdsLink?.enabled && Number(input.metaAdsLink.computedCpaDzd) > 0
-      ? Math.round(Number(input.metaAdsLink.computedCpaDzd))
+    primaryFromLinks?.enabled && Number(primaryFromLinks.computedCpaDzd) > 0
+      ? Math.round(Number(primaryFromLinks.computedCpaDzd))
       : num(input.marketingCostPerOrder, 0);
   const metadata: Record<string, any> = {
     subtitle: input.subtitle ?? "",
@@ -421,7 +526,8 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
     layout: input.layout ?? createDefaultLayoutConfig(slug),
     purchaseCost: num(input.purchaseCost, 0),
     marketingCostPerOrder: resolvedMarketingCost,
-    ...(input.metaAdsLink !== undefined ? { metaAdsLink: input.metaAdsLink } : {}),
+    ...(primaryFromLinks !== undefined ? { metaAdsLink: primaryFromLinks } : {}),
+    ...(normalizedLinks.length > 0 ? { metaAdsLinks: normalizedLinks } : {}),
   };
 
   const { data, error } = await db()
@@ -443,7 +549,10 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  await writePrivate(data.id, { ...input, marketingCostPerOrder: resolvedMarketingCost });
+  await Promise.all([
+    writePrivate(data.id, { ...input, marketingCostPerOrder: resolvedMarketingCost }),
+    normalizedLinks.length > 0 ? writeCampaignLinks(data.id, normalizedLinks) : Promise.resolve(),
+  ]);
   return (await adminGetProduct(data.id)) as Product;
 }
 
@@ -477,9 +586,22 @@ export async function adminUpdateProduct(id: string, input: AdminProductInput): 
   if (input.purchaseCost !== undefined) {
     meta.purchaseCost = Math.max(0, num(input.purchaseCost, 0));
   }
-  if (input.metaAdsLink !== undefined) {
+  if (input.metaAdsLinks !== undefined) {
+    meta.metaAdsLinks = input.metaAdsLinks;
+    const primaryLink =
+      input.metaAdsLinks.find((l) => l.isPrimary && l.enabled) ?? input.metaAdsLinks.find((l) => l.enabled) ?? null;
+    meta.metaAdsLink = primaryLink;
+    if (primaryLink && Number(primaryLink.computedCpaDzd) > 0 && input.marketingCostPerOrder === undefined) {
+      input.marketingCostPerOrder = Math.round(Number(primaryLink.computedCpaDzd));
+    }
+  } else if (input.metaAdsLink !== undefined) {
     meta.metaAdsLink = input.metaAdsLink;
-    if (input.metaAdsLink?.enabled && Number(input.metaAdsLink.computedCpaDzd) > 0 && input.marketingCostPerOrder === undefined) {
+    meta.metaAdsLinks = input.metaAdsLink ? [input.metaAdsLink] : [];
+    if (
+      input.metaAdsLink?.enabled &&
+      Number(input.metaAdsLink.computedCpaDzd) > 0 &&
+      input.marketingCostPerOrder === undefined
+    ) {
       input.marketingCostPerOrder = Math.round(Number(input.metaAdsLink.computedCpaDzd));
     }
   }
@@ -495,7 +617,14 @@ export async function adminUpdateProduct(id: string, input: AdminProductInput): 
 
   const { error } = await db().from("products").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  await writePrivate(id, input);
+  await Promise.all([
+    writePrivate(id, input),
+    input.metaAdsLinks !== undefined
+      ? writeCampaignLinks(id, input.metaAdsLinks)
+      : input.metaAdsLink !== undefined
+        ? writeCampaignLinks(id, input.metaAdsLink ? [input.metaAdsLink] : [])
+        : Promise.resolve(),
+  ]);
   return (await adminGetProduct(id)) as Product;
 }
 
@@ -505,10 +634,7 @@ export async function adminDeleteProduct(
 ): Promise<{ actionTaken: "deleted" | "archived"; orderReferenceCount: number }> {
   let refs = 0;
   try {
-    const { count } = await db()
-      .from("order_items")
-      .select("id", { count: "exact", head: true })
-      .eq("product_id", id);
+    const { count } = await db().from("order_items").select("id", { count: "exact", head: true }).eq("product_id", id);
     refs = count ?? 0;
   } catch {
     refs = 0;
@@ -532,7 +658,7 @@ export async function uploadProductImage(dataUrl: string, name = "image"): Promi
 export async function uploadProductImageBuffer(
   bytes: Buffer,
   name = "image",
-  claimedMime?: string | null
+  claimedMime?: string | null,
 ): Promise<{ url: string; provider: string }> {
   const result = await uploadMediaBuffer({ bytes, name, folder: "products", claimedMime });
   return { url: result.url, provider: result.provider };

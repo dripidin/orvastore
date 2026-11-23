@@ -1,7 +1,6 @@
 export type RawOrvaOrder = Record<string, unknown>;
 
 export interface OrvaOrder {
-
   id: string;
   createdAt: string | null;
   customer: string | null;
@@ -26,6 +25,20 @@ export interface OrvaOrder {
   attributionSource?: string | null;
   carrierStatus?: string | null;
   carrierStatusAr?: string | null;
+  courierId?: string | null;
+  courierName?: string | null;
+  courierStatus?: string | null;
+  courierStatusAr?: string | null;
+  normalizedCourierStatus?: string | null;
+  courierLocationStage?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  currentStation?: string | null;
+  financialStatus?: string | null;
+  returnFeeDzd?: number | null;
+  deskInfo?: Record<string, unknown> | null;
+  courierRemarks?: unknown[];
+  manualStatusOverride?: boolean;
   remarks: unknown[];
   conversions?: any[];
   isSwitched?: boolean;
@@ -36,7 +49,6 @@ export interface OrvaOrder {
   riskReasons?: string[];
   raw: RawOrvaOrder;
 }
-
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -103,8 +115,22 @@ export async function orvaRequestJson<T>(input: RequestInfo | URL, init: Request
 }
 
 import { getOrdersRepository } from "./repository/orders-repository-factory";
-export { getOrdersRepository, getAppRepositoryMode, setAppRepositoryMode } from "./repository/orders-repository-factory";
-export type { IOrdersRepository, RepositoryMode, SwitchOrderPayload, SwitchOrderResult, PushOrderPayload, PushOrderResult, BulkStatusUpdateResult, AuditLogEntry } from "./repository/types";
+
+export {
+  getAppRepositoryMode,
+  getOrdersRepository,
+  setAppRepositoryMode,
+} from "./repository/orders-repository-factory";
+export type {
+  AuditLogEntry,
+  BulkStatusUpdateResult,
+  IOrdersRepository,
+  PushOrderPayload,
+  PushOrderResult,
+  RepositoryMode,
+  SwitchOrderPayload,
+  SwitchOrderResult,
+} from "./repository/types";
 
 export async function fetchOrvaOrders(): Promise<OrvaOrder[]> {
   try {
@@ -117,7 +143,6 @@ export async function fetchOrvaOrders(): Promise<OrvaOrder[]> {
 }
 
 export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
-
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const raw = value as RawOrvaOrder;
@@ -155,11 +180,10 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     "tracking_code",
     "trackingCode",
     "tracking_number",
-    "trackingNumber"
+    "trackingNumber",
   );
 
   return {
-
     id,
     createdAt: readOptionalString(raw, "created_at", "createdAt", "date"),
     customer: readOptionalString(raw, "fullName", "full_name", "customer", "customer_name", "customerName"),
@@ -172,7 +196,9 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     ...(() => {
       const rawGrandTotal = readDzdAmount(raw.grandTotal ?? raw.grand_total);
       const rawPriceNum = readDzdAmount(raw.priceNum ?? raw.price_num);
-      const shippingDzd = readDzdAmount(raw.shippingFee ?? raw.shipping_fee) ?? (rawGrandTotal && rawPriceNum && rawGrandTotal > rawPriceNum ? rawGrandTotal - rawPriceNum : 0);
+      const shippingDzd =
+        readDzdAmount(raw.shippingFee ?? raw.shipping_fee) ??
+        (rawGrandTotal && rawPriceNum && rawGrandTotal > rawPriceNum ? rawGrandTotal - rawPriceNum : 0);
       const rawProductTotal = readDzdAmount(raw.productTotal ?? raw.product_total);
 
       let priceDzd = rawProductTotal;
@@ -200,14 +226,46 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     inRedex: raw.in_redex === true || raw.inRedex === true,
     redexTrackingCode: resolvedTracking,
     redexTrackingId: resolvedTracking,
-    fbCampaignId: readOptionalString(raw, "fb_campaign_id", "fbCampaignId") || readOptionalString(attrMeta, "fb_campaign_id", "fbCampaignId"),
-    fbAdsetId: readOptionalString(raw, "fb_adset_id", "fbAdsetId") || readOptionalString(attrMeta, "fb_adset_id", "fbAdsetId"),
+    fbCampaignId:
+      readOptionalString(raw, "fb_campaign_id", "fbCampaignId") ||
+      readOptionalString(attrMeta, "fb_campaign_id", "fbCampaignId"),
+    fbAdsetId:
+      readOptionalString(raw, "fb_adset_id", "fbAdsetId") || readOptionalString(attrMeta, "fb_adset_id", "fbAdsetId"),
     fbAdId: readOptionalString(raw, "fb_ad_id", "fbAdId") || readOptionalString(attrMeta, "fb_ad_id", "fbAdId"),
     fbclid: readOptionalString(raw, "fbclid") || readOptionalString(attrMeta, "fbclid"),
-    utmCampaign: readOptionalString(raw, "utm_campaign", "utmCampaign") || readOptionalString(attrMeta, "utm_campaign", "utmCampaign"),
-    attributionSource: readOptionalString(raw, "attribution_source", "attributionSource") || readOptionalString(attrMeta, "attribution_source", "attributionSource") || "direct",
-    carrierStatus: readOptionalString(raw, "carrier_status", "carrierStatus") || ((raw.in_redex === true || raw.inRedex === true) ? "prete_a_expedier" : null),
-    carrierStatusAr: readOptionalString(raw, "carrier_status_ar", "carrierStatusAr") || ((raw.in_redex === true || raw.inRedex === true) ? "جاهز للإرسال" : null),
+    utmCampaign:
+      readOptionalString(raw, "utm_campaign", "utmCampaign") ||
+      readOptionalString(attrMeta, "utm_campaign", "utmCampaign"),
+    attributionSource:
+      readOptionalString(raw, "attribution_source", "attributionSource") ||
+      readOptionalString(attrMeta, "attribution_source", "attributionSource") ||
+      "direct",
+    carrierStatus:
+      readOptionalString(raw, "carrier_status", "carrierStatus") ||
+      (raw.in_redex === true || raw.inRedex === true ? "prete_a_expedier" : null),
+    carrierStatusAr:
+      readOptionalString(raw, "carrier_status_ar", "carrierStatusAr") ||
+      (raw.in_redex === true || raw.inRedex === true ? "جاهز للإرسال" : null),
+    courierId: readOptionalString(raw, "courier_id", "courierId", "courier_provider", "courier"),
+    courierName: readOptionalString(raw, "courier_name", "courierName", "courier"),
+    courierStatus: readOptionalString(raw, "courier_status", "courierStatus", "carrier_status", "carrierStatus"),
+    courierStatusAr: readOptionalString(
+      raw,
+      "courier_status_ar",
+      "courierStatusAr",
+      "carrier_status_ar",
+      "carrierStatusAr",
+    ),
+    normalizedCourierStatus: readOptionalString(raw, "normalized_courier_status", "normalizedCourierStatus"),
+    courierLocationStage: readOptionalString(raw, "courier_location_stage", "courierLocationStage"),
+    driverName: readOptionalString(raw, "driver_name", "driverName"),
+    driverPhone: readOptionalString(raw, "driver_phone", "driverPhone"),
+    currentStation: readOptionalString(raw, "current_station", "currentStation"),
+    financialStatus: readOptionalString(raw, "financial_status", "financialStatus"),
+    returnFeeDzd: readDzdAmount(raw.return_fee_dzd ?? raw.returnFeeDzd),
+    deskInfo: raw.desk_info && typeof raw.desk_info === "object" ? (raw.desk_info as Record<string, unknown>) : null,
+    courierRemarks: readRemarks(raw.courier_remarks ?? raw.courierRemarks),
+    manualStatusOverride: raw.manual_status_override === true || raw.manualStatusOverride === true,
     remarks,
     conversions,
     isSwitched: conversions.length > 0,
@@ -222,14 +280,16 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
       const v = raw.riskReasons ?? raw.risk_reasons;
       if (Array.isArray(v)) return v.map(String).filter(Boolean);
       if (typeof v === "string" && v.trim()) {
-        return v.split("|").map((s) => s.trim()).filter(Boolean);
+        return v
+          .split("|")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
       return [];
     })(),
     raw,
   };
 }
-
 
 export function readString(record: RawOrvaOrder, ...keys: string[]): string {
   for (const key of keys) {

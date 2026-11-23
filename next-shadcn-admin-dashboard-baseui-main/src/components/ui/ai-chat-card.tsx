@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   AlertCircle,
   Bot,
+  FileSpreadsheet,
   GripHorizontal,
   Loader2,
   Maximize2,
@@ -15,7 +16,9 @@ import {
   SendHorizontal,
   Settings2,
   Sparkles,
+  Trash2,
   Truck,
+  Upload,
   User,
   X,
 } from "lucide-react";
@@ -56,6 +59,11 @@ interface ChatMessage {
 
 const QUICK_PROMPTS = [
   {
+    label: "💰 التقرير المحاسبي (COD) والمرتجعات",
+    prompt:
+      "قدّم لي تقريراً محاسبياً شاملاً لنظام الدفع عند الاستلام (COD): الأموال العالقة لدى شركات التوصيل، الأموال المحصّلة والمدفوعة، تكلفة البضاعة COGS، وخسائر المرتجعات الفعلية (tarif_retour) مقارنة بالملفات المرفوعة.",
+  },
+  {
     label: "📈 استشارة تسويقية وتحليل ربحية Meta Ads",
     prompt:
       "بصفتك مستشار تسويق خبير في Meta Ads، حلّل أرقام الحملات والمنتجات الحالية في المتجر وأعطني استشارة تسويقية شاملة: تكلفة الإعلانات، ROAS، CPA، حدود الأمان للمنتجات، وأي حملة نوسع ميزانيتها (Scale)؟",
@@ -74,6 +82,15 @@ const QUICK_PROMPTS = [
     prompt: "اعرض لي تقرير المنتجات الأكثر طلباً وحالة المخزون والأسعار الحالية.",
   },
 ] as const;
+
+interface StoredAiFileSummary {
+  id: string;
+  fileName: string;
+  fileType: string;
+  rowCount: number;
+  freshnessStatus: string;
+  diffSummary?: { notificationMessage?: string };
+}
 
 export interface AIChatCardProps {
   className?: string;
@@ -110,7 +127,11 @@ export function AIChatCard({
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [disconnectedError, setDisconnectedError] = useState<string | null>(null);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
+  const [storedFiles, setStoredFiles] = useState<StoredAiFileSummary[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileNotice, setFileNotice] = useState<{ status: string; message: string } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<ChatMessage[]>(messages);
   const isLoadingRef = useRef(isLoading);
 
@@ -177,6 +198,12 @@ export function AIChatCard({
 
   useEffect(() => {
     void syncSettingsMetadata();
+    fetch("/api/ai-agent/files", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && Array.isArray(d.files)) setStoredFiles(d.files);
+      })
+      .catch(() => undefined);
     if (typeof window !== "undefined") {
       const handler = () => void syncSettingsMetadata();
       window.addEventListener("orva:gemini-settings-updated", handler);
@@ -184,6 +211,61 @@ export function AIChatCard({
     }
     return undefined;
   }, [syncSettingsMetadata]);
+
+  const handleUploadAiFile = async (file: File) => {
+    setIsUploadingFile(true);
+    setFileNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/ai-agent/files", {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "تعذر رفع الملف للوكيل");
+      }
+      if (data.file) {
+        setStoredFiles((prev) => [data.file, ...prev.filter((f) => f.id !== data.file.id)]);
+      }
+      if (data.freshness) {
+        setFileNotice({
+          status: data.freshness.freshnessStatus,
+          message: data.freshness.notificationMessage,
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `file-notice-${Date.now()}`,
+            role: "assistant",
+            content: `📁 تم استلام وحفظ الملف **${file.name}** (${data.file?.rowCount ?? 0} صف).\n${data.freshness.notificationMessage}`,
+            timestamp: new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+      }
+    } catch (err: any) {
+      setFileNotice({
+        status: "error",
+        message: err?.message || "فشل حفظ الملف في ذاكرة الوكيل",
+      });
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const handleDeleteStoredFile = async (fileId: string) => {
+    try {
+      await fetch(`/api/ai-agent/files?id=${encodeURIComponent(fileId)}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      setStoredFiles((prev) => prev.filter((f) => f.id !== fileId));
+    } catch {
+      // ignore
+    }
+  };
 
   const sendMessage = useCallback(
     async (textToSend: string, options?: { skipUserAppend?: boolean }) => {
@@ -590,8 +672,41 @@ export function AIChatCard({
         )}
       </CardContent>
 
-      {/* Quick Action Prompts & Input Composer */}
+      {/* Quick Action Prompts, Stored Files & Input Composer */}
       <CardFooter className="shrink-0 flex flex-col gap-2 border-t bg-background/80 p-2.5 sm:p-3">
+        {fileNotice && (
+          <div
+            className={cn(
+              "w-full rounded-lg border px-2.5 py-1.5 text-[11px]",
+              fileNotice.status === "duplicate" || fileNotice.status === "stale_warning" || fileNotice.status === "error"
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
+            )}
+          >
+            {fileNotice.message}
+          </div>
+        )}
+
+        {storedFiles.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-1">
+            {storedFiles.slice(0, 4).map((f) => (
+              <Badge key={f.id} variant="secondary" className="gap-1 px-1.5 py-0.5 text-[10px]">
+                <FileSpreadsheet className="size-3 text-emerald-600" />
+                <span className="max-w-[110px] truncate">{f.fileName}</span>
+                <span className="text-muted-foreground">({f.rowCount})</span>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteStoredFile(f.id)}
+                  className="hover:text-destructive"
+                  title="حذف من الذاكرة"
+                >
+                  <Trash2 className="size-2.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+
         <div className="flex w-full gap-1.5 overflow-x-auto pb-1">
           {QUICK_PROMPTS.map((item) => (
             <button
@@ -607,6 +722,28 @@ export function AIChatCard({
         </div>
 
         <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleUploadAiFile(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            disabled={isUploadingFile}
+            onClick={() => fileInputRef.current?.click()}
+            className="size-9 shrink-0 rounded-xl"
+            title="رفع ملف Excel / CSV / JSON لحفظه وتحليله محاسبياً"
+          >
+            {isUploadingFile ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          </Button>
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -616,7 +753,7 @@ export function AIChatCard({
               placeholder={
                 isDisconnected
                   ? "الدردشة متوقفة مؤقتاً حتى عودة الاتصال بـ Gemini..."
-                  : "ابحث برقم طلبية، هاتف زبون، أو اكتب رسالتك..."
+                  : "ابحث برقم طلبية، هاتف زبون، أو اطلب تحليلاً محاسبياً..."
               }
               disabled={isLoading || isDisconnected}
               className="h-9 pr-8 text-xs"

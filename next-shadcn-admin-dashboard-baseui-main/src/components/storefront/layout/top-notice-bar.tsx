@@ -1,4 +1,4 @@
-import { Truck, ShieldCheck, Banknote } from "lucide-react";
+import { Banknote, ShieldCheck, Truck } from "lucide-react";
 
 export function TopNoticeBar() {
   return (
@@ -7,7 +7,7 @@ export function TopNoticeBar() {
         {/* Main notice */}
         <div className="flex items-center gap-2 mx-auto sm:mx-0 font-medium">
           <Truck className="size-4 text-amber-400 shrink-0 animate-pulse" />
-          <span>توصيل سريع 24-48 ساعة لـ 58 ولاية | الدفع عند الاستلام</span>
+          <span>توصيل سريع 24-48 ساعة لـ 69 ولاية | الدفع عند الاستلام</span>
           <span className="hidden md:inline-block text-slate-400">•</span>
           <span className="hidden md:inline-block text-amber-400 font-semibold">التوصيل لجميع الولايات.</span>
         </div>

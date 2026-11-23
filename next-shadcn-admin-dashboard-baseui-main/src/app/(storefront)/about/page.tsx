@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ArrowLeft, BadgeCheck, Headphones, MapPin, ShieldCheck, Truck } from "lucide-react";
+import type { Metadata } from "next";
 
 import {
   ORVA_CANONICAL_ORIGIN,
@@ -14,7 +14,7 @@ import {
 export const metadata: Metadata = {
   title: "من نحن (About Us) | متجر أورفا ORVA Store Algeria",
   description:
-    "تعرّف على متجر أورفا ORVA Store DZ المتخصص في توفير باقات وعتاد الصيانة الأصلي من CROWN و STARCLE PRO مع الدفع عند الاستلام عبر 58 ولاية جزائرية.",
+    "تعرّف على متجر أورفا ORVA Store DZ المتخصص في توفير باقات وعتاد الصيانة الأصلي من CROWN و STARCLE PRO مع الدفع عند الاستلام عبر 69 ولاية جزائرية.",
   alternates: {
     canonical: `${ORVA_CANONICAL_ORIGIN}/about/`,
   },
@@ -33,7 +33,7 @@ const PILLARS = [
   },
   {
     icon: Truck,
-    title: "توصيل سريع عبر 58 ولاية",
+    title: "توصيل سريع عبر 69 ولاية",
     desc: "شحن موثوق إلى باب المنزل أو مكتب التوصيل (Stop Desk) خلال 24–48 ساعة للشمال والهضاب و48–72 ساعة للجنوب.",
   },
   {
@@ -54,9 +54,9 @@ export default function AboutPage() {
         <h1 className="font-black text-3xl text-slate-900 sm:text-4xl">من نحن — ORVA Store Algeria</h1>
         <p className="text-base leading-relaxed text-slate-600">
           متجر <strong>ORVA Store Algeria</strong> هو متجر إلكتروني جزائري متخصص في تجهيزات الورشة، معدات التلحيم،
-          والأدوات الكهربائية واليدوية الأصلية من علامتي <strong>CROWN</strong> و <strong>STARCLE PRO</strong>. نعمل
-          على تسهيل حصول الحرفيين وأصحاب الورشات في كل ولايات الوطن الـ 58 على عتاد عملي وموثوق بسعر شفاف ودفع
-          عند الاستلام مع حق المعاينة.
+          والأدوات الكهربائية واليدوية الأصلية من علامتي <strong>CROWN</strong> و <strong>STARCLE PRO</strong>. نعمل على
+          تسهيل حصول الحرفيين وأصحاب الورشات في كل ولايات الوطن الـ 58 على عتاد عملي وموثوق بسعر شفاف ودفع عند الاستلام
+          مع حق المعاينة.
         </p>
       </header>
 
@@ -77,11 +77,19 @@ export default function AboutPage() {
           <h2 className="font-black text-xl">تصفح العروض أو تواصل مع فريقنا</h2>
           <p className="text-sm text-slate-300">
             الهاتف:{" "}
-            <a href={`tel:${ORVA_CONTACT_PHONE}`} className="font-mono font-bold text-amber-400 hover:underline" dir="ltr">
+            <a
+              href={`tel:${ORVA_CONTACT_PHONE}`}
+              className="font-mono font-bold text-amber-400 hover:underline"
+              dir="ltr"
+            >
               {ORVA_CONTACT_PHONE_DISPLAY}
             </a>{" "}
             • البريد:{" "}
-            <a href={`mailto:${ORVA_CONTACT_EMAIL}`} className="font-mono font-bold text-amber-400 hover:underline" dir="ltr">
+            <a
+              href={`mailto:${ORVA_CONTACT_EMAIL}`}
+              className="font-mono font-bold text-amber-400 hover:underline"
+              dir="ltr"
+            >
               {ORVA_CONTACT_EMAIL}
             </a>
           </p>

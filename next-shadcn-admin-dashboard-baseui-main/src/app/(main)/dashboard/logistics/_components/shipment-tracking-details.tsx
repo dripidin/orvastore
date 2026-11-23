@@ -1,16 +1,19 @@
 "use client";
 
-import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
+
 import {
   AlertCircle,
   Building2,
   CalendarClock,
   Loader2,
   MapPin,
+  MessageSquarePlus,
   Navigation,
   PackageSearch,
+  Phone,
   RefreshCw,
+  Send,
   Truck,
   User,
 } from "lucide-react";
@@ -18,7 +21,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ALGERIA_58_WILAYAS } from "@/lib/types/checkout";
+import { Input } from "@/components/ui/input";
+import type { CourierRemarkItem, ParcelLocationStage } from "@/lib/couriers/types";
+import { getLocationStageLabelAr } from "@/lib/delivery/courier-status-mapper";
+import { ALGERIA_69_WILAYAS } from "@/lib/geo/algeria-69";
+import { orvaFetch } from "@/lib/orva-api";
 
 interface TrackingActivity {
   date?: string;
@@ -30,20 +37,33 @@ interface TrackingActivity {
   details?: string;
   reason?: string;
   driver?: string;
+  postponedTo?: string;
   postponed_to?: string;
 }
 
 interface TrackingInfo {
   success: boolean;
+  courierId?: string;
   tracking?: string;
   recipientName?: string;
   shippedBy?: string;
   currentStation?: string;
   status?: string;
   statusAr?: string;
+  locationStage?: ParcelLocationStage;
+  isSwitchable?: boolean;
   financialStatus?: string;
   originCity?: number | string;
   destLocationCity?: number | string;
+  driverName?: string;
+  driverPhone?: string;
+  deskInfo?: {
+    deskPhone?: string;
+    deskCommune?: string;
+    deskAddress?: string;
+    deskMapLink?: string;
+  };
+  remarks?: CourierRemarkItem[];
   activity?: TrackingActivity[];
   reasons?: string[];
   error?: string;
@@ -58,14 +78,15 @@ interface ShipmentTrackingDetailsProps {
     deliveryType?: string;
     total?: string;
     redex_tracking_code?: string | null;
+    courierId?: string | null;
   } | null;
 }
 
 function wilayaLabel(value?: number | string) {
   if (value === undefined || value === null || value === "") return null;
   const code = Number(value);
-  const w = ALGERIA_58_WILAYAS.find((x) => x.code === code);
-  return w ? `${String(w.code).padStart(2, "0")} — ${w.nameAr}` : String(value);
+  const w = ALGERIA_69_WILAYAS.find((x) => x.code === code);
+  return w ? `${w.paddedCode} — ${w.nameAr}` : String(value);
 }
 
 function statusTone(code?: string) {
@@ -97,32 +118,65 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
   const [data, setData] = React.useState<TrackingInfo | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [loadedAt, setLoadedAt] = React.useState<Date | null>(null);
+  const [remarkDraft, setRemarkDraft] = React.useState("");
+  const [sendingRemark, setSendingRemark] = React.useState(false);
 
-  const load = React.useCallback(async (code: string) => {
-    setLoading(true);
-    try {
-      const res = await orvaFetch(`/api/delivery?action=track&tracking=${encodeURIComponent(code)}`, {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const json = (await res.json().catch(() => null)) as TrackingInfo | null;
-      setData(json ?? { success: false, error: "استجابة غير صالحة من خدمة التتبع" });
-      setLoadedAt(new Date());
-    } catch {
-      setData({ success: false, error: "تعذر الاتصال بخدمة التتبع" });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = React.useCallback(
+    async (code: string) => {
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({ action: "track", tracking: code });
+        if (order?.courierId) qs.set("courierId", order.courierId);
+        const res = await orvaFetch(`/api/delivery?${qs.toString()}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const json = (await res.json().catch(() => null)) as TrackingInfo | null;
+        setData(json ?? { success: false, error: "استجابة غير صالحة من خدمة التتبع" });
+        setLoadedAt(new Date());
+      } catch {
+        setData({ success: false, error: "تعذر الاتصال بخدمة التتبع" });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [order?.courierId],
+  );
 
   React.useEffect(() => {
     setData(null);
     if (trackingCode) void load(trackingCode);
   }, [trackingCode, load]);
 
+  const sendRemark = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trackingCode || !remarkDraft.trim()) return;
+    setSendingRemark(true);
+    try {
+      const res = await orvaFetch("/api/delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_remark",
+          tracking: trackingCode,
+          courierId: order?.courierId || data?.courierId || "redex",
+          content: remarkDraft.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        setRemarkDraft("");
+        await load(trackingCode);
+      }
+    } finally {
+      setSendingRemark(false);
+    }
+  };
+
   if (!order) return null;
 
   const activity = [...(data?.activity ?? [])].reverse();
+  const remarks = data?.remarks ?? [];
 
   return (
     <Card className="text-right" dir="rtl" aria-live="polite">
@@ -130,7 +184,7 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
             <PackageSearch className="size-5 text-primary" />
-            تفاصيل تتبع الشحنة
+            تفاصيل تتبع الشحنة والاتصال بالسائق
           </CardTitle>
           <CardDescription className="mt-1 text-xs">
             الطلبية <span className="font-mono">{order.id}</span>
@@ -172,7 +226,7 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
           </div>
         ) : loading && !data ? (
           <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> جارٍ جلب معلومات الشحنة من EcoTrack…
+            <Loader2 className="size-4 animate-spin" /> جارٍ جلب معلومات الشحنة من شركة التوصيل…
           </div>
         ) : data && !data.success ? (
           <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-700 dark:text-red-300">
@@ -185,6 +239,11 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
               <Badge variant="outline" className={`text-xs font-bold ${statusTone(data.status)}`}>
                 {data.statusAr || data.status || "—"}
               </Badge>
+              {data.locationStage && (
+                <Badge variant="secondary" className="text-[11px]">
+                  📍 {getLocationStageLabelAr(data.locationStage)}
+                </Badge>
+              )}
               {data.financialStatus && (
                 <Badge variant="outline" className="text-[11px]">
                   الحالة المالية: {data.financialStatus}
@@ -197,21 +256,74 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
               <Fact
                 icon={<Navigation className="size-3.5" />}
                 label="المسار"
-                value={[wilayaLabel(data.originCity) ?? "07 — بسكرة", wilayaLabel(data.destLocationCity) ?? order.wilaya]
+                value={[
+                  wilayaLabel(data.originCity) ?? "07 — بسكرة",
+                  wilayaLabel(data.destLocationCity) ?? order.wilaya,
+                ]
                   .filter(Boolean)
                   .join(" ← ")}
               />
-              <Fact
-                icon={<User className="size-3.5" />}
-                label="المستلم"
-                value={data.recipientName || order.customer}
-              />
+              <Fact icon={<User className="size-3.5" />} label="المستلم" value={data.recipientName || order.customer} />
               <Fact
                 icon={<Building2 className="size-3.5" />}
                 label="الوجهة / التوصيل"
                 value={[order.commune, order.deliveryType].filter(Boolean).join(" · ")}
               />
             </div>
+
+            {/* Driver & Desk Info */}
+            {(data.driverName || data.driverPhone || data.deskInfo?.deskAddress || data.deskInfo?.deskPhone) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {(data.driverName || data.driverPhone) && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                      <Truck className="size-3.5" />
+                      رجل التوصيل المكلف
+                    </div>
+                    <div className="font-semibold">{data.driverName || "—"}</div>
+                    {data.driverPhone && (
+                      <a
+                        href={`tel:${data.driverPhone}`}
+                        className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+                        dir="ltr"
+                      >
+                        <Phone className="size-3" /> {data.driverPhone}
+                      </a>
+                    )}
+                  </div>
+                )}
+                {(data.deskInfo?.deskAddress || data.deskInfo?.deskPhone) && (
+                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
+                      <Building2 className="size-3.5" />
+                      مكتب التوصيل (Desk)
+                    </div>
+                    {data.deskInfo.deskAddress && <div>{data.deskInfo.deskAddress}</div>}
+                    <div className="flex flex-wrap gap-2">
+                      {data.deskInfo.deskPhone && (
+                        <a
+                          href={`tel:${data.deskInfo.deskPhone}`}
+                          className="font-mono text-primary hover:underline"
+                          dir="ltr"
+                        >
+                          {data.deskInfo.deskPhone}
+                        </a>
+                      )}
+                      {data.deskInfo.deskMapLink && (
+                        <a
+                          href={data.deskInfo.deskMapLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          الموقع على الخريطة ↗
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {data.reasons && data.reasons.length > 0 && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
@@ -223,6 +335,46 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
                 </ul>
               </div>
             )}
+
+            {/* Two-Way MAJ Remarks */}
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="font-bold flex items-center gap-1.5">
+                <MessageSquarePlus className="size-4 text-primary" />
+                ملاحظات وتحديثات التواصل (MAJ) ({remarks.length})
+              </div>
+              {remarks.length > 0 && (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {remarks.map((r, i) => (
+                    <div key={i} className="rounded bg-muted/40 p-2">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>
+                          {r.authorRole === "driver"
+                            ? `السائق ${r.livreur || ""}`
+                            : r.authorRole === "seller"
+                              ? "المتجر"
+                              : `المركز ${r.station || ""}`}
+                        </span>
+                        <span>{r.createdAt || ""}</span>
+                      </div>
+                      <div className="mt-0.5 font-medium">{r.remarque}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <form onSubmit={sendRemark} className="flex gap-2">
+                <Input
+                  value={remarkDraft}
+                  onChange={(e) => setRemarkDraft(e.target.value)}
+                  placeholder="أرسل ملاحظة أو توجيه للناقل / رجل التوصيل..."
+                  maxLength={240}
+                  className="h-8 text-xs"
+                />
+                <Button type="submit" size="sm" className="h-8 gap-1" disabled={sendingRemark || !remarkDraft.trim()}>
+                  {sendingRemark ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                  إرسال MAJ
+                </Button>
+              </form>
+            </div>
 
             <div>
               <h4 className="mb-2 flex items-center gap-1.5 font-bold text-sm">
@@ -249,7 +401,9 @@ export function ShipmentTrackingDetails({ order }: ShipmentTrackingDetailsProps)
                       <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                         {(a.station || a.scanLocation) && <span>📍 {a.station || a.scanLocation}</span>}
                         {a.driver && <span>🚚 السائق: {a.driver}</span>}
-                        {a.postponed_to && <span>⏱ مؤجلة إلى: {a.postponed_to}</span>}
+                        {(a.postponedTo || a.postponed_to) && (
+                          <span>⏱ مؤجلة إلى: {a.postponedTo || a.postponed_to}</span>
+                        )}
                       </div>
                       {(a.reason || a.details) && (
                         <p className="mt-0.5 text-[11px] text-foreground">{a.reason || a.details}</p>

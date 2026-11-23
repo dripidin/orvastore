@@ -21,7 +21,7 @@ import {
 import { submitCodOrderAction } from "@/app/actions/checkout";
 import communesRawData from "@/data/geoalgeria/communes.json";
 import {
-  ALGERIA_58_WILAYAS,
+  ALGERIA_69_WILAYAS,
   type CodOrderSubmission,
   calculateDeliveryTariff,
   isStopDeskAllowed,
@@ -41,8 +41,8 @@ interface RawCommune {
   postal_code?: string;
 }
 
-import { CheckoutKeyLifecycle } from "@/lib/idempotency-lifecycle";
 import { captureAttributionFromUrl, getStoredAttribution } from "@/lib/analytics/attribution-tracker";
+import { CheckoutKeyLifecycle } from "@/lib/idempotency-lifecycle";
 
 const communesData = communesRawData as RawCommune[];
 
@@ -89,9 +89,7 @@ export function EmbeddedCodOrderForm({
   const [honeypot, setHoneypot] = useState("");
   const keyLifecycleRef = useRef<CheckoutKeyLifecycle | null>(null);
   const getKeyLifecycle = () => {
-    if (!keyLifecycleRef.current) {
-      keyLifecycleRef.current = new CheckoutKeyLifecycle();
-    }
+    keyLifecycleRef.current ??= new CheckoutKeyLifecycle();
     return keyLifecycleRef.current;
   };
   const [formIdempotencyKey, setFormIdempotencyKey] = useState<string>(() => getKeyLifecycle().getOrCreateKey());
@@ -111,15 +109,55 @@ export function EmbeddedCodOrderForm({
 
   // Selected Wilaya Record
   const currentWilaya = useMemo(() => {
-    return ALGERIA_58_WILAYAS.find((w) => w.code === wilayaCode) || ALGERIA_58_WILAYAS[15];
+    return ALGERIA_69_WILAYAS.find((w) => w.code === wilayaCode) || ALGERIA_69_WILAYAS[15];
   }, [wilayaCode]);
 
-  // Delivery offices (EcoTrack stop-desks) for the selected wilaya, per commune
+  // Delivery offices & live 69-wilaya coverage (couriers + stop-desk availability)
   const deliveryOffices = useDeliveryOffices(wilayaCode);
   const communeHasOffice = deliveryOffices.hasOffice(communeName);
 
-  // Stop-Desk capability: wilaya must allow it AND the selected commune must have an office
-  const wilayaStopDeskAllowed = useMemo(() => isStopDeskAllowed(wilayaCode), [wilayaCode]);
+  const [coverageByWilaya, setCoverageByWilaya] = useState<
+    Record<
+      number,
+      {
+        stopDeskEnabled: boolean;
+        stopDeskStatusMessage: string | null;
+        tarifDomicile: number;
+        tarifStopdesk: number;
+        primaryCourier: { id: string; name: string; nameAr: string; routedViaMotherWilaya: boolean } | null;
+      }
+    >
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/delivery-coverage", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled || !d?.success || !Array.isArray(d.wilayas)) return;
+        const map: Record<number, any> = {};
+        const feePatch: Record<number, { domicile: number; stopdesk: number }> = {};
+        for (const row of d.wilayas) {
+          map[row.wilayaCode] = row;
+          feePatch[row.wilayaCode] = { domicile: row.tarifDomicile, stopdesk: row.tarifStopdesk };
+        }
+        setCoverageByWilaya(map);
+        setLiveTariffs(feePatch);
+        setTariffVersion((v) => v + 1);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentCoverage = coverageByWilaya[wilayaCode];
+
+  // Stop-Desk capability: wilaya must allow it AND live coverage + selected commune must have an office
+  const wilayaStopDeskAllowed = useMemo(() => {
+    if (currentCoverage) return currentCoverage.stopDeskEnabled;
+    return isStopDeskAllowed(wilayaCode);
+  }, [currentCoverage, wilayaCode]);
   const stopDeskAllowed = wilayaStopDeskAllowed && communeHasOffice !== false;
 
   // Fall back to home delivery as soon as the selected commune has no office
@@ -404,12 +442,12 @@ export function EmbeddedCodOrderForm({
           </div>
         </div>
 
-        {/* 3. Cascading Geographic Selectors: 58 Wilayas & Communes */}
+        {/* 3. Cascading Geographic Selectors: 69 Wilayas & Communes */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-xs sm:text-sm font-bold flex items-center gap-1.5 text-slate-800">
               <MapPin className="size-4 text-amber-500" />
-              <span>الولاية (58 ولاية)</span>
+              <span>الولاية (69 ولاية)</span>
               <span className="text-amber-500">*</span>
             </label>
             <select
@@ -417,12 +455,18 @@ export function EmbeddedCodOrderForm({
               onChange={(e) => handleWilayaChange(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl px-4 py-3 text-sm text-slate-900 outline-hidden transition appearance-none cursor-pointer"
             >
-              {ALGERIA_58_WILAYAS.map((w) => (
+              {ALGERIA_69_WILAYAS.map((w) => (
                 <option key={w.code} value={w.code}>
                   {w.code.toString().padStart(2, "0")} - {w.nameAr} ({w.nameFr})
                 </option>
               ))}
             </select>
+            {currentCoverage?.primaryCourier && (
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200/80">
+                <Truck className="size-3" />
+                <span>شركة التوصيل: {currentCoverage.primaryCourier.nameAr}</span>
+              </p>
+            )}
             {fieldErrors.wilayaCode && <p className="text-xs text-red-600 font-medium">{fieldErrors.wilayaCode}</p>}
           </div>
 
@@ -529,8 +573,8 @@ export function EmbeddedCodOrderForm({
           {communeHasOffice === false && wilayaStopDeskAllowed ? (
             <div className="text-[11px] leading-relaxed text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-1">
               <p className="font-bold">
-                ⚠️ لا يوجد مكتب توصيل في بلدية {communeName}، لذلك سيتم التوصيل عبر رجل التوصيل إلى باب منزلك
-                ويُحتسب سعر التوصيل للمنزل.
+                ⚠️ لا يوجد مكتب توصيل في بلدية {communeName}، لذلك سيتم التوصيل عبر رجل التوصيل إلى باب منزلك ويُحتسب سعر
+                التوصيل للمنزل.
               </p>
               {deliveryOffices.offices.length > 0 && (
                 <p>
@@ -542,8 +586,8 @@ export function EmbeddedCodOrderForm({
           ) : (
             !wilayaStopDeskAllowed && (
               <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                ⚠️ التوصيل للمكتب غير متوفر حالياً في ولاية {currentWilaya.nameAr}، سيتم التوصيل عبر رجل التوصيل
-                إلى باب المنزل.
+                ⚠️ مكتب التوصيل غير متوفر حالياً في ولاية {currentWilaya.nameAr} — التوصيل للمنزل متاح عبر رجل التوصيل
+                {currentCoverage?.primaryCourier ? ` (${currentCoverage.primaryCourier.nameAr})` : ""}.
               </p>
             )
           )}

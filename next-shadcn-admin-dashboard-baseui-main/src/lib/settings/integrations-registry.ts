@@ -150,7 +150,7 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
       "Store traffic & tab-scoped session tracking",
       "Product Views (ViewContent) telemetry",
       "Checkout events (InitiateCheckout) monitoring",
-      "Geographical conversion tracking by wilaya (58 wilayas)",
+      "Geographical conversion tracking by wilaya (69 wilayas)",
       "Africa/Algiers (UTC+1) calendar day aggregation",
     ],
     managementMethod: "Built-in first-party analytics repositories",
@@ -261,7 +261,7 @@ export const INTEGRATION_REGISTRY: IntegrationRegistryItem[] = [
     environmentScope: "all",
     requiredConfiguration: "YALIDINE_API_KEY, YALIDINE_API_TOKEN, Webhook URL",
     availableCapabilities: [
-      "58 Wilayas desk & home delivery dispatch",
+      "69 Wilayas desk & home delivery dispatch",
       "Automated tracking number generation",
       "Bordereau sticker printing",
       "Delivery state webhook callbacks",

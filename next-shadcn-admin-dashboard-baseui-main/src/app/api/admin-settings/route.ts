@@ -1,26 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from "next/server";
+
 import {
-  saveSettingsAction,
-  testTelegramNotificationAction,
-  testCourierConnectionAction,
+  deleteGeminiApiKeyAction,
+  deleteRedexTokenAction,
+  deleteVercelTokenAction,
   getAdminSettingsAction,
   getRedexSettingsAction,
-  deleteRedexTokenAction,
-  deleteGeminiApiKeyAction,
-  deleteVercelTokenAction,
-} from '@/app/actions/settings';
-import {
-  resolveVercelAnalyticsRuntimeConfig,
-  testVercelAnalyticsConnection,
-} from '@/lib/analytics/vercel-server';
-import { fallbackSettingsStore } from '@/lib/settings/settings-store';
-import { verifyAdminSession } from '@/lib/auth/admin-auth';
-import { runGeminiSettingsTestReport } from '@/lib/ai/store-ai-context';
-import { uploadMediaBuffer, uploadMediaDataUrl } from '@/lib/media/hostinger-media';
+  saveSettingsAction,
+  testCourierConnectionAction,
+  testTelegramNotificationAction,
+} from "@/app/actions/settings";
+import { runGeminiSettingsTestReport } from "@/lib/ai/store-ai-context";
+import { resolveVercelAnalyticsRuntimeConfig, testVercelAnalyticsConnection } from "@/lib/analytics/vercel-server";
+import { verifyAdminSession } from "@/lib/auth/admin-auth";
+import { uploadMediaBuffer, uploadMediaDataUrl } from "@/lib/media/hostinger-media";
+import { fallbackSettingsStore } from "@/lib/settings/settings-store";
 
 export async function GET(request: NextRequest) {
-  if (!await verifyAdminSession(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+  if (!(await verifyAdminSession(request))) {
+    return NextResponse.json({ success: false, error: "Unauthorized: Admin session required" }, { status: 401 });
   }
 
   const settings = await getAdminSettingsAction();
@@ -41,19 +39,15 @@ export async function GET(request: NextRequest) {
         ...settings.metaPixel,
         isConfigured: isMetaConfigured,
         hasCapiToken: hasMetaCapi,
-        tokenSource: hasMetaCapi ? 'Server Config / Supabase' : 'Not Configured',
-        status: isMetaConfigured
-          ? (settings.metaPixel.enabled ? 'operational' : 'not_connected')
-          : 'not_configured',
+        tokenSource: hasMetaCapi ? "Server Config / Supabase" : "Not Configured",
+        status: isMetaConfigured ? (settings.metaPixel.enabled ? "operational" : "not_connected") : "not_configured",
         updatedAt: settings.updatedAt || null,
       },
       telegram: {
         ...settings.telegram,
         isConfigured: isTgConfigured,
-        tokenSource: settings.telegram.botToken ? 'Server Config / BotFather' : 'Not Configured',
-        status: isTgConfigured
-          ? (settings.telegram.enabled ? 'operational' : 'not_connected')
-          : 'not_configured',
+        tokenSource: settings.telegram.botToken ? "Server Config / BotFather" : "Not Configured",
+        status: isTgConfigured ? (settings.telegram.enabled ? "operational" : "not_connected") : "not_configured",
         updatedAt: settings.updatedAt || null,
       },
       couriers: settings.couriers,
@@ -63,27 +57,29 @@ export async function GET(request: NextRequest) {
         enabled: redex.enabled,
         baseUrl: redex.baseUrl,
         isConfigured: isRedexConfigured,
-        tokenSource: isRedexConfigured ? 'Server Encrypted / Env' : 'Not Configured',
+        tokenSource: isRedexConfigured ? "Server Encrypted / Env" : "Not Configured",
         status: isRedexConfigured
-          ? (redex.enabled ? 'operational' : 'not_connected')
-          : (redex.enabled ? 'reachable' : 'not_configured'),
+          ? redex.enabled
+            ? "operational"
+            : "not_connected"
+          : redex.enabled
+            ? "reachable"
+            : "not_configured",
         updatedAt: redex.updatedAt,
       },
       ecotrack: {
         enabled: true,
-        baseUrl: 'https://api.ecotrack.dz',
+        baseUrl: "https://api.ecotrack.dz",
         isConfigured: false,
-        tokenSource: 'Not Configured',
-        status: 'not_configured',
+        tokenSource: "Not Configured",
+        status: "not_configured",
         updatedAt: null,
       },
       geminiAi: {
         ...settings.geminiAi,
         isConfigured: isGeminiConfigured,
-        tokenSource: isGeminiConfigured ? 'Server Config / Google Gemini API' : 'Not Configured',
-        status: isGeminiConfigured
-          ? (settings.geminiAi.enabled ? 'operational' : 'not_connected')
-          : 'not_configured',
+        tokenSource: isGeminiConfigured ? "Server Config / Google Gemini API" : "Not Configured",
+        status: isGeminiConfigured ? (settings.geminiAi.enabled ? "operational" : "not_connected") : "not_configured",
         updatedAt: settings.updatedAt || null,
       },
       vercelAnalytics: {
@@ -95,9 +91,7 @@ export async function GET(request: NextRequest) {
         dashboardUrl: vercelRuntime.dashboardUrl,
         isConfigured: isVercelTokenConfigured,
         tokenSource: vercelRuntime.tokenSource,
-        status: isVercelTokenConfigured
-          ? (vercelRuntime.enabled ? 'operational' : 'not_connected')
-          : 'not_configured',
+        status: isVercelTokenConfigured ? (vercelRuntime.enabled ? "operational" : "not_connected") : "not_configured",
         updatedAt: settings.updatedAt || null,
       },
     },
@@ -105,22 +99,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!await verifyAdminSession(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized: Admin session required' }, { status: 401 });
+  if (!(await verifyAdminSession(request))) {
+    return NextResponse.json({ success: false, error: "Unauthorized: Admin session required" }, { status: 401 });
   }
 
   try {
-    const contentType = (request.headers.get('content-type') || '').toLowerCase();
-    if (contentType.includes('multipart/form-data')) {
+    const contentType = (request.headers.get("content-type") || "").toLowerCase();
+    if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
-      const action = String(form.get('action') || '');
-      const file = form.get('file');
-      if (action === 'upload_logo' && file instanceof File && file.size > 0) {
+      const action = String(form.get("action") || "");
+      const file = form.get("file");
+      if (action === "upload_logo" && file instanceof File && file.size > 0) {
         const bytes = Buffer.from(await file.arrayBuffer());
         const uploaded = await uploadMediaBuffer({
           bytes,
-          name: file.name || 'store-logo',
-          folder: 'branding',
+          name: file.name || "store-logo",
+          folder: "branding",
           claimedMime: file.type || null,
         });
         await saveSettingsAction({ store: { logoUrl: uploaded.url } });
@@ -130,54 +124,63 @@ export async function POST(request: NextRequest) {
           provider: uploaded.provider,
         });
       }
-      return NextResponse.json({ success: false, error: 'ملف الشعار غير صالح.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: "ملف الشعار غير صالح." }, { status: 400 });
     }
 
     const body = await request.json();
 
     // 1. Handle Test action for all integrations
-    if (body.action === 'test') {
+    if (body.action === "test") {
       const integration = body.integration;
 
-      if (integration === 'redex') {
+      if (integration === "redex") {
         const redex = await getRedexSettingsAction();
-        const hasToken = Boolean(redex.apiToken || body.apiToken);
-        const reachable = true;
-        const httpStatus = 200;
-        const status = hasToken
-          ? (redex.enabled ? 'operational' : 'authenticated')
-          : 'reachable';
+        const tokenToTest = String(body.apiToken || redex.apiToken || "").trim();
+        const baseUrlToTest = String(body.baseUrl || redex.baseUrl || "https://redex.ecotrack.dz").trim();
+        const { EcoTrackClient } = await import("@/lib/couriers/ecotrack-client");
+        const client = new EcoTrackClient({ courierId: "redex", baseUrl: baseUrlToTest, token: tokenToTest });
+        const check = await client.testConnection(tokenToTest, baseUrlToTest);
 
         return NextResponse.json({
           success: true,
           testResult: {
-            status,
-            reachable,
-            httpStatus,
-            provider: 'redex',
-            baseUrl: redex.baseUrl,
-            authenticated: hasToken,
-            configured: hasToken,
-            latencyMs: 45,
-            message: hasToken
-              ? 'تم فحص الاتصال ببوابة RedEx بنجاح وحساب التوصيل نشط.'
-              : 'بوابة RedEx متاحة ويمكن الوصول إليها عبر الشبكة (رمز التوكن غير مدخل).',
+            status: check.success
+              ? redex.enabled
+                ? "operational"
+                : "authenticated"
+              : tokenToTest
+                ? "error"
+                : "not_configured",
+            reachable: check.success || Boolean(check.latencyMs && check.latencyMs > 0),
+            httpStatus: check.success ? 200 : 401,
+            provider: "redex",
+            baseUrl: baseUrlToTest,
+            authenticated: check.success,
+            configured: Boolean(tokenToTest),
+            latencyMs: check.latencyMs ?? 0,
+            servedWilayasCount: check.servedWilayaIds?.length ?? null,
+            rateLimit: check.rateLimit ?? null,
+            message: check.success
+              ? `تم التحقق الفعلي من بوابة RedEx بنجاح (${check.latencyMs ?? 0}ms${check.servedWilayaIds?.length ? ` · ${check.servedWilayaIds.length} ولاية مفعّلة` : ""}).`
+              : tokenToTest
+                ? `فشل التحقق من بوابة RedEx: ${check.message}`
+                : "رمز RedEx API Token غير مضبوط بعد.",
           },
         });
       }
 
-      if (integration === 'telegram') {
+      if (integration === "telegram") {
         const settings = await getAdminSettingsAction();
-        const token = (body.token || settings.telegram.botToken || '').trim();
-        const chatId = (body.chatId || settings.telegram.chatId || '').trim();
+        const token = (body.token || settings.telegram.botToken || "").trim();
+        const chatId = (body.chatId || settings.telegram.chatId || "").trim();
         const hasToken = Boolean(token);
         const authenticated = hasToken;
 
-        let botUsername = 'OrvaAlertsBot';
-        let botName = 'ORVA Order Alerts';
+        let botUsername = "OrvaAlertsBot";
+        const botName = "ORVA Order Alerts";
 
         if (hasToken) {
-          const parts = token.split(':');
+          const parts = token.split(":");
           if (parts.length > 1 && !isNaN(Number(parts[0]))) {
             botUsername = `bot_${parts[0]}`;
           }
@@ -192,16 +195,16 @@ export async function POST(request: NextRequest) {
             botName,
             chatId: chatId || undefined,
             message: authenticated
-              ? 'تم التحقق من حساب Telegram Bot بنجاح.'
-              : 'رمز البوت (BotFather Token) غير متوفر أو غير صالح.',
+              ? "تم التحقق من حساب Telegram Bot بنجاح."
+              : "رمز البوت (BotFather Token) غير متوفر أو غير صالح.",
           },
         });
       }
 
-      if (integration === 'metaPixel') {
+      if (integration === "metaPixel") {
         const settings = await getAdminSettingsAction();
-        const pixelId = (body.pixelId || settings.metaPixel.pixelId || '').trim();
-        const capiToken = (body.capiToken || settings.metaPixel.capiToken || '').trim();
+        const pixelId = (body.pixelId || settings.metaPixel.pixelId || "").trim();
+        const capiToken = (body.capiToken || settings.metaPixel.capiToken || "").trim();
         const configured = Boolean(pixelId && /^\d{12,20}$/.test(pixelId));
         const capiConfigured = Boolean(capiToken && capiToken.length > 15);
 
@@ -212,13 +215,13 @@ export async function POST(request: NextRequest) {
             pixelId: pixelId || undefined,
             capiConfigured,
             message: configured
-              ? 'تكوين Meta Pixel سليم وجاهز للتتبع.'
-              : 'معرّف Pixel ID غير صالح أو غير مكتمل (يجب أن يتكون من 12 إلى 20 رقماً).',
+              ? "تكوين Meta Pixel سليم وجاهز للتتبع."
+              : "معرّف Pixel ID غير صالح أو غير مكتمل (يجب أن يتكون من 12 إلى 20 رقماً).",
           },
         });
       }
 
-      if (integration === 'geminiAi') {
+      if (integration === "geminiAi") {
         const testResult = await runGeminiSettingsTestReport({
           name: body.name,
           projectName: body.projectName,
@@ -233,11 +236,11 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (integration === 'vercelAnalytics') {
+      if (integration === "vercelAnalytics") {
         const testResult = await testVercelAnalyticsConnection({
-          token: typeof body.token === 'string' ? body.token : undefined,
-          projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
-          teamId: typeof body.teamId === 'string' ? body.teamId : undefined,
+          token: typeof body.token === "string" ? body.token : undefined,
+          projectId: typeof body.projectId === "string" ? body.projectId : undefined,
+          teamId: typeof body.teamId === "string" ? body.teamId : undefined,
         });
 
         return NextResponse.json({
@@ -250,56 +253,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         testResult: {
-          status: 'operational',
+          status: "operational",
           authenticated: true,
           configured: true,
-          message: `تم فحص الاتصال للتكامل ${integration || 'العام'} بنجاح.`,
+          message: `تم فحص الاتصال للتكامل ${integration || "العام"} بنجاح.`,
         },
       });
     }
 
     // 2. Handle Delete action for clearing sensitive credentials
-    if (body.action === 'delete') {
+    if (body.action === "delete") {
       const { integration, field } = body;
-      if (integration === 'redex') {
+      if (integration === "redex") {
         await deleteRedexTokenAction();
-      } else if (integration === 'telegram') {
-        if (field === 'botToken' || !field) {
-          await saveSettingsAction({ telegram: { botToken: '' } });
+      } else if (integration === "telegram") {
+        if (field === "botToken" || !field) {
+          await saveSettingsAction({ telegram: { botToken: "" } });
         }
-      } else if (integration === 'metaPixel') {
-        if (field === 'pixelId') {
-          await saveSettingsAction({ metaPixel: { pixelId: '' } });
-        } else if (field === 'capiToken') {
-          await saveSettingsAction({ metaPixel: { capiToken: '' } });
+      } else if (integration === "metaPixel") {
+        if (field === "pixelId") {
+          await saveSettingsAction({ metaPixel: { pixelId: "" } });
+        } else if (field === "capiToken") {
+          await saveSettingsAction({ metaPixel: { capiToken: "" } });
         }
-      } else if (integration === 'geminiAi') {
+      } else if (integration === "geminiAi") {
         await deleteGeminiApiKeyAction();
-      } else if (integration === 'vercelAnalytics') {
+      } else if (integration === "vercelAnalytics") {
         await deleteVercelTokenAction();
       }
       return NextResponse.json({
         success: true,
-        message: `تم مسح ${field || 'الرمز'} بنجاح.`,
+        message: `تم مسح ${field || "الرمز"} بنجاح.`,
       });
     }
 
     // 3. Backwards compatible test actions
-    if (body.action === 'test_telegram') {
+    if (body.action === "test_telegram") {
       const result = await testTelegramNotificationAction(body.token, body.chatId);
       return NextResponse.json(result);
     }
 
-    if (body.action === 'test_courier') {
+    if (body.action === "test_courier") {
       const result = await testCourierConnectionAction(body.providerId, body.credentials);
       return NextResponse.json(result);
     }
 
-    if (body.action === 'upload_logo' && body.dataUrl) {
+    if (body.action === "upload_logo" && body.dataUrl) {
       const uploaded = await uploadMediaDataUrl({
         dataUrl: String(body.dataUrl),
-        name: String(body.name || 'store-logo'),
-        folder: 'branding',
+        name: String(body.name || "store-logo"),
+        folder: "branding",
       });
       await saveSettingsAction({ store: { logoUrl: uploaded.url } });
       return NextResponse.json({
@@ -313,7 +316,7 @@ export async function POST(request: NextRequest) {
     const saveResult = await saveSettingsAction(body);
     return NextResponse.json(saveResult);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to process admin settings request';
+    const msg = err instanceof Error ? err.message : "Failed to process admin settings request";
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

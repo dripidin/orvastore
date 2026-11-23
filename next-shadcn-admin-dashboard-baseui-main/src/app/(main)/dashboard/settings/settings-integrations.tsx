@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+
 import { useSearchParams } from "next/navigation";
+
 import {
   AlertCircle,
   BarChart3,
@@ -29,34 +31,26 @@ import {
   Zap,
 } from "lucide-react";
 
-import {
-  getDashboardSettingsFallbackAction,
-  mutateDashboardSettingsFallbackAction,
-} from "@/app/actions/ai-agent";
+import { getDashboardSettingsFallbackAction, mutateDashboardSettingsFallbackAction } from "@/app/actions/ai-agent";
+import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { IntegrationStatus } from "@/lib/settings/integrations-registry";
-import { getAppRepositoryMode } from "@/lib/orva-api";
 import { prepareImageForUpload } from "@/lib/media/client-image-compress";
-import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
+import { getAppRepositoryMode } from "@/lib/orva-api";
+import type { IntegrationStatus } from "@/lib/settings/integrations-registry";
+
+import { MultiCourierManagerCard } from "./_components/multi-courier-manager-card";
 import { TikTokLeadsIntegrationCard } from "./tiktok-leads-integration-card";
 import {
+  deriveTikTokConnectionUiState,
   TIKTOK_API_ENDPOINTS,
   type TikTokConnectionBadgeSummary,
-  deriveTikTokConnectionUiState,
 } from "./tiktok-leads-types";
 
 interface PublicSettingsPayload {
@@ -140,14 +134,20 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "configured":
     case "reachable":
       return (
-        <Badge variant="outline" className="min-w-0 max-w-full shrink whitespace-normal text-center leading-tight [&_svg]:shrink-0 border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300 font-bold gap-1 text-[11px]">
+        <Badge
+          variant="outline"
+          className="min-w-0 max-w-full shrink whitespace-normal text-center leading-tight [&_svg]:shrink-0 border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300 font-bold gap-1 text-[11px]"
+        >
           <ShieldCheck className="size-3" />
           {label}
         </Badge>
       );
     case "demo_only":
       return (
-        <Badge variant="outline" className="max-w-full whitespace-normal text-center leading-tight border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-bold gap-1 text-[11px]">
+        <Badge
+          variant="outline"
+          className="max-w-full whitespace-normal text-center leading-tight border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-bold gap-1 text-[11px]"
+        >
           <Sparkles className="size-3" />
           {label}
         </Badge>
@@ -155,7 +155,10 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "not_connected":
     case "not_configured":
       return (
-        <Badge variant="outline" className="max-w-full whitespace-normal text-center leading-tight border-slate-300 text-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-slate-400 font-bold text-[11px]">
+        <Badge
+          variant="outline"
+          className="max-w-full whitespace-normal text-center leading-tight border-slate-300 text-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-slate-400 font-bold text-[11px]"
+        >
           {label}
         </Badge>
       );
@@ -163,7 +166,10 @@ function StatusBadge({ status, label }: { status: IntegrationStatus | string; la
     case "error":
     default:
       return (
-        <Badge variant="destructive" className="max-w-full whitespace-normal text-center leading-tight font-bold text-[11px]">
+        <Badge
+          variant="destructive"
+          className="max-w-full whitespace-normal text-center leading-tight font-bold text-[11px]"
+        >
           {label}
         </Badge>
       );
@@ -175,22 +181,22 @@ export function SettingsIntegrations() {
   const requestedTab = searchParams?.get("tab");
   const ALLOWED_TABS = ["general", "gemini", "analytics", "tiktok", "delivery", "notifications"];
   const [activeTab, setActiveTab] = React.useState<string>(
-    requestedTab && ALLOWED_TABS.includes(requestedTab)
-      ? requestedTab
-      : "general",
+    requestedTab && ALLOWED_TABS.includes(requestedTab) ? requestedTab : "general",
   );
-  const [tiktokStatusSummary, setTiktokStatusSummary] =
-    React.useState<TikTokConnectionBadgeSummary>({
-      state: "not_connected",
-      badgeStatus: "not_connected",
-      labelAr: "غير متصل",
-      descriptionAr: "",
-      requiresReconnect: false,
-    });
+  const [tiktokStatusSummary, setTiktokStatusSummary] = React.useState<TikTokConnectionBadgeSummary>({
+    state: "not_connected",
+    badgeStatus: "not_connected",
+    labelAr: "غير متصل",
+    descriptionAr: "",
+    requiresReconnect: false,
+  });
   const repoMode = typeof window !== "undefined" ? getAppRepositoryMode() : "mock";
 
   React.useEffect(() => {
-    if (requestedTab && ["general", "gemini", "analytics", "tiktok", "delivery", "notifications"].includes(requestedTab)) {
+    if (
+      requestedTab &&
+      ["general", "gemini", "analytics", "tiktok", "delivery", "notifications"].includes(requestedTab)
+    ) {
       setActiveTab(requestedTab);
     }
   }, [requestedTab]);
@@ -355,7 +361,9 @@ export function SettingsIntegrations() {
   }, [fetchSettings]);
 
   React.useEffect(() => {
-    const reloadAfterSystemSync = () => { void fetchSettings(); };
+    const reloadAfterSystemSync = () => {
+      void fetchSettings();
+    };
     window.addEventListener("orva:settings-sync", reloadAfterSystemSync);
     return () => window.removeEventListener("orva:settings-sync", reloadAfterSystemSync);
   }, [fetchSettings]);
@@ -381,9 +389,7 @@ export function SettingsIntegrations() {
         if (!res.ok) return;
         const data = await res.json().catch(() => null);
         if (!cancelled && data?.success) {
-          setTiktokStatusSummary(
-            deriveTikTokConnectionUiState(data.readiness ?? null, data.connection ?? null),
-          );
+          setTiktokStatusSummary(deriveTikTokConnectionUiState(data.readiness ?? null, data.connection ?? null));
         }
       } catch {
         // Keep honest default status without throwing
@@ -522,10 +528,14 @@ export function SettingsIntegrations() {
     try {
       const res = await callSettingsApi({ action: "test", integration: "redex" });
       const test = res.testResult;
-      const statusText = test.status === "operational" ? "نشط وجاهز للعمل (Operational)"
-        : test.status === "authenticated" ? "تم التحقق من الحساب (Authenticated)"
-        : test.status === "reachable" ? "الخادم متاح ولكن يحتاج رمز صالح (Reachable)"
-        : "غير مهيأ (Not Configured)";
+      const statusText =
+        test.status === "operational"
+          ? "نشط وجاهز للعمل (Operational)"
+          : test.status === "authenticated"
+            ? "تم التحقق من الحساب (Authenticated)"
+            : test.status === "reachable"
+              ? "الخادم متاح ولكن يحتاج رمز صالح (Reachable)"
+              : "غير مهيأ (Not Configured)";
 
       setRedexFeedback({
         type: test.reachable ? "success" : "error",
@@ -854,8 +864,9 @@ export function SettingsIntegrations() {
               إدارة الإعدادات والذكاء الاصطناعي والتكاملات المركزية
             </div>
             <p className="text-blue-800 dark:text-blue-300 leading-relaxed">
-              يمكنك إدارة وتحديث إعدادات مساعد الذكاء الاصطناعي <strong>{geminiName || "Orva Agent AI"}</strong>، ورموز الربط لشركات الشحن، وبوت تيليجرام، وبيكسل فيسبوك مباشرة من هذه اللوحة.
-              يتم حفظ الإعدادات بأمان على الخادم وفي قاعدة البيانات.
+              يمكنك إدارة وتحديث إعدادات مساعد الذكاء الاصطناعي <strong>{geminiName || "Orva Agent AI"}</strong>، ورموز
+              الربط لشركات الشحن، وبوت تيليجرام، وبيكسل فيسبوك مباشرة من هذه اللوحة. يتم حفظ الإعدادات بأمان على الخادم
+              وفي قاعدة البيانات.
             </p>
           </div>
         </div>
@@ -873,8 +884,17 @@ export function SettingsIntegrations() {
 
       {/* Active Integrations Status & Quick-Jump Strip */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" dir="rtl">
-        <button type="button" onClick={() => setActiveTab("general")} className={`min-w-0 cursor-pointer rounded-xl border p-3.5 text-right transition-all hover:shadow-md ${activeTab === "general" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"}`}>
-          <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground"><div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Globe className="size-4" /></div><span>Store Settings</span></div>
+        <button
+          type="button"
+          onClick={() => setActiveTab("general")}
+          className={`min-w-0 cursor-pointer rounded-xl border p-3.5 text-right transition-all hover:shadow-md ${activeTab === "general" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"}`}
+        >
+          <div className="flex min-w-0 items-center gap-2 font-bold text-xs text-foreground">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Globe className="size-4" />
+            </div>
+            <span>Store Settings</span>
+          </div>
           <div className="mt-2 text-[11px] text-muted-foreground">هوية المتجر والإعدادات العامة</div>
         </button>
         <div
@@ -921,9 +941,7 @@ export function SettingsIntegrations() {
               label={isRedexConfigured ? "متصل ونشط" : "غير مهيأ"}
             />
           </div>
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            بوابة الشحن والتوصيل عبر 58 ولاية
-          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">بوابة الشحن والتوصيل عبر 69 ولاية</div>
         </div>
 
         <div
@@ -965,10 +983,7 @@ export function SettingsIntegrations() {
               </div>
               <span>TikTok Ads</span>
             </div>
-            <StatusBadge
-              status={tiktokStatusSummary.badgeStatus}
-              label={tiktokStatusSummary.labelAr}
-            />
+            <StatusBadge status={tiktokStatusSummary.badgeStatus} label={tiktokStatusSummary.labelAr} />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
             <span>النماذج الفورية وطلبيات COD</span>
@@ -996,9 +1011,7 @@ export function SettingsIntegrations() {
               label={isTgConfigured ? "متصل ونشط" : "غير مهيأ"}
             />
           </div>
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            إشعارات الطلبيات الفورية لقناة الإدارة
-          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">إشعارات الطلبيات الفورية لقناة الإدارة</div>
         </div>
       </div>
 
@@ -1030,7 +1043,9 @@ export function SettingsIntegrations() {
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1">
                   <div className="text-muted-foreground font-semibold">اسم المتجر الرسمي (Store Name):</div>
                   <div className="font-extrabold text-sm text-foreground">ORVA STORE ALGERIA</div>
-                  <div className="text-[11px] text-muted-foreground">متجر رسمي معتمد للتجارة الإلكترونية والتوصيل عبر 58 ولاية.</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    متجر رسمي معتمد للتجارة الإلكترونية والتوصيل عبر 69 ولاية.
+                  </div>
                 </div>
 
                 <div className="p-3.5 rounded-xl border bg-card space-y-2 md:col-span-2">
@@ -1104,10 +1119,7 @@ export function SettingsIntegrations() {
                           <ImageIcon className="size-3" />
                           <span>اختيار من مكتبة الوسائط</span>
                         </Button>
-                        <a
-                          href="/dashboard/media"
-                          className="text-[11px] text-primary hover:underline"
-                        >
+                        <a href="/dashboard/media" className="text-[11px] text-primary hover:underline">
                           إعدادات المكتبة وحجم الرفع ←
                         </a>
                       </div>
@@ -1127,19 +1139,25 @@ export function SettingsIntegrations() {
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1">
                   <div className="text-muted-foreground font-semibold">لغة المتجر (Store Language):</div>
                   <div className="font-extrabold text-sm text-foreground">العربية (Arabic — Default)</div>
-                  <div className="text-[11px] text-muted-foreground">اللغة الأساسية للمتجر ولوحة التحكم، مع دعم واجهات الفرنسية والإنجليزية.</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    اللغة الأساسية للمتجر ولوحة التحكم، مع دعم واجهات الفرنسية والإنجليزية.
+                  </div>
                 </div>
 
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1">
                   <div className="text-muted-foreground font-semibold">العملة الافتراضية (Default Currency):</div>
                   <div className="font-extrabold text-sm text-foreground">DZD (دينار جزائري — Algerian Dinar)</div>
-                  <div className="text-[11px] text-muted-foreground">تنسيق مالي موحد عبر جميع صفحات المتجر والفواتير.</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    تنسيق مالي موحد عبر جميع صفحات المتجر والفواتير.
+                  </div>
                 </div>
 
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1 md:col-span-2">
                   <div className="text-muted-foreground font-semibold">المنطقة الزمنية للمتجر (Store Timezone):</div>
                   <div className="font-extrabold text-sm text-foreground font-mono">Africa/Algiers (UTC+1)</div>
-                  <div className="text-[11px] text-muted-foreground">تعتمد حسابات اليوم والأسبوع وتقارير الطلبيات حصراً على توقيت الجزائر الرسمي.</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    تعتمد حسابات اليوم والأسبوع وتقارير الطلبيات حصراً على توقيت الجزائر الرسمي.
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -1220,7 +1238,8 @@ export function SettingsIntegrations() {
                       <span>إعدادات الذكاء الاصطناعي — {geminiName || "Orva Agent AI"}</span>
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      إدارة محرك الذكاء الاصطناعي المرتبط بنافذة المحادثة الذكية مع توجيه تلقائي لأسرع نموذج متاح وتوقف آمن عند الانقطاع.
+                      إدارة محرك الذكاء الاصطناعي المرتبط بنافذة المحادثة الذكية مع توجيه تلقائي لأسرع نموذج متاح وتوقف
+                      آمن عند الانقطاع.
                     </CardDescription>
                   </div>
                 </div>
@@ -1247,7 +1266,8 @@ export function SettingsIntegrations() {
                       تفعيل وكيل الذكاء الاصطناعي ({geminiName || "Orva Agent AI"}) في لوحة التحكم
                     </Label>
                     <div className="text-[11px] text-muted-foreground">
-                      إظهار بطاقة المحادثة الذكية العائمة وتمكين الاستعلام المباشر عن الطلبيات والتقارير عبر Google Gemini API.
+                      إظهار بطاقة المحادثة الذكية العائمة وتمكين الاستعلام المباشر عن الطلبيات والتقارير عبر Google
+                      Gemini API.
                     </div>
                   </div>
                   <Switch id="gemini-tab-toggle" checked={geminiEnabled} onCheckedChange={setGeminiEnabled} />
@@ -1362,9 +1382,7 @@ export function SettingsIntegrations() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">
-                      نقطة النهاية النشطة (Active Gemini Endpoint):
-                    </Label>
+                    <Label className="text-xs font-semibold">نقطة النهاية النشطة (Active Gemini Endpoint):</Label>
                     <Input
                       type="text"
                       readOnly
@@ -1440,9 +1458,7 @@ export function SettingsIntegrations() {
                         </div>
                         <div className="rounded-lg border bg-background/80 p-2.5">
                           <div className="text-[10px] text-muted-foreground">شحنات Redex</div>
-                          <div className="font-extrabold text-sm font-mono">
-                            {geminiTestSnapshot.redexTrackedCount}
-                          </div>
+                          <div className="font-extrabold text-sm font-mono">{geminiTestSnapshot.redexTrackedCount}</div>
                         </div>
                       </div>
                     )}
@@ -1510,15 +1526,13 @@ export function SettingsIntegrations() {
                   <BarChart3 className="size-4 text-primary" />
                   التحليلات الداخلية
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  نظام القياس الداخلي الخصوصي 100%.
-                </CardDescription>
+                <CardDescription className="text-xs">نظام القياس الداخلي الخصوصي 100%.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 <div>• قياس الجلسات وحركات التصفح</div>
                 <div>• رصد معاينة المنتجات</div>
                 <div>• رصد إرسال الطلبات وإتمام الشراء</div>
-                <div>• التوزيع الجغرافي وحساب حصص الولايات (58 ولاية)</div>
+                <div>• التوزيع الجغرافي وحساب حصص الولايات (69 ولاية)</div>
                 <div>• تجميع البيانات وفق روزنامة الجزائر</div>
               </CardContent>
             </Card>
@@ -1533,7 +1547,8 @@ export function SettingsIntegrations() {
                       إعدادات تتبع الحملات — Meta Pixel &amp; Conversions API
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      تتبع دقيق عالي التحويل لمبيعات COD مع تفادي حظر الكوكيز وإلغاء الازدواجية البرمجية (Deduplication) وإرسال الأحداث عبر المتصفح والخادم دون إعادة بناء الموقع.
+                      تتبع دقيق عالي التحويل لمبيعات COD مع تفادي حظر الكوكيز وإلغاء الازدواجية البرمجية (Deduplication)
+                      وإرسال الأحداث عبر المتصفح والخادم دون إعادة بناء الموقع.
                     </CardDescription>
                   </div>
 
@@ -1546,7 +1561,11 @@ export function SettingsIntegrations() {
               <CardContent className="space-y-4 text-xs">
                 {metaFeedback && (
                   <Alert variant={metaFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
-                    {metaFeedback.type === "error" ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" />}
+                    {metaFeedback.type === "error" ? (
+                      <AlertCircle className="size-4" />
+                    ) : (
+                      <CheckCircle2 className="size-4" />
+                    )}
                     <AlertTitle className="text-xs font-bold">
                       {metaFeedback.type === "error" ? "تنبيه" : "نجاح العملية"}
                     </AlertTitle>
@@ -1564,11 +1583,7 @@ export function SettingsIntegrations() {
                         تفعيل إطلاق أحداث PageView و ViewContent و InitiateCheckout من المتصفح.
                       </div>
                     </div>
-                    <Switch
-                      id="meta-toggle"
-                      checked={metaEnabled}
-                      onCheckedChange={setMetaEnabled}
-                    />
+                    <Switch id="meta-toggle" checked={metaEnabled} onCheckedChange={setMetaEnabled} />
                   </div>
 
                   <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
@@ -1580,11 +1595,7 @@ export function SettingsIntegrations() {
                         إرسال أحداث Purchase المؤكدة مباشرة من الخادم عند اكتمال طلب الزبون.
                       </div>
                     </div>
-                    <Switch
-                      id="meta-capi-toggle"
-                      checked={metaCapiEnabled}
-                      onCheckedChange={setMetaCapiEnabled}
-                    />
+                    <Switch id="meta-capi-toggle" checked={metaCapiEnabled} onCheckedChange={setMetaCapiEnabled} />
                   </div>
                 </div>
 
@@ -1621,7 +1632,11 @@ export function SettingsIntegrations() {
                     <Input
                       id="meta-capi-token"
                       type={showMetaToken ? "text" : "password"}
-                      placeholder={hasMetaCapi ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)" : "أدخل EAAB... الخاص بـ Meta Conversions API"}
+                      placeholder={
+                        hasMetaCapi
+                          ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)"
+                          : "أدخل EAAB... الخاص بـ Meta Conversions API"
+                      }
                       value={metaCapiToken}
                       onChange={(e) => setMetaCapiToken(e.target.value)}
                       className="font-mono text-xs pr-20"
@@ -1673,13 +1688,16 @@ export function SettingsIntegrations() {
                       {STOREFRONT_PAGE_OPTIONS.map((opt) => {
                         const checked = metaPages.includes(opt.path);
                         return (
-                          <label key={opt.path} className="flex items-center gap-2 cursor-pointer rounded-lg border bg-background/60 px-2 py-1.5">
+                          <label
+                            key={opt.path}
+                            className="flex items-center gap-2 cursor-pointer rounded-lg border bg-background/60 px-2 py-1.5"
+                          >
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => {
                                 setMetaPages((prev) =>
-                                  checked ? prev.filter((p) => p !== opt.path) : [...prev, opt.path]
+                                  checked ? prev.filter((p) => p !== opt.path) : [...prev, opt.path],
                                 );
                               }}
                             />
@@ -1751,8 +1769,10 @@ export function SettingsIntegrations() {
 
         {/* ── 3. Delivery Integrations ──────────────────────────────────────── */}
         <TabsContent value="delivery" className="space-y-4 pt-2">
+          <MultiCourierManagerCard />
+
           <div className="grid grid-cols-1 gap-4">
-            {/* Dynamic Redex Express DZ (Sole Active Delivery Courier) */}
+            {/* Dynamic Redex Express DZ (Primary EcoTrack Gateway) */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -1766,13 +1786,18 @@ export function SettingsIntegrations() {
                   />
                 </div>
                 <CardDescription className="text-xs">
-                  بوابة الشحن والتوزيع السريع المعتمدة والوحيدة في المتجر (Redex Express DZ).
+                  البوابة السريعة الافتراضية للشحن (Redex Express DZ) — ويمكنك ربط وإدارة كافة الشركات الـ 26+ في
+                  البطاقة أعلاه.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-xs">
                 {redexFeedback && (
                   <Alert variant={redexFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
-                    {redexFeedback.type === "error" ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" />}
+                    {redexFeedback.type === "error" ? (
+                      <AlertCircle className="size-4" />
+                    ) : (
+                      <CheckCircle2 className="size-4" />
+                    )}
                     <AlertTitle className="text-xs font-bold">
                       {redexFeedback.type === "error" ? "تنبيه" : "نتيجة الإجراء"}
                     </AlertTitle>
@@ -1789,11 +1814,7 @@ export function SettingsIntegrations() {
                       تمكين دفع الشحنات اليدوي وتوليد البوليصة الرسمية.
                     </div>
                   </div>
-                  <Switch
-                    id="redex-toggle"
-                    checked={redexEnabled}
-                    onCheckedChange={setRedexEnabled}
-                  />
+                  <Switch id="redex-toggle" checked={redexEnabled} onCheckedChange={setRedexEnabled} />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1826,7 +1847,11 @@ export function SettingsIntegrations() {
                     <Input
                       id="redex-token"
                       type="password"
-                      placeholder={isRedexConfigured ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)" : "أدخل RedEx API Token"}
+                      placeholder={
+                        isRedexConfigured
+                          ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)"
+                          : "أدخل RedEx API Token"
+                      }
                       value={redexToken}
                       onChange={(e) => setRedexToken(e.target.value)}
                       className="font-mono text-xs pr-8"
@@ -1905,7 +1930,11 @@ export function SettingsIntegrations() {
             <CardContent className="space-y-4 text-xs">
               {tgFeedback && (
                 <Alert variant={tgFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
-                  {tgFeedback.type === "error" ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" />}
+                  {tgFeedback.type === "error" ? (
+                    <AlertCircle className="size-4" />
+                  ) : (
+                    <CheckCircle2 className="size-4" />
+                  )}
                   <AlertTitle className="text-xs font-bold">
                     {tgFeedback.type === "error" ? "تنبيه" : "نتيجة الإجراء"}
                   </AlertTitle>
@@ -1922,11 +1951,7 @@ export function SettingsIntegrations() {
                     إرسال التنبيهات الفورية لقناة الإدارة عند تسجيل طلبات جديدة.
                   </div>
                 </div>
-                <Switch
-                  id="tg-toggle"
-                  checked={tgEnabled}
-                  onCheckedChange={setTgEnabled}
-                />
+                <Switch id="tg-toggle" checked={tgEnabled} onCheckedChange={setTgEnabled} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1945,7 +1970,11 @@ export function SettingsIntegrations() {
                     <Input
                       id="tg-bot-token"
                       type="password"
-                      placeholder={isTgConfigured ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)" : "أدخل رمز Telegram Bot Token"}
+                      placeholder={
+                        isTgConfigured
+                          ? "•••••••••••••••••••• (محفوظ على الخادم — اتركه فارغاً للإبقاء عليه)"
+                          : "أدخل رمز Telegram Bot Token"
+                      }
                       value={tgBotToken}
                       onChange={(e) => setTgBotToken(e.target.value)}
                       className="font-mono text-xs pr-8"
@@ -1980,24 +2009,26 @@ export function SettingsIntegrations() {
               <div className="p-3.5 rounded-xl border bg-card space-y-2">
                 <div className="font-bold text-foreground">نموذج محتوى إشعار الطلب الجديد:</div>
                 <div className="font-mono text-[11px] bg-slate-900 text-slate-100 p-3 rounded-lg leading-relaxed dark:bg-muted dark:text-foreground">
-                  🔔 طلب جديد — ORVA STORE<br />
-                  ━━━━━━━━━━━━━━<br />
-                  🆔 رقم الطلب: #1025<br />
-                  👤 اسم العميل: أحمد محمد<br />
-                  📞 الهاتف: 0791231316<br />
-                  📍 الولاية: بسكرة<br />
-                  🏠 البلدية: بسكرة<br />
-                  ━━━━━━━━━━━━━━<br />
-                  🛒 تفاصيل المنتجات:<br />
-                  • Pack 1 Pro 4-in-1<br />
-                  • الكمية: 1<br />
-                  • السعر: 4,950 د.ج<br />
-                  ━━━━━━━━━━━━━━<br />
-                  💰 سعر المنتجات: 4,950 د.ج<br />
-                  🚚 التوصيل: 500 د.ج<br />
-                  💵 الإجمالي: 5,450 د.ج<br />
-                  📅 تاريخ الطلب: 2026/11/04 14:35<br />
-                  📌 الحالة: طلب جديد
+                  🔔 طلب جديد — ORVA STORE
+                  <br />
+                  ━━━━━━━━━━━━━━
+                  <br />🆔 رقم الطلب: #1025
+                  <br />👤 اسم العميل: أحمد محمد
+                  <br />📞 الهاتف: 0791231316
+                  <br />📍 الولاية: بسكرة
+                  <br />🏠 البلدية: بسكرة
+                  <br />
+                  ━━━━━━━━━━━━━━
+                  <br />🛒 تفاصيل المنتجات:
+                  <br />• Pack 1 Pro 4-in-1
+                  <br />• الكمية: 1<br />• السعر: 4,950 د.ج
+                  <br />
+                  ━━━━━━━━━━━━━━
+                  <br />💰 سعر المنتجات: 4,950 د.ج
+                  <br />🚚 التوصيل: 500 د.ج
+                  <br />💵 الإجمالي: 5,450 د.ج
+                  <br />📅 تاريخ الطلب: 2026/11/04 14:35
+                  <br />📌 الحالة: طلب جديد
                 </div>
               </div>
 
@@ -2049,10 +2080,7 @@ export function SettingsIntegrations() {
             TAB: TIKTOK ADS LEAD GENERATION INTEGRATION (PHASE C)
            ═══════════════════════════════════════════════════════════════════ */}
         <TabsContent value="tiktok" className="mt-4">
-          <TikTokLeadsIntegrationCard
-            callbackParams={searchParams}
-            onStatusChange={setTiktokStatusSummary}
-          />
+          <TikTokLeadsIntegrationCard callbackParams={searchParams} onStatusChange={setTiktokStatusSummary} />
         </TabsContent>
       </Tabs>
     </div>

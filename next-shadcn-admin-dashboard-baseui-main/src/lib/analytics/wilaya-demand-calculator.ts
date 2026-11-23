@@ -1,11 +1,11 @@
 /**
  * ORVA Store — Phase 7E Geographical Demand Calculator
- * 
+ *
  * Implements pure calculations for:
  * 1. Product Demand Share = Product Orders in Wilaya / Total Product Orders * 100
  * 2. Product Mix by Wilaya = Product Orders in Wilaya / All Product Orders in Wilaya * 100
  * 3. Regional Conversion Rate = Purchasing Sessions in Wilaya / Known-Wilaya View Sessions * 100
- * 
+ *
  * Strict Privacy & Integrity Rules:
  * - Zero IP Geolocation or wilaya guessing (voluntary selectedWilaya only).
  * - Multi-product orders do not duplicate orderId in store totals.
@@ -15,15 +15,15 @@
 
 import { ALGERIA_WILAYAS } from "../../data/algeria-locations";
 import { extractWilayaCode } from "../../data/geoalgeria/geo-helper";
-import { matchOrderToProduct } from "../repository/product-types";
 import type { Product } from "../repository/product-types";
+import { matchOrderToProduct } from "../repository/product-types";
 import type { OrvaOrder, RawOrvaOrder } from "../repository/types";
 import type { VisitorSessionRecord } from "./visitor-analytics-types";
 import type {
-  GeographicalSummary,
-  WilayaDemandRecord,
-  ProductComparisonItem,
   GeographicalFilterState,
+  GeographicalSummary,
+  ProductComparisonItem,
+  WilayaDemandRecord,
 } from "./wilaya-demand-types";
 
 export interface NormalizedOrderInfo {
@@ -64,8 +64,8 @@ export function normalizeOrderForDemand(order: OrvaOrder | RawOrvaOrder): Normal
 
   return {
     orderId,
-    wilayaNumericCode: numCode && numCode >= 1 && numCode <= 58 ? numCode : null,
-    wilayaCodeStr: numCode && numCode >= 1 && numCode <= 58 ? String(numCode).padStart(2, "0") : null,
+    wilayaNumericCode: numCode && numCode >= 1 && numCode <= 69 ? numCode : null,
+    wilayaCodeStr: numCode && numCode >= 1 && numCode <= 69 ? String(numCode).padStart(2, "0") : null,
     matchedProductId: (order as any).productId || match.matchedProductId,
     matchedSku: match.matchedSku,
     status,
@@ -82,7 +82,7 @@ export function normalizeOrderForDemand(order: OrvaOrder | RawOrvaOrder): Normal
 export function filterOrders(
   orders: NormalizedOrderInfo[],
   filter: Pick<GeographicalFilterState, "timeRange" | "statusFilter">,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
 ): NormalizedOrderInfo[] {
   return orders.filter((o) => {
     // 1. Time range filter
@@ -107,7 +107,7 @@ export function filterOrders(
 }
 
 /**
- * Computes comprehensive geographical demand metrics across all 58 wilayas.
+ * Computes comprehensive geographical demand metrics across all 69 wilayas.
  */
 export function computeGeographicalDemand({
   orders,
@@ -136,9 +136,7 @@ export function computeGeographicalDemand({
   });
 
   // Count unmatched orders in the entire dataset (where productName exists but catalog match failed)
-  const unmatchedOrdersCount = activeOrdersList.filter(
-    (o) => !o.matchedProductId && !o.isCancelled
-  ).length;
+  const unmatchedOrdersCount = activeOrdersList.filter((o) => !o.matchedProductId && !o.isCancelled).length;
 
   // Track unknown wilaya orders
   const unknownWilayaOrdersCount = productOrders.filter((o) => !o.wilayaNumericCode).length;
@@ -196,7 +194,7 @@ export function computeGeographicalDemand({
 
   for (const s of relevantSessions) {
     const sWilayaCode = s.selectedWilaya ? extractWilayaCode(s.selectedWilaya) : null;
-    if (sWilayaCode && sWilayaCode >= 1 && sWilayaCode <= 58) {
+    if (sWilayaCode && sWilayaCode >= 1 && sWilayaCode <= 69) {
       knownWilayaSessionsCount++;
       if (!sessionsPerWilaya.has(sWilayaCode)) {
         sessionsPerWilaya.set(sWilayaCode, { views: 0, purchases: 0 });
@@ -208,7 +206,8 @@ export function computeGeographicalDemand({
       const purchased = s.purchasedProductIds || [];
       const purchasedThisProduct = isAllProducts
         ? s.hasPurchased
-        : s.hasPurchased && (purchased.includes(filter.selectedProductId) || s.currentProductId === filter.selectedProductId);
+        : s.hasPurchased &&
+          (purchased.includes(filter.selectedProductId) || s.currentProductId === filter.selectedProductId);
 
       if (purchasedThisProduct) {
         st.purchases++;
@@ -219,9 +218,7 @@ export function computeGeographicalDemand({
   }
 
   const geographicCoveragePercentage =
-    totalViewSessions > 0
-      ? Math.round((knownWilayaSessionsCount / totalViewSessions) * 1000) / 10
-      : 0;
+    totalViewSessions > 0 ? Math.round((knownWilayaSessionsCount / totalViewSessions) * 1000) / 10 : 0;
 
   // Pre-aggregate product orders by wilaya for O(1) breakdown lookup inside the 58-wilaya loop
   const productsByWilaya = new Map<number, Map<string, number>>();
@@ -236,7 +233,7 @@ export function computeGeographicalDemand({
     }
   }
 
-  // Build the 58 Wilayas breakdown matrix
+  // Build the 69 Wilayas breakdown matrix
   let topWilaya: GeographicalSummary["topWilaya"] = null;
   let activeWilayasCount = 0;
 
@@ -265,31 +262,21 @@ export function computeGeographicalDemand({
 
     // A. Product Demand Share = Product Orders in Wilaya / Total Product Orders across all Wilayas * 100
     // (Using active non-cancelled orders for active demand share)
-    const demandSharePercentage =
-      activeOrders > 0
-        ? Math.round((wActiveOrders / activeOrders) * 1000) / 10
-        : 0;
+    const demandSharePercentage = activeOrders > 0 ? Math.round((wActiveOrders / activeOrders) * 1000) / 10 : 0;
 
     // B. Product Mix by Wilaya = Product Orders in Wilaya / All Product Orders in that Wilaya * 100
     const allInThisWilaya = allOrdersPerWilaya.get(numCode) || 0;
-    const productMixPercentage =
-      allInThisWilaya > 0
-        ? Math.round((wActiveOrders / allInThisWilaya) * 1000) / 10
-        : 0;
+    const productMixPercentage = allInThisWilaya > 0 ? Math.round((wActiveOrders / allInThisWilaya) * 1000) / 10 : 0;
 
     // C. Regional Conversion Rate = Purchasing Sessions in Wilaya / Known-Wilaya View Sessions * 100
     const sessionStats = sessionsPerWilaya.get(numCode);
     const knownViewSessions = sessionStats?.views || 0;
     const purchasingProductSessions = sessionStats?.purchases || 0;
     const regionalConversionRate =
-      knownViewSessions > 0
-        ? Math.round((purchasingProductSessions / knownViewSessions) * 1000) / 10
-        : null;
+      knownViewSessions > 0 ? Math.round((purchasingProductSessions / knownViewSessions) * 1000) / 10 : null;
 
     const coveragePercentage =
-      totalViewSessions > 0
-        ? Math.round((knownViewSessions / totalViewSessions) * 1000) / 10
-        : 0;
+      totalViewSessions > 0 ? Math.round((knownViewSessions / totalViewSessions) * 1000) / 10 : 0;
 
     // Product breakdown within this wilaya (O(1) pre-aggregated lookup)
     const productCounts = productsByWilaya.get(numCode) || new Map<string, number>();
@@ -383,9 +370,7 @@ export function computeProductComparisons({
   productIds: string[];
 }): ProductComparisonItem[] {
   const normalizedOrders = orders.map(normalizeOrderForDemand);
-  const totalStoreOrders = new Set(
-    normalizedOrders.filter((o) => !o.isCancelled).map((o) => o.orderId)
-  ).size;
+  const totalStoreOrders = new Set(normalizedOrders.filter((o) => !o.isCancelled).map((o) => o.orderId)).size;
 
   return productIds.map((pId) => {
     const prod = products.find((p) => p.id === pId);
@@ -405,10 +390,7 @@ export function computeProductComparisons({
     }
 
     const activeWilayasCount = wilayaCounts.size;
-    const storeSharePercentage =
-      totalStoreOrders > 0
-        ? Math.round((totalOrders / totalStoreOrders) * 1000) / 10
-        : 0;
+    const storeSharePercentage = totalStoreOrders > 0 ? Math.round((totalOrders / totalStoreOrders) * 1000) / 10 : 0;
 
     // Top 3 wilayas for this product
     const topWilayas = Array.from(wilayaCounts.entries())
@@ -427,13 +409,11 @@ export function computeProductComparisons({
     // Regional conversion rate for known wilaya sessions
     const prodSessions = sessions.filter((s) => s.viewedProductIds.includes(pId) && Boolean(s.selectedWilaya));
     const prodPurchasingSessions = prodSessions.filter(
-      (s) => s.hasPurchased && (s.purchasedProductIds.includes(pId) || s.currentProductId === pId)
+      (s) => s.hasPurchased && (s.purchasedProductIds.includes(pId) || s.currentProductId === pId),
     );
 
     const regionalConversionRate =
-      prodSessions.length > 0
-        ? Math.round((prodPurchasingSessions.length / prodSessions.length) * 1000) / 10
-        : null;
+      prodSessions.length > 0 ? Math.round((prodPurchasingSessions.length / prodSessions.length) * 1000) / 10 : null;
 
     return {
       productId: pId,

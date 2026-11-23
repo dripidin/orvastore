@@ -16,12 +16,14 @@
  */
 
 import { z } from "zod";
+
 import { adminGetProduct, adminListProducts } from "@/lib/catalog/server";
 import { packIdFromSlug } from "@/lib/catalog/types";
 import type { Product } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+
 import { TikTokApiClient } from "./client";
-import { type TikTokOAuthConfigOverrides, createTikTokRefreshHandler } from "./oauth";
+import { createTikTokRefreshHandler, type TikTokOAuthConfigOverrides } from "./oauth";
 import { TikTokTokenManager } from "./token-manager";
 import {
   DEFAULT_ORVA_STORE_ID,
@@ -68,7 +70,7 @@ const saveMappingParamsSchema = z.object({
   storeId: z.string().trim().min(1).default(DEFAULT_ORVA_STORE_ID),
   formId: z.string().trim().min(1),
   productId: z.string().uuid("ORVA productId must be a valid catalog product UUID."),
-  defaultWilayaCode: z.number().int().min(1).max(58).default(16),
+  defaultWilayaCode: z.number().int().min(1).max(69).default(16),
   defaultDeliveryType: tikTokDeliveryTypeSchema.default("DOMICILE"),
   autoCreateOrder: z.boolean().default(true),
   syncEnabled: z.boolean().optional(),
@@ -88,11 +90,7 @@ function getDb(): any {
   }
 }
 
-async function handleAuthError(
-  err: unknown,
-  storeId: string,
-  tokenManager: TikTokTokenManager,
-): Promise<never> {
+async function handleAuthError(err: unknown, storeId: string, tokenManager: TikTokTokenManager): Promise<never> {
   if (err instanceof TikTokApiError && err.category === "AUTH_TOKEN_EXPIRED") {
     const nextStatus = /revok/i.test(err.message) ? "revoked" : "token_expired";
     try {
@@ -377,10 +375,7 @@ export async function syncAdvertiserInstantForms(
         }
         permissionWarnings.push({
           formId: remote.page_id,
-          message:
-            fieldErr instanceof Error
-              ? fieldErr.message
-              : "Could not load form field definitions from TikTok.",
+          message: fieldErr instanceof Error ? fieldErr.message : "Could not load form field definitions from TikTok.",
         });
       }
     }
@@ -400,9 +395,7 @@ export async function syncAdvertiserInstantForms(
   }
 
   if (upsertRows.length > 0) {
-    const { error: upsertErr } = await db
-      .from("tiktok_forms")
-      .upsert(upsertRows, { onConflict: "form_id" });
+    const { error: upsertErr } = await db.from("tiktok_forms").upsert(upsertRows, { onConflict: "form_id" });
 
     if (upsertErr) {
       throw new TikTokApiError({
@@ -471,9 +464,9 @@ export async function listStoredFormsWithMappings(params?: {
     });
   }
 
-  const typedForms = ((formRows ?? []) as TikTokFormRow[]).slice().sort((a, b) =>
-    a.form_name.localeCompare(b.form_name),
-  );
+  const typedForms = ((formRows ?? []) as TikTokFormRow[])
+    .slice()
+    .sort((a, b) => a.form_name.localeCompare(b.form_name));
   if (typedForms.length === 0) return [];
 
   const { data: mappingRows, error: mapErr } = await db
@@ -652,9 +645,7 @@ export interface SaveFormProductMappingInput {
  * Supabase product catalog (public.products UUID). Never trusts hardcoded products or
  * client-supplied prices; always derives packId, productName, and productPrice from the DB catalog.
  */
-export async function saveFormProductMapping(
-  input: SaveFormProductMappingInput,
-): Promise<PublicTikTokFormDto> {
+export async function saveFormProductMapping(input: SaveFormProductMappingInput): Promise<PublicTikTokFormDto> {
   const parsed = saveMappingParamsSchema.safeParse({
     storeId: input.storeId ?? DEFAULT_ORVA_STORE_ID,
     formId: input.formId,

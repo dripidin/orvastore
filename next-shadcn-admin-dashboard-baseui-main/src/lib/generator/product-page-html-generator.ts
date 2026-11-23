@@ -1,11 +1,11 @@
+import type { ProductPageLayoutConfig, ProductPageSectionId } from "../repository/layout-types";
 import type { Product, PublicProductDTO } from "../repository/product-types";
 import { toPublicProductDTO } from "../repository/product-types";
-import type { ProductPageLayoutConfig, ProductPageSectionId } from "../repository/layout-types";
 import type { StorePage } from "../repository/store-pages-types";
 
 /**
  * ORVA Store — Product Page HTML Generator
- * 
+ *
  * Rules:
  * 1. Uses authentic storefront styling (packs-styles.css, Tajawal font, FontAwesome).
  * 2. Emits full checkout form matching packs-client.js bindings (58 Wilayas, dynamic communes, home/desk shipping).
@@ -35,10 +35,14 @@ export function escapeHtml(str: unknown): string {
     .replace(/'/g, "&#039;");
 }
 
-export function sanitizeImageUrl(url: unknown, defaultFallback: string = ""): string {
+export function sanitizeImageUrl(url: unknown, defaultFallback = ""): string {
   if (!url || typeof url !== "string") return defaultFallback;
   const trimmed = url.trim();
-  if (/^(?:https?:\/\/|\/|[a-zA-Z0-9_.\-\/ ]+\.(?:webp|jpg|jpeg|png|svg)|data:image\/(?:png|jpeg|webp|svg\+xml);base64,)/i.test(trimmed)) {
+  if (
+    /^(?:https?:\/\/|\/|[a-zA-Z0-9_.\-/ ]+\.(?:webp|jpg|jpeg|png|svg)|data:image\/(?:png|jpeg|webp|svg\+xml);base64,)/i.test(
+      trimmed,
+    )
+  ) {
     return trimmed;
   }
   return defaultFallback;
@@ -57,9 +61,10 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
   const assetPrefix = baseAssetPath.endsWith("/") ? baseAssetPath : `${baseAssetPath}/`;
 
   // Enforce DTO conversion to physically strip purchaseCost and marketingCostPerOrder
-  const publicProduct: PublicProductDTO = "purchaseCost" in options.product
-    ? toPublicProductDTO(options.product as Product)
-    : (options.product as PublicProductDTO);
+  const publicProduct: PublicProductDTO =
+    "purchaseCost" in options.product
+      ? toPublicProductDTO(options.product as Product)
+      : (options.product as PublicProductDTO);
 
   const safeTitle = escapeHtml(publicProduct.title || storePage.title || "عرض خاص — ORVA Store");
   const safeSubtitle = escapeHtml(publicProduct.subtitle || "عرض الصيانة والخدمة المتكامل مع التوصيل السريع");
@@ -71,11 +76,10 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
   // Derive default image according to product
   let defaultImg = "pack 1 4950/pack1 4950.webp";
   if (safeSku.includes("P2")) defaultImg = "pack2 12950/pack2 12950.webp";
-  
+
   const rawFirstImg = publicProduct.images?.[0];
-  const primaryImage = (rawFirstImg && rawFirstImg !== "/placeholder.svg")
-    ? sanitizeImageUrl(rawFirstImg, defaultImg)
-    : defaultImg;
+  const primaryImage =
+    rawFirstImg && rawFirstImg !== "/placeholder.svg" ? sanitizeImageUrl(rawFirstImg, defaultImg) : defaultImg;
 
   const secondaryImages = (publicProduct.images || [])
     .slice(1)
@@ -98,14 +102,22 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
   const renderGallerySection = () => `
     <div class="product-gallery-card" style="margin-bottom:20px;">
         <div class="main-image-container" style="border-radius:12px; overflow:hidden; background:#1c1917; text-align:center; padding:10px; border:1px solid #2e2a27;">
-            <img src="${primaryImage.startsWith('/') ? primaryImage : assetPrefix + primaryImage}" alt="${safeTitle}" style="max-width:100%; height:auto; border-radius:8px; display:inline-block;" loading="eager">
+            <img src="${primaryImage.startsWith("/") ? primaryImage : assetPrefix + primaryImage}" alt="${safeTitle}" style="max-width:100%; height:auto; border-radius:8px; display:inline-block;" loading="eager">
         </div>
-        ${secondaryImages.length > 0 ? `
+        ${
+          secondaryImages.length > 0
+            ? `
         <div class="thumbnails-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(64px, 1fr)); gap:8px; margin-top:10px;">
-            ${secondaryImages.map((img) => `
-                <img src="${img.startsWith('/') ? img : assetPrefix + img}" alt="${safeTitle}" style="width:100%; border-radius:6px; border:1px solid #332f2c;" loading="lazy">
-            `).join("")}
-        </div>` : ""}
+            ${secondaryImages
+              .map(
+                (img) => `
+                <img src="${img.startsWith("/") ? img : assetPrefix + img}" alt="${safeTitle}" style="width:100%; border-radius:6px; border:1px solid #332f2c;" loading="lazy">
+            `,
+              )
+              .join("")}
+        </div>`
+            : ""
+        }
     </div>`;
 
   const renderOrderFormSection = () => `
@@ -136,11 +148,11 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
                 <input type="tel" id="phoneNumber" class="form-input" placeholder="05 / 06 / 07 XX XX XX XX" dir="ltr" style="width:100%; padding:10px 12px; border-radius:6px; border:1px solid #332f2c; background:#1c1917; color:#fff; text-align:right; box-sizing:border-box;" required>
             </div>
 
-            <!-- Wilaya Field (58 Wilayas) -->
+            <!-- Wilaya Field (69 Wilayas) -->
             <div class="form-group" style="margin-bottom:12px;">
-                <label class="form-label" for="wilayaSelect" style="display:block; font-size:13px; font-weight:600; margin-bottom:4px; color:#eae6e1;">الولاية (58 ولاية) <span class="req" style="color:#e63946;">*</span></label>
+                <label class="form-label" for="wilayaSelect" style="display:block; font-size:13px; font-weight:600; margin-bottom:4px; color:#eae6e1;">الولاية (69 ولاية) <span class="req" style="color:#e63946;">*</span></label>
                 <select id="wilayaSelect" class="form-select" required style="width:100%; padding:10px 12px; border-radius:6px; border:1px solid #332f2c; background:#1c1917; color:#fff; box-sizing:border-box;">
-                    <option value="" disabled selected>-- اختر ولايتك من القائمة (58 ولاية) --</option>
+                    <option value="" disabled selected>-- اختر ولايتك من القائمة (69 ولاية) --</option>
                 </select>
             </div>
 
@@ -267,15 +279,14 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
     }
   };
 
-  const sectionsHtml = layoutConfig.desktopSectionOrder
-    .map(renderSection)
-    .filter(Boolean)
-    .join("\n");
+  const sectionsHtml = layoutConfig.desktopSectionOrder.map(renderSection).filter(Boolean).join("\n");
 
   const cleanSlug = storePage.slug.replace(/^products\//, "").replace(/\.html$/, "");
   const siteOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://www.orva-store.com").replace(/\/$/, "");
   const canonicalPath = isProduction
-    ? (storePage.publicUrl ? storePage.publicUrl.replace(/\.html$/, "") : `/products/${cleanSlug}`)
+    ? storePage.publicUrl
+      ? storePage.publicUrl.replace(/\.html$/, "")
+      : `/products/${cleanSlug}`
     : "";
 
   return `<!DOCTYPE html>
@@ -318,14 +329,18 @@ export function generateProductPageHtml(options: GeneratorOptions): string {
             <a href="/" style="font-weight:900; font-size:18px; color:#fff; text-decoration:none; display:flex; align-items:center; gap:6px;">
                 <span style="color:#d4a373;">ORVA</span> STORE
             </a>
-            ${isProduction ? `
+            ${
+              isProduction
+                ? `
             <div class="header-phone-badge" style="font-size:12px; color:#d4a373; display:flex; align-items:center; gap:6px;">
                 <i class="fa-solid fa-phone"></i>
                 <span style="color:#eae6e1;">خدمة الزبائن: 0798282495</span>
-            </div>` : `
+            </div>`
+                : `
             <span style="font-size:11px; padding:3px 8px; border-radius:4px; background:#292522; color:#b8b0a8;">
                 معاينة خاصة بالمنتج (Preview)
-            </span>`}
+            </span>`
+            }
         </div>
     </header>
 

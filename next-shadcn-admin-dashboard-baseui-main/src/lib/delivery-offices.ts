@@ -1,5 +1,7 @@
-import { getEcoTrackClient } from "@/lib/couriers/ecotrack-client";
 import communesRawData from "@/data/geoalgeria/communes.json";
+import { getEcoTrackClient } from "@/lib/couriers/ecotrack-client";
+import { getMotherWilayaCode, isNewWilaya69 } from "@/lib/geo/algeria-69";
+import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/server";
 
 interface RawCommune {
   commune_name_fr: string;
@@ -16,8 +18,11 @@ export interface DeliveryOfficeCommune {
 export interface DeliveryOfficesResult {
   success: boolean;
   wilayaId: number;
-  /** Communes of this wilaya that have an EcoTrack stop-desk (agency). */
+  /** Communes of this wilaya that have a delivery office (stop-desk). */
   offices: DeliveryOfficeCommune[];
+  stopDeskAvailable?: boolean;
+  routedViaMotherWilaya?: number | null;
+  stopDeskUnavailableReason?: string | null;
   error?: string;
 }
 
@@ -29,7 +34,7 @@ const cache = new Map<number, { at: number; result: DeliveryOfficesResult }>();
 export function normalizeCommuneKey(value: string): string {
   return value
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 }
@@ -38,9 +43,64 @@ export async function getDeliveryOffices(wilayaId: number): Promise<DeliveryOffi
   const hit = cache.get(wilayaId);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.result;
 
+  // 1. Check synced DB stop desks first (allows admin overrides for all 69 wilayas)
+  if (isServiceRoleConfigured()) {
+    try {
+      const supabase = getSupabaseServerClient() as any;
+      const { data: desks } = await supabase
+        .from("courier_stop_desks")
+        .select("commune, name")
+        .eq("wilaya_code", wilayaId)
+        .eq("is_active", true);
+
+      if (Array.isArray(desks) && desks.length > 0) {
+        const deskNames = new Set(desks.map((d: any) => normalizeCommuneKey(String(d.commune || d.name || ""))));
+        const matched = communes
+          .filter((c) => c.wilaya_code === wilayaId && deskNames.has(normalizeCommuneKey(c.commune_name_fr)))
+          .map((c) => ({ ar: c.commune_name_ar, fr: c.commune_name_fr }));
+        const finalOffices =
+          matched.length > 0
+            ? matched
+            : desks.map((d: any) => ({ ar: String(d.commune || d.name), fr: String(d.commune || d.name) }));
+        const result: DeliveryOfficesResult = {
+          success: true,
+          wilayaId,
+          offices: finalOffices,
+          stopDeskAvailable: true,
+        };
+        cache.set(wilayaId, { at: Date.now(), result });
+        return result;
+      }
+    } catch {
+      // Fall through cleanly if schema hasn't added courier_stop_desks yet
+    }
+  }
+
+  // 2. For Law 26-06 new wilayas (59..69) without dedicated synced desks,
+  // inform UI cleanly that Stop-Desk is not yet available and route home delivery via mother wilaya.
+  if (isNewWilaya69(wilayaId)) {
+    const motherWilayaCode = getMotherWilayaCode(wilayaId);
+    const result: DeliveryOfficesResult = {
+      success: true,
+      wilayaId,
+      offices: [],
+      stopDeskAvailable: false,
+      routedViaMotherWilaya: motherWilayaCode,
+      stopDeskUnavailableReason: "مكتب التوصيل غير متوفر حالياً في هذه الولاية — التوصيل للمنزل متاح عبر رجل التوصيل",
+    };
+    cache.set(wilayaId, { at: Date.now(), result });
+    return result;
+  }
+
+  // 3. Query EcoTrack live communes for wilayas 1..58
   const ecoCommunes = await getEcoTrackClient().getCommunes(wilayaId);
   if (!ecoCommunes.length) {
-    return { success: false, wilayaId, offices: [], error: "EcoTrack communes unavailable" };
+    return {
+      success: false,
+      wilayaId,
+      offices: [],
+      error: "EcoTrack communes unavailable",
+    };
   }
 
   const withDesk = ecoCommunes.filter((c) => Number(c.has_stop_desk) === 1 && Number(c.is_active ?? 1) !== 0);
@@ -56,13 +116,18 @@ export async function getDeliveryOffices(wilayaId: number): Promise<DeliveryOffi
     )
     .map((c) => ({ ar: c.commune_name_ar, fr: c.commune_name_fr }));
 
-  // EcoTrack reports agencies but none could be matched to our commune list: report "unknown"
-  // so the UI falls back to the wilaya-level rule instead of wrongly disabling every office.
   if (withDesk.length > 0 && offices.length === 0) {
     return { success: false, wilayaId, offices: [], error: "Could not match EcoTrack agencies to communes" };
   }
 
-  const result: DeliveryOfficesResult = { success: true, wilayaId, offices };
+  const result: DeliveryOfficesResult = {
+    success: true,
+    wilayaId,
+    offices,
+    stopDeskAvailable: offices.length > 0,
+    stopDeskUnavailableReason:
+      offices.length > 0 ? null : "مكتب التوصيل غير متوفر حالياً — التوصيل للمنزل متاح عبر رجل التوصيل",
+  };
   cache.set(wilayaId, { at: Date.now(), result });
   return result;
 }

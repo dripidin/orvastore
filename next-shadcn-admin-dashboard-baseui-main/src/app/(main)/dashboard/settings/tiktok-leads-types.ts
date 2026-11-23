@@ -7,9 +7,11 @@
  * - Zero secrets, access tokens, refresh tokens, or raw customer phone exposure.
  */
 
-import { ALGERIA_58_WILAYAS, isStopDeskAllowed } from "@/lib/types/checkout";
+import { ALGERIA_69_WILAYAS, isStopDeskAllowed } from "@/lib/types/checkout";
 
-export { ALGERIA_58_WILAYAS, isStopDeskAllowed };
+const ALGERIA_58_WILAYAS = ALGERIA_69_WILAYAS;
+
+export { ALGERIA_58_WILAYAS, ALGERIA_69_WILAYAS, isStopDeskAllowed };
 
 // ── 1. Canonical Trailing-Slash API Endpoints (matching next.config.mjs) ─────
 
@@ -26,12 +28,7 @@ export const DEFAULT_FORMS_PAGE_SIZE = 6;
 
 // ── 2. Public Client DTO Contracts (Mirroring Phase B JSON Responses) ────────
 
-export type TikTokConnectionStatus =
-  | "connected"
-  | "token_expired"
-  | "revoked"
-  | "disconnected"
-  | "error";
+export type TikTokConnectionStatus = "connected" | "token_expired" | "revoked" | "disconnected" | "error";
 
 export type TikTokUiConnectionState =
   | "not_configured"
@@ -43,12 +40,7 @@ export type TikTokUiConnectionState =
   | "error";
 
 export type TikTokConfigurationStatus = "NOT_CONFIGURED" | "MISCONFIGURED" | "READY";
-export type TikTokEnvironmentMode =
-  | "local"
-  | "test"
-  | "mocked_sandbox"
-  | "tiktok_sandbox"
-  | "production";
+export type TikTokEnvironmentMode = "local" | "test" | "mocked_sandbox" | "tiktok_sandbox" | "production";
 
 export interface TikTokConfigurationIssue {
   key: string;
@@ -510,9 +502,7 @@ export interface SafeProductMappingRequestBody {
  * SECURITY INVARIANT: Never sends client-side productPrice, productName, or packId.
  * All prices and product titles are resolved authoritatively from ORVA's Supabase catalog server-side.
  */
-export function buildProductMappingPayload(
-  input: ProductMappingSubmitInput,
-): SafeProductMappingRequestBody {
+export function buildProductMappingPayload(input: ProductMappingSubmitInput): SafeProductMappingRequestBody {
   const formId = input.formId.trim();
   const productId = input.productId.trim();
   if (!formId) {
@@ -523,9 +513,7 @@ export function buildProductMappingPayload(
   }
 
   const parsedWilaya = Math.round(Number(input.defaultWilayaCode));
-  const clampedWilaya = Number.isFinite(parsedWilaya)
-    ? Math.min(58, Math.max(1, parsedWilaya))
-    : 16;
+  const clampedWilaya = Number.isFinite(parsedWilaya) ? Math.min(58, Math.max(1, parsedWilaya)) : 16;
 
   const payload: SafeProductMappingRequestBody = {
     action: "map_product",
@@ -543,10 +531,7 @@ export function buildProductMappingPayload(
   return payload;
 }
 
-export function getWilayaDeliveryNotice(
-  wilayaCode: number,
-  deliveryType: TikTokDeliveryType,
-): string | null {
+export function getWilayaDeliveryNotice(wilayaCode: number, deliveryType: TikTokDeliveryType): string | null {
   if (deliveryType !== "STOP_DESK") return null;
   if (isStopDeskAllowed(wilayaCode)) return null;
   const w = ALGERIA_58_WILAYAS.find((item) => item.code === wilayaCode);
@@ -585,8 +570,7 @@ export function getLeadFailureExplanation(syncStatus: TikTokLeadSyncStatus | str
       return {
         labelAr: "نموذج غير مربوط بمنتج",
         tone: "warning",
-        explanationAr:
-          "وصل العميل من نموذج فوري غير مربوط بمنتج في كتالوج ORVA، لذلك تم حفظه بأمان دون إنشاء طلب.",
+        explanationAr: "وصل العميل من نموذج فوري غير مربوط بمنتج في كتالوج ORVA، لذلك تم حفظه بأمان دون إنشاء طلب.",
         actionHintAr: "اربط النموذج بمنتج من كتالوج ORVA في قسم «النماذج الفورية» ثم اضغط «إعادة المحاولة».",
         retryable: true,
       };

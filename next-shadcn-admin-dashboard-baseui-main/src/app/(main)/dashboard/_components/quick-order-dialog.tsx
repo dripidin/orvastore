@@ -1,7 +1,7 @@
 "use client";
 
-import { orvaFetch } from "@/lib/orva-api";
 import * as React from "react";
+
 import { CheckCircle2, Loader2, ShoppingBag } from "lucide-react";
 
 import { submitCodOrderAction } from "@/app/actions/checkout";
@@ -11,9 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import communesRawData from "@/data/geoalgeria/communes.json";
+import { orvaFetch } from "@/lib/orva-api";
 import type { Product } from "@/lib/repository/product-types";
 import {
-  ALGERIA_58_WILAYAS,
+  ALGERIA_69_WILAYAS,
   calculateDeliveryTariff,
   isStopDeskAllowed,
   isValidAlgerianPhone,
@@ -104,7 +105,7 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
 
     setSubmitting(true);
     try {
-      const wilaya = ALGERIA_58_WILAYAS.find((w) => w.code === wilayaCode);
+      const wilaya = ALGERIA_69_WILAYAS.find((w) => w.code === wilayaCode);
       const result = await submitCodOrderAction({
         customerName: name.trim(),
         customerPhone: phone.trim(),
@@ -140,7 +141,10 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 text-right sm:max-w-2xl" dir="rtl">
+      <DialogContent
+        className="flex max-h-[92vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 text-right sm:max-w-2xl"
+        dir="rtl"
+      >
         <DialogHeader className="space-y-1 border-b bg-muted/40 px-6 py-4 text-right">
           <div className="flex items-center gap-3 pl-8">
             <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
@@ -159,7 +163,12 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
           <div className="grid flex-1 gap-4 overflow-y-auto px-6 py-5 text-sm sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="qo-product">المنتج *</Label>
-              <select id="qo-product" className={selectCls} value={productId} onChange={(e) => setProductId(e.target.value)}>
+              <select
+                id="qo-product"
+                className={selectCls}
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+              >
                 {products.length === 0 && <option value="">لا توجد منتجات نشطة</option>}
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -191,7 +200,7 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
                 value={wilayaCode}
                 onChange={(e) => setWilayaCode(Number(e.target.value))}
               >
-                {ALGERIA_58_WILAYAS.map((w) => (
+                {ALGERIA_69_WILAYAS.map((w) => (
                   <option key={w.code} value={w.code}>
                     {String(w.code).padStart(2, "0")} — {w.nameAr}
                   </option>
@@ -200,7 +209,12 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="qo-commune">البلدية *</Label>
-              <select id="qo-commune" className={selectCls} value={commune} onChange={(e) => setCommune(e.target.value)}>
+              <select
+                id="qo-commune"
+                className={selectCls}
+                value={commune}
+                onChange={(e) => setCommune(e.target.value)}
+              >
                 {wilayaCommunes.map((c) => (
                   <option key={c.id} value={c.commune_name_ar}>
                     {c.commune_name_ar} ({c.commune_name_fr})
@@ -263,7 +277,13 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
               <strong className="text-foreground">{new Intl.NumberFormat("fr-DZ").format(price + shipping)} د.ج</strong>
             </span>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={submitting}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                disabled={submitting}
+              >
                 إلغاء
               </Button>
               <Button type="submit" size="sm" className="gap-1.5" disabled={submitting || !product}>

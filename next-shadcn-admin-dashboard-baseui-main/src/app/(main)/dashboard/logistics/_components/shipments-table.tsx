@@ -1,7 +1,7 @@
-"use strict";
 "use client";
 
 import * as React from "react";
+
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,21 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ALGERIA_WILAYAS } from "@/data/algeria-locations";
 import { extractWilayaCode } from "@/data/geoalgeria/geo-helper";
 
@@ -57,7 +44,9 @@ interface OrderItem {
 function orderDate(value?: string) {
   if (!value) return "غير مسجل";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "غير مسجل" : date.toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" });
+  return Number.isNaN(date.getTime())
+    ? "غير مسجل"
+    : date.toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" });
 }
 
 interface ShipmentsTableProps {
@@ -126,7 +115,8 @@ export function ShipmentsTable({
           if (statusFilter === "confirmed" && s !== "confirmed") return false;
           if (statusFilter === "shipped" && s !== "shipped" && !o.in_redex) return false;
           if (statusFilter === "delivered" && s !== "delivered") return false;
-          if (statusFilter === "returned" && s !== "returned" && !s.includes("مرتجع") && !s.includes("refus")) return false;
+          if (statusFilter === "returned" && s !== "returned" && !s.includes("مرتجع") && !s.includes("refus"))
+            return false;
         }
       }
 
@@ -197,7 +187,7 @@ export function ShipmentsTable({
                 </SelectTrigger>
                 <SelectContent className="max-h-56">
                   <SelectItem value="all" className="text-xs font-semibold">
-                    جميع الولايات (58 ولاية)
+                    جميع الولايات (69 ولاية)
                   </SelectItem>
                   {ALGERIA_WILAYAS.map((w) => (
                     <SelectItem key={w.id} value={w.id} className="text-xs">
@@ -235,7 +225,12 @@ export function ShipmentsTable({
 
             {/* Redex Filter */}
             <div className="w-full sm:w-44">
-              <Select value={redexFilter} onValueChange={(value) => { if (value) setRedexFilter(value); }}>
+              <Select
+                value={redexFilter}
+                onValueChange={(value) => {
+                  if (value) setRedexFilter(value);
+                }}
+              >
                 <SelectTrigger className="h-8 text-xs bg-background">
                   <SelectValue placeholder="حالة بوليصة Redex..." />
                 </SelectTrigger>
@@ -254,7 +249,10 @@ export function ShipmentsTable({
             </div>
 
             {/* Clear Filters Button if any filter active */}
-            {(selectedWilayaCode !== null || searchQuery.trim() !== "" || statusFilter !== "all" || redexFilter !== "all") && (
+            {(selectedWilayaCode !== null ||
+              searchQuery.trim() !== "" ||
+              statusFilter !== "all" ||
+              redexFilter !== "all") && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -279,23 +277,66 @@ export function ShipmentsTable({
           {pageOrders.map((order) => {
             const isSelected = selectedOrderId === order.id;
             return (
-              <article key={order.id} className={`rounded-xl border p-4 shadow-xs ${isSelected ? "border-primary bg-primary/5" : "bg-card"}`}>
+              <article
+                key={order.id}
+                className={`rounded-xl border p-4 shadow-xs ${isSelected ? "border-primary bg-primary/5" : "bg-card"}`}
+              >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><p className="truncate font-mono text-xs font-bold">{order.id}</p><p className="mt-1 font-bold">{order.customer}</p><a className="text-xs text-primary" href={`tel:${order.phone}`}>{order.phone}</a></div>
-                  <Badge variant={order.status === "delivered" ? "default" : "outline"} className="shrink-0 capitalize">{order.status}</Badge>
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-xs font-bold">{order.id}</p>
+                    <p className="mt-1 font-bold">{order.customer}</p>
+                    <a className="text-xs text-primary" href={`tel:${order.phone}`}>
+                      {order.phone}
+                    </a>
+                  </div>
+                  <Badge variant={order.status === "delivered" ? "default" : "outline"} className="shrink-0 capitalize">
+                    {order.status}
+                  </Badge>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">الوجهة</span>{order.wilaya} {order.commune && `— ${order.commune}`}</div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">تاريخ الطلب</span>{orderDate(order.date)}</div></div>
-                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(5rem,auto)] gap-2"><Button size="sm" className="inline-flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap px-2.5 [&_svg]:shrink-0" variant={isSelected ? "default" : "outline"} onClick={() => onSelectOrder(order)}><MapPin className="size-3.5" />{isSelected ? "محدد" : "عرض التفاصيل"}</Button><Button size="sm" variant="outline" className="inline-flex min-w-[5rem] items-center justify-center gap-1.5 whitespace-nowrap px-2.5 leading-none [&_svg]:shrink-0" render={<a href={`tel:${order.phone}`} />}><Phone className="size-3.5" /><span>اتصال</span></Button></div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg bg-muted/50 p-2">
+                    <span className="block text-muted-foreground">الوجهة</span>
+                    {order.wilaya} {order.commune && `— ${order.commune}`}
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2">
+                    <span className="block text-muted-foreground">تاريخ الطلب</span>
+                    {orderDate(order.date)}
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(5rem,auto)] gap-2">
+                  <Button
+                    size="sm"
+                    className="inline-flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap px-2.5 [&_svg]:shrink-0"
+                    variant={isSelected ? "default" : "outline"}
+                    onClick={() => onSelectOrder(order)}
+                  >
+                    <MapPin className="size-3.5" />
+                    {isSelected ? "محدد" : "عرض التفاصيل"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="inline-flex min-w-[5rem] items-center justify-center gap-1.5 whitespace-nowrap px-2.5 leading-none [&_svg]:shrink-0"
+                    render={<a href={`tel:${order.phone}`} />}
+                  >
+                    <Phone className="size-3.5" />
+                    <span>اتصال</span>
+                  </Button>
+                </div>
               </article>
             );
           })}
-          {pageOrders.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">لم يتم العثور على أي شحنات تطابق الفلاتر المحددة.</p>}
+          {pageOrders.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              لم يتم العثور على أي شحنات تطابق الفلاتر المحددة.
+            </p>
+          )}
         </div>
         <div className="hidden overflow-x-auto md:block">
           <Table className="text-right">
             <TableHeader className="bg-muted/40 text-xs">
               <TableRow>
-            <TableHead className="text-right font-bold py-2.5 px-3">رقم الطلب</TableHead>
+                <TableHead className="text-right font-bold py-2.5 px-3">رقم الطلب</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">تاريخ الطلب</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">المستلم والهاتف</TableHead>
                 <TableHead className="text-right font-bold py-2.5 px-3">وجهة التوصيل</TableHead>
@@ -325,13 +366,18 @@ export function ShipmentsTable({
                         <div className="flex items-center gap-1.5">
                           <span>{order.id}</span>
                           {order.isSwitched && (
-                            <Badge variant="outline" className="text-[9px] py-0 border-purple-500 text-purple-700 bg-purple-500/10 font-bold">
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] py-0 border-purple-500 text-purple-700 bg-purple-500/10 font-bold"
+                            >
                               محوّلة (3 نقاط)
                             </Badge>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="py-2.5 px-3 text-[11px] text-muted-foreground whitespace-nowrap">{orderDate(order.date)}</TableCell>
+                      <TableCell className="py-2.5 px-3 text-[11px] text-muted-foreground whitespace-nowrap">
+                        {orderDate(order.date)}
+                      </TableCell>
 
                       <TableCell className="py-2.5 px-3">
                         <div className="space-y-0.5">
@@ -343,9 +389,7 @@ export function ShipmentsTable({
                       <TableCell className="py-2.5 px-3">
                         <div className="space-y-0.5">
                           <span className="font-medium text-foreground block">{order.wilaya}</span>
-                          {order.commune && (
-                            <span className="text-[11px] text-muted-foreground">{order.commune}</span>
-                          )}
+                          {order.commune && <span className="text-[11px] text-muted-foreground">{order.commune}</span>}
                         </div>
                       </TableCell>
 
@@ -355,9 +399,7 @@ export function ShipmentsTable({
                         </Badge>
                       </TableCell>
 
-                      <TableCell className="py-2.5 px-3 text-[11px]">
-                        {order.deliveryType || "توصيل للمنزل"}
-                      </TableCell>
+                      <TableCell className="py-2.5 px-3 text-[11px]">{order.deliveryType || "توصيل للمنزل"}</TableCell>
 
                       <TableCell className="py-2.5 px-3">
                         <Badge
@@ -365,10 +407,10 @@ export function ShipmentsTable({
                             order.status === "delivered"
                               ? "default"
                               : order.status === "shipped"
-                              ? "secondary"
-                              : order.status === "returned"
-                              ? "destructive"
-                              : "outline"
+                                ? "secondary"
+                                : order.status === "returned"
+                                  ? "destructive"
+                                  : "outline"
                           }
                           className="text-[10px] py-0 capitalize"
                         >
@@ -378,7 +420,10 @@ export function ShipmentsTable({
 
                       <TableCell className="py-2.5 px-3 font-mono text-[11px]">
                         {order.redex_tracking_code ? (
-                          <Badge variant="outline" className="text-[10px] py-0 font-mono text-primary border-primary/40">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] py-0 font-mono text-primary border-primary/40"
+                          >
                             {order.redex_tracking_code}
                           </Badge>
                         ) : (

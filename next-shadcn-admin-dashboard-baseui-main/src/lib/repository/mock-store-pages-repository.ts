@@ -1,15 +1,15 @@
+import { generateProductPageHtml } from "../generator/product-page-html-generator";
+import { getMockLayoutRepository } from "./mock-layout-repository";
+import { getMockProductsRepository } from "./mock-products-repository";
 import type {
   IStorePagesRepository,
+  SitemapEntry,
   StorePage,
   StorePageCreateInput,
   StorePageStatus,
   StorePageSyncResult,
   StorePageUpdateInput,
-  SitemapEntry,
 } from "./store-pages-types";
-import { getMockProductsRepository } from "./mock-products-repository";
-import { getMockLayoutRepository } from "./mock-layout-repository";
-import { generateProductPageHtml } from "../generator/product-page-html-generator";
 
 /**
  * Initial dataset of store pages for ORVA Store.
@@ -28,7 +28,8 @@ const INITIAL_STORE_PAGES: StorePage[] = [
     status: "published",
     publicUrl: "/",
     previewPath: "/",
-    metaDescription: "المتجر الرسمي لمنتجات ومعدات ORVA الأصلية في الجزائر، عروض الصيانة والتجهيزات مع التوصيل لـ 58 ولاية والدفع عند الاستلام.",
+    metaDescription:
+      "المتجر الرسمي لمنتجات ومعدات ORVA الأصلية في الجزائر، عروض الصيانة والتجهيزات مع التوصيل لـ 69 ولاية والدفع عند الاستلام.",
     lastGeneratedAt: "2026-10-31T06:00:00Z",
     createdAt: "2026-10-01T08:00:00Z",
     updatedAt: "2026-10-31T06:00:00Z",
@@ -44,7 +45,8 @@ const INITIAL_STORE_PAGES: StorePage[] = [
     status: "published",
     publicUrl: "/pack1",
     previewPath: "/pack1",
-    metaDescription: "باك الخدمة والصيانة 4 في 1 للسيارة والمنزل: منفاخ عجلات TOYOTA، طقم مفاتيح 46 قطعة، مفك مرن 11 قطعة، وطقم 6 مفكات مع التوصيل والدفع عند الاستلام.",
+    metaDescription:
+      "باك الخدمة والصيانة 4 في 1 للسيارة والمنزل: منفاخ عجلات TOYOTA، طقم مفاتيح 46 قطعة، مفك مرن 11 قطعة، وطقم 6 مفكات مع التوصيل والدفع عند الاستلام.",
     lastGeneratedAt: "2026-10-31T06:00:00Z",
     createdAt: "2026-10-25T10:00:00Z",
     updatedAt: "2026-10-31T06:00:00Z",
@@ -60,7 +62,8 @@ const INITIAL_STORE_PAGES: StorePage[] = [
     status: "published",
     publicUrl: "/pack2",
     previewPath: "/pack2",
-    metaDescription: "عرض 5 في 1 الفاخر: ماكينة ثقب CROWN 20V ببطاريتين، طقم مفكات 6 قطع، علبة مفاتيح 46 قطعة، مفك مرن وقفازات مع التوصيل السريع.",
+    metaDescription:
+      "عرض 5 في 1 الفاخر: ماكينة ثقب CROWN 20V ببطاريتين، طقم مفكات 6 قطع، علبة مفاتيح 46 قطعة، مفك مرن وقفازات مع التوصيل السريع.",
     lastGeneratedAt: "2026-10-31T06:00:00Z",
     createdAt: "2026-10-26T12:00:00Z",
     updatedAt: "2026-10-31T06:00:00Z",
@@ -217,7 +220,7 @@ export class MockStorePagesRepository implements IStorePagesRepository {
     if (idx === -1) throw new Error(`صفحة المتجر غير موجودة: ${pageId}`);
 
     const existing = this.pages[idx];
-    const updatedStatus: StorePageStatus = updates.status || existing.status;
+    const updatedStatus: StorePageStatus = updates.status ?? existing.status;
     const now = new Date().toISOString();
 
     const updated: StorePage = {
@@ -371,7 +374,7 @@ export class MockStorePagesRepository implements IStorePagesRepository {
       };
     }
 
-    let existingPage = this.pages.find((p) => p.productId === productId);
+    const existingPage = this.pages.find((p) => p.productId === productId);
 
     if (!existingPage) {
       // Create new staged page

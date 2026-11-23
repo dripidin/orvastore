@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import {
   AlertCircle,
   Building2,
@@ -35,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import communesRawData from "@/data/geoalgeria/communes.json";
 import {
-  ALGERIA_58_WILAYAS,
+  ALGERIA_69_WILAYAS,
   calculateDeliveryTariff,
   isStopDeskAllowed,
   isValidAlgerianPhone,
@@ -124,7 +125,9 @@ function OrderRerouteDialogInner({
   const [newCommuneName, setNewCommuneName] = React.useState<string>("");
   const [newDeliveryType, setNewDeliveryType] = React.useState<"DOMICILE" | "STOP_DESK">("DOMICILE");
   const [newDeliveryAddress, setNewDeliveryAddress] = React.useState<string>("");
-  const [reason, setReason] = React.useState<string>("الزبون الأصلي ألغى/رفض الاستلام؛ تم إعادة توجيه الطرد لزبون جديد");
+  const [reason, setReason] = React.useState<string>(
+    "الزبون الأصلي ألغى/رفض الاستلام؛ تم إعادة توجيه الطرد لزبون جديد",
+  );
   const [shippedOverrideConfirmed, setShippedOverrideConfirmed] = React.useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -136,7 +139,7 @@ function OrderRerouteDialogInner({
   const locked = isDelivered || isSubmitting;
 
   const selectedWilaya = React.useMemo(
-    () => ALGERIA_58_WILAYAS.find((w) => w.code === selectedWilayaCode) || ALGERIA_58_WILAYAS[15],
+    () => ALGERIA_69_WILAYAS.find((w) => w.code === selectedWilayaCode) || ALGERIA_69_WILAYAS[15],
     [selectedWilayaCode],
   );
 
@@ -239,8 +242,12 @@ function OrderRerouteDialogInner({
       const result = await rerouteOrderAction(payload);
       if (result.success) {
         toast.add({
-          title: "تم تحويل الطلبية بنجاح",
-          description: `رقم الطلبية المحوّلة: ${result.orderId} — التوصيل ${result.updatedShippingFee?.toLocaleString()} د.ج`,
+          title: result.majPushedToCourier
+            ? "تم تحويل الطلبية وإرسال MAJ لشركة التوصيل تلقائياً"
+            : "تم تحويل الطلبية بنجاح",
+          description: result.majPushedToCourier
+            ? `رقم الطلبية المحوّلة: ${result.orderId} — تم تحديث الطرد (${result.majTrackingCode}) تلقائياً لدى شركة التوصيل — التوصيل ${result.updatedShippingFee?.toLocaleString()} د.ج`
+            : `رقم الطلبية المحوّلة: ${result.orderId} — التوصيل ${result.updatedShippingFee?.toLocaleString()} د.ج${result.majError ? ` (تنبيه: تعذر الدفع التلقائي للتعليق: ${result.majError})` : ""}`,
           type: "success",
         });
         window.dispatchEvent(new CustomEvent("orva:orders-updated"));
@@ -348,7 +355,8 @@ function OrderRerouteDialogInner({
                     <div className="flex justify-between gap-2">
                       <dt className="flex items-center gap-1 text-muted-foreground">
                         <Warehouse className="size-3" />
-                        التوصيل {HUB_LABEL} ← {selectedWilaya.nameAr} ({newDeliveryType === "STOP_DESK" ? "مكتب" : "منزل"})
+                        التوصيل {HUB_LABEL} ← {selectedWilaya.nameAr} (
+                        {newDeliveryType === "STOP_DESK" ? "مكتب" : "منزل"})
                       </dt>
                       <dd className="font-semibold tabular-nums">{newShippingFee.toLocaleString()} د.ج</dd>
                     </div>
@@ -360,7 +368,9 @@ function OrderRerouteDialogInner({
                     </div>
                   </dl>
                   <p className="mt-2 text-[10px] text-muted-foreground">
-                    {tariffSource === "live" ? "تعريفة EcoTrack الحية." : "التعريفة الاحتياطية (تعذر جلب التعريفة الحية)."}
+                    {tariffSource === "live"
+                      ? "تعريفة EcoTrack الحية."
+                      : "التعريفة الاحتياطية (تعذر جلب التعريفة الحية)."}
                   </p>
                 </section>
               </div>
@@ -418,7 +428,7 @@ function OrderRerouteDialogInner({
                         <SelectValue placeholder="اختر الولاية" />
                       </SelectTrigger>
                       <SelectContent className="max-h-64" dir="rtl">
-                        {ALGERIA_58_WILAYAS.map((w) => (
+                        {ALGERIA_69_WILAYAS.map((w) => (
                           <SelectItem key={w.code} value={String(w.code)} className="text-xs">
                             {w.code.toString().padStart(2, "0")} — {w.nameAr} ({w.nameFr})
                           </SelectItem>
@@ -551,20 +561,30 @@ function OrderRerouteDialogInner({
                 </div>
 
                 {isShipped && (
-                  <div className="flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 p-2.5">
-                    <Checkbox
-                      id="shippedOverrideConfirmed"
-                      checked={shippedOverrideConfirmed}
-                      onCheckedChange={(c) => setShippedOverrideConfirmed(Boolean(c))}
-                      disabled={locked}
-                      className="mt-0.5"
-                    />
-                    <Label
-                      htmlFor="shippedOverrideConfirmed"
-                      className="cursor-pointer font-medium text-[11px] text-purple-900 dark:text-purple-200"
-                    >
-                      أؤكد تحويل طرد سبق إرساله لشركة التوصيل
-                    </Label>
+                  <div className="space-y-2 rounded-lg border border-purple-500/30 bg-purple-500/10 p-2.5">
+                    {(order.courierLocationStage === "suspended_switchable" ||
+                      String(order.carrier_status || "").toLowerCase() === "suspendu" ||
+                      String(order.carrier_status || "").toLowerCase() === "en_station") && (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+                        شحنة معلّقة/متوقفة في مركز الولاية — سيُرسل تعليق التحويل (Switch MAJ) تلقائياً لشركة التوصيل فور
+                        التأكيد بدون إعادة الشحن من الصفر.
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="shippedOverrideConfirmed"
+                        checked={shippedOverrideConfirmed}
+                        onCheckedChange={(c) => setShippedOverrideConfirmed(Boolean(c))}
+                        disabled={locked}
+                        className="mt-0.5"
+                      />
+                      <Label
+                        htmlFor="shippedOverrideConfirmed"
+                        className="cursor-pointer font-medium text-[11px] text-purple-900 dark:text-purple-200"
+                      >
+                        أؤكد تحويل طرد مسجّل لدى شركة التوصيل (سيُرسل التحديث التلقائي MAJ للناقل)
+                      </Label>
+                    </div>
                   </div>
                 )}
               </section>
@@ -577,7 +597,13 @@ function OrderRerouteDialogInner({
               <strong className="text-foreground tabular-nums">{updatedTotal.toLocaleString()} د.ج</strong>
             </span>
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
                 إلغاء
               </Button>
               <Button

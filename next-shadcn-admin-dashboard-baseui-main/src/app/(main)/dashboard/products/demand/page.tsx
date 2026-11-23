@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import Link from "next/link";
+
 import {
   AlertCircle,
   ArrowLeft,
@@ -26,28 +28,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-
-import {
-  AlgeriaMap,
-  WilayaDemandMetricItem,
-} from "../../logistics/_components/algeria-map";
-
-import { getMockProductsRepository } from "@/lib/repository/mock-products-repository";
-import { getOrdersRepository, getAppRepositoryMode } from "@/lib/orva-api";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getMockVisitorAnalyticsRepository } from "@/lib/analytics/mock-visitor-analytics-repository";
-
-import type { Product } from "@/lib/repository/product-types";
-import type { OrvaOrder, RepositoryMode } from "@/lib/repository/types";
 import type { VisitorSessionRecord } from "@/lib/analytics/visitor-analytics-types";
-
-import {
+import { computeGeographicalDemand, computeProductComparisons } from "@/lib/analytics/wilaya-demand-calculator";
+import type {
   GeographicalFilterState,
   GeographicalMetricType,
   GeographicalSummary,
@@ -56,11 +41,12 @@ import {
   TimeRangeFilter,
   WilayaDemandRecord,
 } from "@/lib/analytics/wilaya-demand-types";
+import { getAppRepositoryMode, getOrdersRepository } from "@/lib/orva-api";
+import { getMockProductsRepository } from "@/lib/repository/mock-products-repository";
+import type { Product } from "@/lib/repository/product-types";
+import type { OrvaOrder, RepositoryMode } from "@/lib/repository/types";
 
-import {
-  computeGeographicalDemand,
-  computeProductComparisons,
-} from "@/lib/analytics/wilaya-demand-calculator";
+import { AlgeriaMap, type WilayaDemandMetricItem } from "../../logistics/_components/algeria-map";
 
 const INITIAL_FILTER: GeographicalFilterState = {
   selectedProductId: "all",
@@ -271,7 +257,7 @@ export default function ProductDemandByWilayaPage() {
         (w) =>
           w.wilayaCode.includes(q) ||
           w.wilayaName.toLowerCase().includes(q) ||
-          w.wilayaNameFr.toLowerCase().includes(q)
+          w.wilayaNameFr.toLowerCase().includes(q),
       );
     }
 
@@ -282,9 +268,7 @@ export default function ProductDemandByWilayaPage() {
       if (typeof valA === "number" && typeof valB === "number") {
         return tableSortAsc ? valA - valB : valB - valA;
       }
-      return tableSortAsc
-        ? String(valA).localeCompare(String(valB))
-        : String(valB).localeCompare(String(valA));
+      return tableSortAsc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
     });
 
     return list;
@@ -376,7 +360,7 @@ export default function ProductDemandByWilayaPage() {
               <span>طلب المنتجات حسب الولايات</span>
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              تحليل جغرافي لتوزيع الطلبات ومعدلات التحويل وحصة كل ولاية عبر خريطة الجزائر التفاعلية (58 ولاية).
+              تحليل جغرافي لتوزيع الطلبات ومعدلات التحويل وحصة كل ولاية عبر خريطة الجزائر التفاعلية (69 ولاية).
             </p>
           </div>
 
@@ -393,13 +377,7 @@ export default function ProductDemandByWilayaPage() {
               <RotateCcw className="size-3.5" />
               إعادة ضبط الفلاتر
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadData}
-              disabled={isLoading}
-              className="gap-1.5 text-xs"
-            >
+            <Button variant="outline" size="sm" onClick={loadData} disabled={isLoading} className="gap-1.5 text-xs">
               <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
               تحديث البيانات
             </Button>
@@ -439,12 +417,17 @@ export default function ProductDemandByWilayaPage() {
                   ? "نظام تحليلات جغرافية خصوصي 100% — وضع الخادم الحي (Live Repository)"
                   : "نظام تحليلات جغرافية خصوصي 100% — بيانات تجريبية (Mock Repository)"}
               </span>
-              <Badge variant="outline" className="text-[10px] bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-400">
-                58 WILAYAS SUPPORTED
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-400"
+              >
+                69 WILAYAS SUPPORTED
               </Badge>
             </div>
             <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
-              تعتمد التحليلات الجغرافية حصراً على الولاية المختارة طوعياً من الزبون عند الطلب (`selectedWilaya`). لا يتم استخدام أي تتبع للعنوان الرقمي (No IP Geolocation) ولا تخمين للولاية. الجلسات التي لم تختر ولاية تصنف ضمن Unknown Wilaya. نقطة الانطلاق اللوجستية المركزية محفوظة في بسكرة (07 - Biskra Hub).
+              تعتمد التحليلات الجغرافية حصراً على الولاية المختارة طوعياً من الزبون عند الطلب (`selectedWilaya`). لا يتم
+              استخدام أي تتبع للعنوان الرقمي (No IP Geolocation) ولا تخمين للولاية. الجلسات التي لم تختر ولاية تصنف ضمن
+              Unknown Wilaya. نقطة الانطلاق اللوجستية المركزية محفوظة في بسكرة (07 - Biskra Hub).
             </p>
           </div>
         </div>
@@ -459,7 +442,10 @@ export default function ProductDemandByWilayaPage() {
               <span>فلاتر التحليل الجغرافي:</span>
             </div>
             {geoSummary.unmatchedOrdersCount > 0 && (
-              <Badge variant="outline" className="text-[11px] text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950/40">
+              <Badge
+                variant="outline"
+                className="text-[11px] text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950/40"
+              >
                 طلبات غير مطابقة بالكتالوج: {geoSummary.unmatchedOrdersCount}
               </Badge>
             )}
@@ -468,9 +454,7 @@ export default function ProductDemandByWilayaPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             {/* Filter 1: Product Selector */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground block">
-                المنتج المستهدف:
-              </label>
+              <label className="text-[11px] font-semibold text-muted-foreground block">المنتج المستهدف:</label>
               <select
                 value={filter.selectedProductId}
                 onChange={(e) => setFilter((prev) => ({ ...prev, selectedProductId: e.target.value }))}
@@ -487,9 +471,7 @@ export default function ProductDemandByWilayaPage() {
 
             {/* Filter 2: Time Range */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground block">
-                الفترة الزمنية:
-              </label>
+              <label className="text-[11px] font-semibold text-muted-foreground block">الفترة الزمنية:</label>
               <select
                 value={filter.timeRange}
                 onChange={(e) => setFilter((prev) => ({ ...prev, timeRange: e.target.value as TimeRangeFilter }))}
@@ -504,9 +486,7 @@ export default function ProductDemandByWilayaPage() {
 
             {/* Filter 3: Order Status */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground block">
-                حالة الطلب:
-              </label>
+              <label className="text-[11px] font-semibold text-muted-foreground block">حالة الطلب:</label>
               <select
                 value={filter.statusFilter}
                 onChange={(e) => setFilter((prev) => ({ ...prev, statusFilter: e.target.value as OrderStatusFilter }))}
@@ -528,7 +508,9 @@ export default function ProductDemandByWilayaPage() {
               </label>
               <select
                 value={filter.activeMetric}
-                onChange={(e) => setFilter((prev) => ({ ...prev, activeMetric: e.target.value as GeographicalMetricType }))}
+                onChange={(e) =>
+                  setFilter((prev) => ({ ...prev, activeMetric: e.target.value as GeographicalMetricType }))
+                }
                 className="w-full bg-background border rounded-lg px-2.5 py-1.5 text-xs font-bold text-primary focus:ring-1 focus:ring-primary focus:outline-none"
               >
                 <option value="demand_share">حصة الطلب (Product Demand Share %)</option>
@@ -555,7 +537,9 @@ export default function ProductDemandByWilayaPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 text-[10px] text-muted-foreground">
-            <span>{geoSummary.activeOrders} نشطة • {geoSummary.cancelledOrders} ملغاة</span>
+            <span>
+              {geoSummary.activeOrders} نشطة • {geoSummary.cancelledOrders} ملغاة
+            </span>
           </CardContent>
         </Card>
 
@@ -567,11 +551,15 @@ export default function ProductDemandByWilayaPage() {
               <MapPin className="size-3.5 text-emerald-500" />
             </CardDescription>
             <CardTitle className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 dark:text-emerald-400">
-              {geoSummary.activeWilayasCount} <span className="text-xs font-normal text-muted-foreground">/ 58 ولاية</span>
+              {geoSummary.activeWilayasCount}{" "}
+              <span className="text-xs font-normal text-muted-foreground">/ 69 ولاية</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 text-[10px] text-muted-foreground">
-            <span>تغطية {Math.round((geoSummary.activeWilayasCount / 58) * 100)}% • تغطية الجلسات {geoSummary.geographicCoveragePercentage}%</span>
+            <span>
+              تغطية {Math.round((geoSummary.activeWilayasCount / 58) * 100)}% • تغطية الجلسات{" "}
+              {geoSummary.geographicCoveragePercentage}%
+            </span>
           </CardContent>
         </Card>
 
@@ -587,7 +575,11 @@ export default function ProductDemandByWilayaPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 text-[10px] text-muted-foreground">
-            <span>{geoSummary.topWilaya ? `${geoSummary.topWilaya.orderCount} طلبات • حصة ${geoSummary.topWilaya.sharePercentage}%` : "لا توجد طلبات"}</span>
+            <span>
+              {geoSummary.topWilaya
+                ? `${geoSummary.topWilaya.orderCount} طلبات • حصة ${geoSummary.topWilaya.sharePercentage}%`
+                : "لا توجد طلبات"}
+            </span>
           </CardContent>
         </Card>
 
@@ -599,11 +591,16 @@ export default function ProductDemandByWilayaPage() {
               <CheckCircle2 className="size-3.5 text-emerald-600" />
             </CardDescription>
             <CardTitle className="text-2xl font-black tabular-nums tracking-tight text-emerald-700 dark:text-emerald-400">
-              {geoSummary.totalOrders > 0 ? Math.round((geoSummary.deliveredOrders / geoSummary.totalOrders) * 100) : 0}% <span className="text-xs font-normal text-muted-foreground">تسليم</span>
+              {geoSummary.totalOrders > 0 ? Math.round((geoSummary.deliveredOrders / geoSummary.totalOrders) * 100) : 0}
+              % <span className="text-xs font-normal text-muted-foreground">تسليم</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 text-[10px] text-muted-foreground">
-            <span>مسلّمة: {geoSummary.deliveredOrders} • مرتجعة: {geoSummary.returnedOrders} ({geoSummary.totalOrders > 0 ? Math.round((geoSummary.returnedOrders / geoSummary.totalOrders) * 100) : 0}%)</span>
+            <span>
+              مسلّمة: {geoSummary.deliveredOrders} • مرتجعة: {geoSummary.returnedOrders} (
+              {geoSummary.totalOrders > 0 ? Math.round((geoSummary.returnedOrders / geoSummary.totalOrders) * 100) : 0}
+              %)
+            </span>
           </CardContent>
         </Card>
       </div>
@@ -615,10 +612,11 @@ export default function ProductDemandByWilayaPage() {
             <div>
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <Globe2 className="size-4 text-primary" />
-                <span>خريطة التوزيع الجغرافي للطلب عبر الـ 58 ولاية الجزائرية</span>
+                <span>خريطة التوزيع الجغرافي للطلب عبر الـ 69 ولاية الجزائرية</span>
               </CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                تلوين تفاعلي للولايات حسب: <span className="font-semibold text-primary">{activeMetricTitle}</span>. انقر على أي ولاية لعرض تفاصيلها الدقيقة.
+                تلوين تفاعلي للولايات حسب: <span className="font-semibold text-primary">{activeMetricTitle}</span>. انقر
+                على أي ولاية لعرض تفاصيلها الدقيقة.
               </CardDescription>
             </div>
 
@@ -764,7 +762,10 @@ export default function ProductDemandByWilayaPage() {
                           <span>{w.wilayaName}</span>
                           <span className="text-[10px] text-muted-foreground font-normal">({w.wilayaNameFr})</span>
                           {w.numericCode === 7 && (
-                            <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-700 border-amber-400 py-0 px-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] bg-amber-500/10 text-amber-700 border-amber-400 py-0 px-1"
+                            >
                               Origin Hub
                             </Badge>
                           )}
@@ -895,68 +896,68 @@ export default function ProductDemandByWilayaPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {comparisons.map((item) => (
-              <div
-                key={item.productId}
-                className="p-3.5 rounded-xl border bg-card/60 space-y-3 shadow-xs hover:border-primary/40 transition-colors"
-              >
-                <div className="flex items-start justify-between border-b pb-2">
-                  <div>
-                    <h4 className="font-bold text-sm text-foreground">{item.productTitle}</h4>
-                    <span className="font-mono text-[10px] text-muted-foreground">{item.sku}</span>
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-xs font-bold">
-                    {item.totalOrders} طلب
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="bg-muted/40 p-2 rounded-lg">
-                    <div className="text-[10px] text-muted-foreground">مسلّمة</div>
-                    <div className="font-bold text-emerald-600 font-mono">{item.deliveredOrders}</div>
-                  </div>
-                  <div className="bg-muted/40 p-2 rounded-lg">
-                    <div className="text-[10px] text-muted-foreground">الولايات</div>
-                    <div className="font-bold text-primary font-mono">{item.activeWilayasCount}</div>
-                  </div>
-                  <div className="bg-muted/40 p-2 rounded-lg">
-                    <div className="text-[10px] text-muted-foreground">حصة المتجر</div>
-                    <div className="font-bold text-indigo-600 font-mono">{item.storeSharePercentage}%</div>
-                  </div>
-                </div>
-
-                {/* Top 3 Wilayas */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-bold text-foreground">الولايات الأكثر طلباً:</div>
-                  {item.topWilayas.length === 0 ? (
-                    <div className="text-[10px] text-muted-foreground">لا توجد طلبات مسجلة بعد</div>
-                  ) : (
-                    <div className="space-y-1">
-                      {item.topWilayas.map((tw) => (
-                        <div key={tw.code} className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground">
-                            {tw.code} - {tw.name}
-                          </span>
-                          <span className="font-mono font-bold text-foreground">
-                            {tw.count} طلب ({tw.share}%)
-                          </span>
-                        </div>
-                      ))}
+                <div
+                  key={item.productId}
+                  className="p-3.5 rounded-xl border bg-card/60 space-y-3 shadow-xs hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-start justify-between border-b pb-2">
+                    <div>
+                      <h4 className="font-bold text-sm text-foreground">{item.productTitle}</h4>
+                      <span className="font-mono text-[10px] text-muted-foreground">{item.sku}</span>
                     </div>
-                  )}
-                </div>
+                    <Badge variant="secondary" className="font-mono text-xs font-bold">
+                      {item.totalOrders} طلب
+                    </Badge>
+                  </div>
 
-                {/* Conversion rate */}
-                <div className="border-t pt-2 flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground text-[11px]">التحويل الإقليمي (المعروف):</span>
-                  <span className="font-mono font-bold text-emerald-600">
-                    {item.regionalConversionRate !== null ? `${item.regionalConversionRate}%` : "—"}
-                  </span>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="bg-muted/40 p-2 rounded-lg">
+                      <div className="text-[10px] text-muted-foreground">مسلّمة</div>
+                      <div className="font-bold text-emerald-600 font-mono">{item.deliveredOrders}</div>
+                    </div>
+                    <div className="bg-muted/40 p-2 rounded-lg">
+                      <div className="text-[10px] text-muted-foreground">الولايات</div>
+                      <div className="font-bold text-primary font-mono">{item.activeWilayasCount}</div>
+                    </div>
+                    <div className="bg-muted/40 p-2 rounded-lg">
+                      <div className="text-[10px] text-muted-foreground">حصة المتجر</div>
+                      <div className="font-bold text-indigo-600 font-mono">{item.storeSharePercentage}%</div>
+                    </div>
+                  </div>
+
+                  {/* Top 3 Wilayas */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="text-[11px] font-bold text-foreground">الولايات الأكثر طلباً:</div>
+                    {item.topWilayas.length === 0 ? (
+                      <div className="text-[10px] text-muted-foreground">لا توجد طلبات مسجلة بعد</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {item.topWilayas.map((tw) => (
+                          <div key={tw.code} className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">
+                              {tw.code} - {tw.name}
+                            </span>
+                            <span className="font-mono font-bold text-foreground">
+                              {tw.count} طلب ({tw.share}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Conversion rate */}
+                  <div className="border-t pt-2 flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground text-[11px]">التحويل الإقليمي (المعروف):</span>
+                    <span className="font-mono font-bold text-emerald-600">
+                      {item.regionalConversionRate !== null ? `${item.regionalConversionRate}%` : "—"}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
+              ))}
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* ── Section 6: Wilaya Details Drawer (Sheet) ────────────────────────── */}
@@ -1042,9 +1043,7 @@ export default function ProductDemandByWilayaPage() {
 
                 {/* Products Breakdown in this Wilaya */}
                 <div className="space-y-2">
-                  <div className="font-bold text-foreground text-xs">
-                    توزيع المنتجات داخل الولاية (Product Mix):
-                  </div>
+                  <div className="font-bold text-foreground text-xs">توزيع المنتجات داخل الولاية (Product Mix):</div>
                   {selectedWilayaRecord.productBreakdown && selectedWilayaRecord.productBreakdown.length > 0 ? (
                     <div className="space-y-2">
                       {selectedWilayaRecord.productBreakdown.map((pb) => (
@@ -1073,14 +1072,13 @@ export default function ProductDemandByWilayaPage() {
 
                 {/* Privacy Guarantee Note */}
                 <div className="bg-muted/40 p-2.5 rounded-lg border text-[10px] text-muted-foreground leading-relaxed">
-                  🔒 ضمان الخصوصية: لا يتم عرض أي أسماء شخصية أو أرقام هواتف أو عناوين تفصيلية داخل هذه التحليلات الجغرافية.
+                  🔒 ضمان الخصوصية: لا يتم عرض أي أسماء شخصية أو أرقام هواتف أو عناوين تفصيلية داخل هذه التحليلات
+                  الجغرافية.
                 </div>
               </div>
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-muted-foreground">
-              يرجى اختيار ولاية لعرض التفاصيل.
-            </div>
+            <div className="p-8 text-center text-xs text-muted-foreground">يرجى اختيار ولاية لعرض التفاصيل.</div>
           )}
         </SheetContent>
       </Sheet>

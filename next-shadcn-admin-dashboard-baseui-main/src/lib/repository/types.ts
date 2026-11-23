@@ -102,6 +102,20 @@ export interface OrvaOrder {
   attributionSource?: string | null;
   carrierStatus?: string | null;
   carrierStatusAr?: string | null;
+  courierId?: string | null;
+  courierName?: string | null;
+  courierStatus?: string | null;
+  courierStatusAr?: string | null;
+  normalizedCourierStatus?: string | null;
+  courierLocationStage?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  currentStation?: string | null;
+  financialStatus?: string | null;
+  returnFeeDzd?: number | null;
+  deskInfo?: Record<string, unknown> | null;
+  courierRemarks?: unknown[];
+  manualStatusOverride?: boolean;
   remarks: unknown[];
   conversions?: OrderConversionRecord[];
   isSwitched?: boolean;
@@ -221,4 +235,3 @@ export interface IOrdersRepository {
 }
 
 export * from "./product-types";
-

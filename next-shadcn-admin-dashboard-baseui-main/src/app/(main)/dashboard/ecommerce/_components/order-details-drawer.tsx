@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import { format, parseISO } from "date-fns";
 import {
   Calendar,
@@ -24,13 +25,13 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
-import { formatDzd, orvaFetch } from "@/lib/orva-api";
 import { formatAttributionSourceLabel } from "@/lib/analytics/campaign-profitability";
+import { formatDzd, orvaFetch } from "@/lib/orva-api";
 
-import { resolveOperationalOrderBucket, type OrderRow } from "./recent-orders-table/schema";
+import { type OrderRow, resolveOperationalOrderBucket } from "./recent-orders-table/schema";
 import { getAvailableTransitions } from "./recent-orders-table/status-transitions";
 import { ShipmentTrackingPanel } from "./shipment-tracking-panel";
 
@@ -101,7 +102,10 @@ function resolveStatusLabel(order: OrderRow): { label: string; className: string
     };
   }
   if (bucket === "Confirmed") {
-    return { label: "مؤكدة (Confirmed)", className: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300" };
+    return {
+      label: "مؤكدة (Confirmed)",
+      className: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+    };
   }
   return {
     label: "قيد الانتظار (Pending)",
@@ -147,8 +151,11 @@ export function OrderDetailsDrawer({
 
   React.useEffect(() => {
     const raw = order?.rawOrder as Record<string, unknown> | undefined;
-    const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata as Record<string, unknown> : {};
-    const discount = metadata.orderDiscount && typeof metadata.orderDiscount === "object" ? metadata.orderDiscount as Record<string, unknown> : null;
+    const metadata = raw?.metadata && typeof raw.metadata === "object" ? (raw.metadata as Record<string, unknown>) : {};
+    const discount =
+      metadata.orderDiscount && typeof metadata.orderDiscount === "object"
+        ? (metadata.orderDiscount as Record<string, unknown>)
+        : null;
     setDiscountInput(Number(discount?.amountDzd) > 0 ? String(discount?.amountDzd) : "");
   }, [open, order?.id]);
 
@@ -162,7 +169,8 @@ export function OrderDetailsDrawer({
     (typeof raw?.tracking_code === "string" ? raw.tracking_code : null) ||
     (typeof raw?.tracking_number === "string" ? raw.tracking_number : null);
   const address = typeof raw?.delivery_address === "string" ? raw.delivery_address : null;
-  const attributionSource = order.attribution_source || (typeof raw?.attribution_source === "string" ? raw.attribution_source : "direct");
+  const attributionSource =
+    order.attribution_source || (typeof raw?.attribution_source === "string" ? raw.attribution_source : "direct");
   const utmCampaign = order.utm_campaign || (typeof raw?.utm_campaign === "string" ? raw.utm_campaign : null);
   const fbCampaignId = order.fb_campaign_id || (typeof raw?.fb_campaign_id === "string" ? raw.fb_campaign_id : null);
   const fbAdsetId = order.fb_adset_id || (typeof raw?.fb_adset_id === "string" ? raw.fb_adset_id : null);
@@ -178,25 +186,47 @@ export function OrderDetailsDrawer({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(kind);
-      toast.add({ title: kind === "id" ? "تم نسخ رقم الطلبية" : "تم نسخ كود التتبع", description: value, type: "success" });
+      toast.add({
+        title: kind === "id" ? "تم نسخ رقم الطلبية" : "تم نسخ كود التتبع",
+        description: value,
+        type: "success",
+      });
       setTimeout(() => setCopied(null), 1600);
     } catch {
       toast.add({ title: "تعذر النسخ", type: "error" });
     }
   };
 
-  const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata as Record<string, unknown> : {};
-  const discountMetadata = metadata.orderDiscount && typeof metadata.orderDiscount === "object" ? metadata.orderDiscount as Record<string, unknown> : null;
+  const metadata = raw?.metadata && typeof raw.metadata === "object" ? (raw.metadata as Record<string, unknown>) : {};
+  const discountMetadata =
+    metadata.orderDiscount && typeof metadata.orderDiscount === "object"
+      ? (metadata.orderDiscount as Record<string, unknown>)
+      : null;
   const originalTotalDzd = numericAmount(discountMetadata?.originalTotalDzd) || numericAmount(order.total);
   const currentDiscountDzd = numericAmount(discountMetadata?.amountDzd);
   const parsedDraftDiscount = parseStrictDiscountInput(discountInput, currentDiscountDzd);
   const draftDiscountDzd = parsedDraftDiscount ?? currentDiscountDzd;
-  const isDraftValid = parsedDraftDiscount !== null && parsedDraftDiscount >= 0 && parsedDraftDiscount < originalTotalDzd;
-  const previewTotalDzd = isDraftValid ? Math.max(0, originalTotalDzd - parsedDraftDiscount) : Math.max(0, originalTotalDzd - currentDiscountDzd);
-  const discountChanged = parsedDraftDiscount !== null ? parsedDraftDiscount !== currentDiscountDzd : (discountInput !== null && discountInput.trim() !== (currentDiscountDzd ? String(currentDiscountDzd) : ""));
+  const isDraftValid =
+    parsedDraftDiscount !== null && parsedDraftDiscount >= 0 && parsedDraftDiscount < originalTotalDzd;
+  const previewTotalDzd = isDraftValid
+    ? Math.max(0, originalTotalDzd - parsedDraftDiscount)
+    : Math.max(0, originalTotalDzd - currentDiscountDzd);
+  const discountChanged =
+    parsedDraftDiscount !== null
+      ? parsedDraftDiscount !== currentDiscountDzd
+      : discountInput !== null && discountInput.trim() !== (currentDiscountDzd ? String(currentDiscountDzd) : "");
   const saveDiscount = async () => {
-    if (parsedDraftDiscount === null || !Number.isInteger(parsedDraftDiscount) || parsedDraftDiscount < 0 || parsedDraftDiscount >= originalTotalDzd) {
-      toast.add({ title: "قيمة الخصم غير صالحة", description: "أدخل خصماً صحيحاً بدون كسور أو رموز وأقل من إجمالي الطلبية (أو 0 لإلغاء الخصم).", type: "error" });
+    if (
+      parsedDraftDiscount === null ||
+      !Number.isInteger(parsedDraftDiscount) ||
+      parsedDraftDiscount < 0 ||
+      parsedDraftDiscount >= originalTotalDzd
+    ) {
+      toast.add({
+        title: "قيمة الخصم غير صالحة",
+        description: "أدخل خصماً صحيحاً بدون كسور أو رموز وأقل من إجمالي الطلبية (أو 0 لإلغاء الخصم).",
+        type: "error",
+      });
       return;
     }
     setSavingDiscount(true);
@@ -211,10 +241,20 @@ export function OrderDetailsDrawer({
       const savedDiscount = Number(result.discountDzd) || 0;
       setDiscountInput(savedDiscount ? String(savedDiscount) : "");
       onDiscountUpdated?.(order.id, savedDiscount, Number(result.finalTotalDzd), Number(result.originalTotalDzd));
-      toast.add({ title: savedDiscount ? "تم حفظ الخصم" : "تم إلغاء الخصم", description: `المبلغ الجديد عند الاستلام: ${formatDzd(Number(result.finalTotalDzd))}`, type: "success" });
+      toast.add({
+        title: savedDiscount ? "تم حفظ الخصم" : "تم إلغاء الخصم",
+        description: `المبلغ الجديد عند الاستلام: ${formatDzd(Number(result.finalTotalDzd))}`,
+        type: "success",
+      });
     } catch (error) {
-      toast.add({ title: "تعذر حفظ الخصم", description: error instanceof Error ? error.message : "حاول مرة أخرى.", type: "error" });
-    } finally { setSavingDiscount(false); }
+      toast.add({
+        title: "تعذر حفظ الخصم",
+        description: error instanceof Error ? error.message : "حاول مرة أخرى.",
+        type: "error",
+      });
+    } finally {
+      setSavingDiscount(false);
+    }
   };
 
   const runStatus = (status: string) => onUpdateStatus?.(order.id, status);
@@ -345,7 +385,11 @@ export function OrderDetailsDrawer({
                         title="حفظ الاسم"
                         className="size-7"
                       >
-                        {savingCustomerName ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                        {savingCustomerName ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Check className="size-3" />
+                        )}
                       </Button>
                       <Button
                         type="button"
@@ -408,18 +452,54 @@ export function OrderDetailsDrawer({
                 <InfoRow label="سعر المنتج">{formatDzd(order.priceNum)}</InfoRow>
                 <InfoRow label="مصاريف الشحن">{order.shippingFee}</InfoRow>
                 {currentDiscountDzd > 0 && <InfoRow label="الإجمالي قبل الخصم">{formatDzd(originalTotalDzd)}</InfoRow>}
-                {(isDraftValid ? draftDiscountDzd : currentDiscountDzd) > 0 && <InfoRow label="الخصم الحالي">− {formatDzd(isDraftValid ? draftDiscountDzd : currentDiscountDzd)}</InfoRow>}
+                {(isDraftValid ? draftDiscountDzd : currentDiscountDzd) > 0 && (
+                  <InfoRow label="الخصم الحالي">
+                    − {formatDzd(isDraftValid ? draftDiscountDzd : currentDiscountDzd)}
+                  </InfoRow>
+                )}
               </div>
               <div className="mt-3 space-y-2 rounded-lg border border-dashed p-3">
-                <label htmlFor="order-discount" className="block font-semibold text-foreground">خصم من إجمالي الطلبية (د.ج)</label>
+                <label htmlFor="order-discount" className="block font-semibold text-foreground">
+                  خصم من إجمالي الطلبية (د.ج)
+                </label>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input id="order-discount" type="number" min="0" max={Math.max(0, originalTotalDzd - 1)} step="1" value={discountInput ?? (currentDiscountDzd ? String(currentDiscountDzd) : "")} onChange={(event) => setDiscountInput(event.target.value)} className="h-9 min-w-0 flex-1" placeholder="0" />
-                  <Button type="button" size="sm" variant="outline" onClick={() => void saveDiscount()} disabled={savingDiscount || !discountChanged || sentToCourier} className="shrink-0">{savingDiscount ? "جارٍ الحفظ..." : currentDiscountDzd && parsedDraftDiscount === 0 ? "إلغاء الخصم" : "حفظ الخصم"}</Button>
+                  <Input
+                    id="order-discount"
+                    type="number"
+                    min="0"
+                    max={Math.max(0, originalTotalDzd - 1)}
+                    step="1"
+                    value={discountInput ?? (currentDiscountDzd ? String(currentDiscountDzd) : "")}
+                    onChange={(event) => setDiscountInput(event.target.value)}
+                    className="h-9 min-w-0 flex-1"
+                    placeholder="0"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void saveDiscount()}
+                    disabled={savingDiscount || !discountChanged || sentToCourier}
+                    className="shrink-0"
+                  >
+                    {savingDiscount
+                      ? "جارٍ الحفظ..."
+                      : currentDiscountDzd && parsedDraftDiscount === 0
+                        ? "إلغاء الخصم"
+                        : "حفظ الخصم"}
+                  </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">الإجمالي بعد الخصم: <strong className="text-foreground">{formatDzd(previewTotalDzd)}</strong>{sentToCourier ? " · لا يمكن تعديل الخصم بعد تسجيل الشحنة لدى شركة التوصيل." : " · بعد الحفظ يُرسل هذا المبلغ تلقائياً كمبلغ تحصيل في البوليصة."}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  الإجمالي بعد الخصم: <strong className="text-foreground">{formatDzd(previewTotalDzd)}</strong>
+                  {sentToCourier
+                    ? " · لا يمكن تعديل الخصم بعد تسجيل الشحنة لدى شركة التوصيل."
+                    : " · بعد الحفظ يُرسل هذا المبلغ تلقائياً كمبلغ تحصيل في البوليصة."}
+                </p>
               </div>
               <div className="mt-3 flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2.5">
-                <span className="font-semibold text-muted-foreground">{discountChanged ? "المبلغ بعد الخصم (معاينة)" : "المبلغ عند الاستلام"}</span>
+                <span className="font-semibold text-muted-foreground">
+                  {discountChanged ? "المبلغ بعد الخصم (معاينة)" : "المبلغ عند الاستلام"}
+                </span>
                 <span className="font-bold text-base text-primary tabular-nums">{formatDzd(previewTotalDzd)}</span>
               </div>
             </section>
@@ -456,7 +536,18 @@ export function OrderDetailsDrawer({
                   <span>طباعة البوليصة</span>
                 </Button>
               </div>
-              <ShipmentTrackingPanel trackingCode={trackingCode} />
+              <ShipmentTrackingPanel
+                trackingCode={trackingCode}
+                courierId={order.courierId}
+                onSwitchOrder={
+                  !isTerminal && onOpenSwitchDialog
+                    ? () => {
+                        onOpenChange(false);
+                        onOpenSwitchDialog(order);
+                      }
+                    : undefined
+                }
+              />
             </section>
           )}
 
@@ -475,17 +566,23 @@ export function OrderDetailsDrawer({
               )}
               {fbCampaignId && (
                 <InfoRow label="معرف الحملة (fb_campaign_id)">
-                  <span className="font-mono" dir="ltr">{fbCampaignId}</span>
+                  <span className="font-mono" dir="ltr">
+                    {fbCampaignId}
+                  </span>
                 </InfoRow>
               )}
               {fbAdsetId && (
                 <InfoRow label="المجموعة الإعلانية (fb_adset_id)">
-                  <span className="font-mono" dir="ltr">{fbAdsetId}</span>
+                  <span className="font-mono" dir="ltr">
+                    {fbAdsetId}
+                  </span>
                 </InfoRow>
               )}
               {fbAdId && (
                 <InfoRow label="الإعلان (fb_ad_id)">
-                  <span className="font-mono" dir="ltr">{fbAdId}</span>
+                  <span className="font-mono" dir="ltr">
+                    {fbAdId}
+                  </span>
                 </InfoRow>
               )}
               {fbclid && (
@@ -496,7 +593,9 @@ export function OrderDetailsDrawer({
                 </InfoRow>
               )}
               <InfoRow label="مطابقة التوصيل (redex_tracking_id)">
-                <span className="font-mono" dir="ltr">{trackingCode || "لم يُربط بعد"}</span>
+                <span className="font-mono" dir="ltr">
+                  {trackingCode || "لم يُربط بعد"}
+                </span>
               </InfoRow>
             </div>
           </section>

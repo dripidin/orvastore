@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+
 import Link from "next/link";
+
 import {
   Bot,
   Calculator,
@@ -30,7 +32,7 @@ import {
   computeCampaignProfitability,
   formatAttributionSourceLabel,
 } from "@/lib/analytics/campaign-profitability";
-import { formatDzd, orvaFetch, type OrvaOrder } from "@/lib/orva-api";
+import { formatDzd, type OrvaOrder, orvaFetch } from "@/lib/orva-api";
 import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import type { Product } from "@/lib/repository/product-types";
 
@@ -61,21 +63,30 @@ function getDeliveryRateBadgeClass(ratePct: number): string {
 function renderAdSpendSourceBadge(source: AdSpendSourceType) {
   if (source === "meta_api") {
     return (
-      <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-700 dark:text-blue-300">
+      <Badge
+        variant="outline"
+        className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-700 dark:text-blue-300"
+      >
         مزامنة Meta API
       </Badge>
     );
   }
   if (source === "product_link") {
     return (
-      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
+      <Badge
+        variant="outline"
+        className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+      >
         تلقائي (مربوط بالمنتج)
       </Badge>
     );
   }
   if (source === "manual") {
     return (
-      <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300">
+      <Badge
+        variant="outline"
+        className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
+      >
         معدّل يدوياً
       </Badge>
     );
@@ -87,24 +98,44 @@ function renderAdSpendSourceBadge(source: AdSpendSourceType) {
   );
 }
 
-export function CampaignProfitabilitySection({ orders, isLoading }: { orders: OrvaOrder[]; isLoading: boolean }) {
+export function CampaignProfitabilitySection({
+  orders,
+  isLoading,
+  returnFeesByWilaya,
+  defaultTimeRange = "last_7d",
+}: {
+  orders: OrvaOrder[];
+  isLoading: boolean;
+  returnFeesByWilaya?: Record<number, number>;
+  defaultTimeRange?: string;
+}) {
   const [costs, setCosts] = React.useState<StoredCostsState>(DEFAULT_STORED_COSTS);
   const [products, setProducts] = React.useState<Product[]>([]);
+  const [syncedReturnFees, setSyncedReturnFees] = React.useState<Record<number, number>>(returnFeesByWilaya ?? {});
   const [isSyncingMeta, setIsSyncingMeta] = React.useState(false);
   const [copiedTemplate, setCopiedTemplate] = React.useState(false);
   const [advisorOpen, setAdvisorOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (returnFeesByWilaya && Object.keys(returnFeesByWilaya).length > 0) {
+      setSyncedReturnFees(returnFeesByWilaya);
+    }
+  }, [returnFeesByWilaya]);
 
   const loadProductsAndMeta = React.useCallback(async () => {
     try {
       const repo = getApiProductsRepository();
       const [prods, metaRes] = await Promise.all([
         repo.getProducts().catch(() => []),
-        orvaFetch("/api/integrations/meta-ads")
+        orvaFetch(`/api/integrations/meta-ads?timeRange=${encodeURIComponent(defaultTimeRange)}&limit=10`)
           .then((r) => r.json())
           .catch(() => null),
       ]);
       if (Array.isArray(prods) && prods.length > 0) {
         setProducts(prods);
+      }
+      if (metaRes?.returnFeesByWilaya && typeof metaRes.returnFeesByWilaya === "object") {
+        setSyncedReturnFees(metaRes.returnFeesByWilaya);
       }
       if (metaRes?.success && Array.isArray(metaRes.campaigns)) {
         setCosts((prev) => {
@@ -123,7 +154,7 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
     } catch {
       // Ignore catalog fetch errors
     }
-  }, []);
+  }, [defaultTimeRange]);
 
   React.useEffect(() => {
     try {
@@ -229,8 +260,9 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
           estimatedMetaCpaDzd: costs.defaultEstimatedMetaCpaDzd,
         },
         products,
+        syncedReturnFees,
       ),
-    [orders, costs, products],
+    [orders, costs, products, syncedReturnFees],
   );
 
   const totals = React.useMemo(() => {
@@ -282,12 +314,16 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
             <CardTitle className="flex flex-wrap items-center gap-2 font-bold text-base">
               <Calculator className="size-4 text-emerald-500" />
               <span>محرك ربحية الحملات التلقائي (Meta Ads &amp; Redex)</span>
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+              >
                 حساب تلقائي لتكلفة الإعلان وصافي الربح
               </Badge>
             </CardTitle>
             <CardDescription className="text-xs">
-              يحتسب تكلفة الإعلان تلقائياً حسب تقدير Meta Ads وربط الإعلانات بالمنتجات، ويخصم تكلفة البضاعة والمرتجعات لإعطاء صافي الربح النهائي تلقائياً.
+              يحتسب تكلفة الإعلان تلقائياً حسب تقدير Meta Ads وربط الإعلانات بالمنتجات، ويخصم تكلفة البضاعة والمرتجعات
+              لإعطاء صافي الربح النهائي تلقائياً.
             </CardDescription>
           </div>
 
@@ -430,8 +466,7 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
               {isLoading ? "…" : formatDzd(totals.adSpend)}
             </span>
             <span className="text-[11px] text-muted-foreground">
-              ROAS الإجمالي:{" "}
-              {totals.adSpend > 0 ? `${(totals.revenue / totals.adSpend).toFixed(2)}x` : "—"}
+              ROAS الإجمالي: {totals.adSpend > 0 ? `${(totals.revenue / totals.adSpend).toFixed(2)}x` : "—"}
             </span>
           </div>
 
@@ -567,9 +602,7 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
                             </Button>
                           )}
                         </div>
-                        <div className="flex items-center gap-1">
-                          {renderAdSpendSourceBadge(row.adSpendSource)}
-                        </div>
+                        <div className="flex items-center gap-1">{renderAdSpendSourceBadge(row.adSpendSource)}</div>
                       </div>
                     </TableCell>
 
@@ -596,6 +629,12 @@ export function CampaignProfitabilitySection({ orders, isLoading }: { orders: Or
                       <div className="text-[10px] font-normal text-muted-foreground">
                         {row.netProfitDzd >= 0 ? "حملة رابحة ✓" : "تحتاج تحسين ⚠"}
                       </div>
+                      {row.totalReturnLossDzd > 0 && (
+                        <div className="text-[10px] font-normal text-rose-600">
+                          مرتجعات: {formatDzd(row.totalReturnLossDzd)}{" "}
+                          {row.returnLossSource === "courier_synced" ? "(tarif_retour)" : "(تقدير)"}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

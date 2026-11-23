@@ -1,18 +1,11 @@
 "use client";
 
-import * as React from "react";
-import {
-  Search,
-  Filter,
-  RotateCcw,
-  MapPin,
-  Truck,
-  Calendar,
-  Layers,
-  CheckCircle,
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
+import type * as React from "react";
+
+import { Calendar, CheckCircle, Filter, Layers, MapPin, RotateCcw, Search, Truck } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -33,7 +26,7 @@ interface DeliveryFiltersProps {
 }
 
 const WILAYA_OPTIONS = [
-  { value: "all", label: "جميع الولايات (58 ولاية)" },
+  { value: "all", label: "جميع الولايات (69 ولاية)" },
   { value: "07", label: "07 - بسكرة (المركز الرئيسي)" },
   { value: "16", label: "16 - الجزائر العاصمة" },
   { value: "31", label: "31 - وهران" },
@@ -156,10 +149,7 @@ export function DeliveryFilters({
       {/* Filter Dropdowns Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
         {/* Wilaya Filter */}
-        <Select
-          value={filters.wilayaCode}
-          onValueChange={(val) => handleSelectChange("wilayaCode", val)}
-        >
+        <Select value={filters.wilayaCode} onValueChange={(val) => handleSelectChange("wilayaCode", val)}>
           <SelectTrigger size="sm" className="w-full text-xs">
             <MapPin className="size-3.5 ml-1 text-muted-foreground" />
             <SelectValue placeholder="الولاية" />
@@ -177,10 +167,7 @@ export function DeliveryFilters({
         </Select>
 
         {/* Courier Filter */}
-        <Select
-          value={filters.courierId}
-          onValueChange={(val) => handleSelectChange("courierId", val)}
-        >
+        <Select value={filters.courierId} onValueChange={(val) => handleSelectChange("courierId", val)}>
           <SelectTrigger size="sm" className="w-full text-xs">
             <Truck className="size-3.5 ml-1 text-muted-foreground" />
             <SelectValue placeholder="شركة التوصيل" />
@@ -198,10 +185,7 @@ export function DeliveryFilters({
         </Select>
 
         {/* ORVA Internal Status Filter */}
-        <Select
-          value={filters.orvaStatus}
-          onValueChange={(val) => handleSelectChange("orvaStatus", val)}
-        >
+        <Select value={filters.orvaStatus} onValueChange={(val) => handleSelectChange("orvaStatus", val)}>
           <SelectTrigger size="sm" className="w-full text-xs">
             <Layers className="size-3.5 ml-1 text-muted-foreground" />
             <SelectValue placeholder="حالة ORVA الداخلية" />
@@ -219,10 +203,7 @@ export function DeliveryFilters({
         </Select>
 
         {/* Courier Status Filter */}
-        <Select
-          value={filters.courierStatus}
-          onValueChange={(val) => handleSelectChange("courierStatus", val)}
-        >
+        <Select value={filters.courierStatus} onValueChange={(val) => handleSelectChange("courierStatus", val)}>
           <SelectTrigger size="sm" className="w-full text-xs">
             <CheckCircle className="size-3.5 ml-1 text-muted-foreground" />
             <SelectValue placeholder="حالة الناقل الخارجي" />
@@ -240,10 +221,7 @@ export function DeliveryFilters({
         </Select>
 
         {/* Date Range Filter */}
-        <Select
-          value={filters.dateRange}
-          onValueChange={(val) => handleSelectChange("dateRange", val)}
-        >
+        <Select value={filters.dateRange} onValueChange={(val) => handleSelectChange("dateRange", val)}>
           <SelectTrigger size="sm" className="w-full text-xs">
             <Calendar className="size-3.5 ml-1 text-muted-foreground" />
             <SelectValue placeholder="الفترة الزمنية" />

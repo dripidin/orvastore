@@ -1,17 +1,19 @@
 import Link from "next/link";
-import { PhoneCall, Truck, ShieldCheck, MapPin, Mail } from "lucide-react";
+
+import { Mail, MapPin, PhoneCall, ShieldCheck, Truck } from "lucide-react";
+
 import { formatDzd, type NavProduct } from "@/lib/catalog/types";
-import { ORVA_CONTACT_EMAIL, ORVA_CONTACT_PHONE, ORVA_CONTACT_PHONE_DISPLAY, ORVA_WHATSAPP_URL } from "@/lib/seo/storefront-schema";
+import {
+  ORVA_CONTACT_EMAIL,
+  ORVA_CONTACT_PHONE,
+  ORVA_CONTACT_PHONE_DISPLAY,
+  ORVA_WHATSAPP_URL,
+} from "@/lib/seo/storefront-schema";
 import { normalizeStoreLogoUrl } from "@/lib/settings/settings-store";
+
 import { PhoneBadge } from "./phone-badge";
 
-export function StorefrontFooter({
-  products = [],
-  logoUrl,
-}: {
-  products?: NavProduct[];
-  logoUrl?: string;
-}) {
+export function StorefrontFooter({ products = [], logoUrl }: { products?: NavProduct[]; logoUrl?: string }) {
   const activeLogoUrl = normalizeStoreLogoUrl(logoUrl);
   return (
     <footer className="bg-slate-950 text-slate-300 border-t border-slate-800 pt-12 pb-8">
@@ -34,13 +36,11 @@ export function StorefrontFooter({
               </div>
             </div>
 
-            <p className="text-amber-400 font-bold text-base">
-              &ldquo;الباك ما يتعاودش فيه كل لي تحتاجو&rdquo;
-            </p>
+            <p className="text-amber-400 font-bold text-base">&ldquo;الباك ما يتعاودش فيه كل لي تحتاجو&rdquo;</p>
 
             <p className="text-slate-400 text-xs leading-relaxed">
-              متجر أورفا DZ هو وجهتك الموثوقة للحصول على باقات أدوات وعتاد الصيانة الأصلية من كراون
-              (CROWN) وستاركل برو (STARCLE PRO) بأفضل الأسعار وضمان المعاينة قبل الدفع.
+              متجر أورفا DZ هو وجهتك الموثوقة للحصول على باقات أدوات وعتاد الصيانة الأصلية من كراون (CROWN) وستاركل برو
+              (STARCLE PRO) بأفضل الأسعار وضمان المعاينة قبل الدفع.
             </p>
 
             <div className="space-y-2 pt-1 text-xs">
@@ -126,7 +126,7 @@ export function StorefrontFooter({
             <ul className="space-y-2 text-xs text-slate-400">
               <li className="flex items-center gap-2">
                 <MapPin className="size-3.5 text-amber-400 shrink-0" />
-                <span>توصيل سريع لكافة 58 ولاية جزائرية</span>
+                <span>توصيل سريع لكافة 69 ولاية جزائرية</span>
               </li>
               <li className="flex items-center gap-2">
                 <Truck className="size-3.5 text-amber-400 shrink-0" />
@@ -148,9 +148,15 @@ export function StorefrontFooter({
         <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <span>جميع الحقوق محفوظة © 2026 ORVA Store DZ</span>
           <div className="flex flex-wrap items-center gap-4">
-            <Link href="/about/" className="hover:text-slate-300 transition">من نحن</Link>
-            <Link href="/contact/" className="hover:text-slate-300 transition">اتصل بنا</Link>
-            <Link href="/terms/" className="hover:text-slate-300 transition">الشروط والأحكام</Link>
+            <Link href="/about/" className="hover:text-slate-300 transition">
+              من نحن
+            </Link>
+            <Link href="/contact/" className="hover:text-slate-300 transition">
+              اتصل بنا
+            </Link>
+            <Link href="/terms/" className="hover:text-slate-300 transition">
+              الشروط والأحكام
+            </Link>
           </div>
         </div>
       </div>

@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
     customer_phone TEXT,
     phone TEXT,
     customer_phone2 TEXT,
-    wilaya_code INTEGER CHECK (wilaya_code >= 1 AND wilaya_code <= 58),
+    wilaya_code INTEGER CHECK (wilaya_code >= 1 AND wilaya_code <= 69),
     wilaya_name TEXT,
     wilaya TEXT,
     commune_name TEXT,
@@ -165,6 +165,24 @@ CREATE TABLE IF NOT EXISTS public.orders (
     in_redex BOOLEAN DEFAULT false,
     courier TEXT DEFAULT 'REDEX',
     courier_provider TEXT DEFAULT 'REDEX',
+    courier_id TEXT DEFAULT 'redex',
+    courier_status TEXT,
+    courier_status_ar TEXT,
+    normalized_courier_status TEXT,
+    courier_location_stage TEXT,
+    courier_last_synced_at TIMESTAMPTZ,
+    status_source TEXT DEFAULT 'store',
+    manual_status_override BOOLEAN NOT NULL DEFAULT false,
+    external_order_id TEXT,
+    import_source TEXT DEFAULT 'storefront',
+    tracking_checkpoints JSONB NOT NULL DEFAULT '[]'::jsonb,
+    return_fee_dzd NUMERIC DEFAULT 0,
+    driver_name TEXT,
+    driver_phone TEXT,
+    current_station TEXT,
+    desk_info JSONB NOT NULL DEFAULT '{}'::jsonb,
+    courier_remarks JSONB NOT NULL DEFAULT '[]'::jsonb,
+    financial_status TEXT,
     risk_score NUMERIC DEFAULT 0 CHECK (risk_score >= 0 AND risk_score <= 100),
     risk_level TEXT DEFAULT 'LOW' CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
     risk_decision TEXT DEFAULT 'ALLOW' CHECK (risk_decision IN ('ALLOW', 'ACCEPT', 'REVIEW', 'REJECT')),
@@ -191,7 +209,10 @@ CREATE TABLE IF NOT EXISTS public.orders (
 
 -- Trigger function to guarantee 100% dual-column synchronization on orders
 CREATE OR REPLACE FUNCTION public.sync_orders_dual_columns()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
     NEW.order_id := COALESCE(NEW.order_id, NEW.order_number);
     NEW.order_number := COALESCE(NEW.order_number, NEW.order_id);
@@ -217,10 +238,11 @@ BEGIN
     NEW.redex_tracking_code := COALESCE(NEW.redex_tracking_code, NEW.redex_tracking_id, NEW.tracking_code);
     NEW.tracking_code := COALESCE(NEW.tracking_code, NEW.redex_tracking_id, NEW.redex_tracking_code);
     NEW.attribution_source := COALESCE(NULLIF(trim(NEW.attribution_source), ''), 'direct');
+    NEW.courier_id := COALESCE(NULLIF(trim(NEW.courier_id), ''), lower(NULLIF(trim(NEW.courier_provider), '')), lower(NULLIF(trim(NEW.courier), '')), 'redex');
     NEW.updated_at := now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 DROP TRIGGER IF EXISTS trg_sync_orders_dual_columns ON public.orders;
 CREATE TRIGGER trg_sync_orders_dual_columns
@@ -365,7 +387,7 @@ CREATE TABLE IF NOT EXISTS public.courier_configurations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     name_ar TEXT NOT NULL,
-    family TEXT NOT NULL CHECK (family IN ('yalidine', 'procolis', 'ecotrack', 'maystro')),
+    family TEXT NOT NULL CHECK (family IN ('ecotrack', 'yalidine', 'procolis', 'zrexpress', 'noest', 'maystro', 'excel_only', 'custom')),
     base_url TEXT NOT NULL,
     is_active BOOLEAN DEFAULT false,
     is_default BOOLEAN DEFAULT false,
@@ -376,6 +398,12 @@ CREATE TABLE IF NOT EXISTS public.courier_configurations (
     account_id TEXT,
     origin_hub TEXT DEFAULT '07',
     webhook_secret TEXT,
+    auto_validate BOOLEAN NOT NULL DEFAULT false,
+    is_external_excel_only BOOLEAN NOT NULL DEFAULT false,
+    tracking_url_template TEXT,
+    rate_limit_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_synced_at TIMESTAMPTZ,
+    store_identifiers JSONB NOT NULL DEFAULT '["ORVA","ORV-","PACK1-","PACK2-","PACK3-","REROUTE-","ORD-"]'::jsonb,
     config JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -391,6 +419,175 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     ip_address TEXT,
     user_agent TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.delivery_fees (
+    wilaya_id INTEGER NOT NULL,
+    service_type TEXT NOT NULL DEFAULT 'ecotrack',
+    tarif_domicile NUMERIC NOT NULL DEFAULT 0,
+    tarif_stopdesk NUMERIC NOT NULL DEFAULT 0,
+    tarif_retour NUMERIC NOT NULL DEFAULT 0,
+    tarif_pickup NUMERIC NOT NULL DEFAULT 0,
+    tarif_echange NUMERIC NOT NULL DEFAULT 0,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (wilaya_id, service_type)
+);
+
+CREATE TABLE IF NOT EXISTS public.courier_wilaya_coverage (
+    courier_id TEXT NOT NULL REFERENCES public.courier_configurations(id) ON DELETE CASCADE,
+    wilaya_code INTEGER NOT NULL CHECK (wilaya_code BETWEEN 1 AND 69),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    home_enabled BOOLEAN NOT NULL DEFAULT true,
+    stop_desk_enabled BOOLEAN NOT NULL DEFAULT false,
+    tarif_domicile NUMERIC NOT NULL DEFAULT 0 CHECK (tarif_domicile >= 0),
+    tarif_stopdesk NUMERIC NOT NULL DEFAULT 0 CHECK (tarif_stopdesk >= 0),
+    tarif_retour NUMERIC NOT NULL DEFAULT 0 CHECK (tarif_retour >= 0),
+    tarif_pickup NUMERIC NOT NULL DEFAULT 0 CHECK (tarif_pickup >= 0),
+    tarif_echange NUMERIC NOT NULL DEFAULT 0 CHECK (tarif_echange >= 0),
+    mapped_carrier_wilaya_code INTEGER CHECK (mapped_carrier_wilaya_code IS NULL OR (mapped_carrier_wilaya_code BETWEEN 1 AND 69)),
+    source TEXT NOT NULL DEFAULT 'manual',
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (courier_id, wilaya_code)
+);
+
+CREATE TABLE IF NOT EXISTS public.courier_stop_desks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    courier_id TEXT NOT NULL REFERENCES public.courier_configurations(id) ON DELETE CASCADE,
+    station_code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    wilaya_code INTEGER NOT NULL CHECK (wilaya_code BETWEEN 1 AND 69),
+    commune TEXT,
+    address TEXT,
+    phones JSONB NOT NULL DEFAULT '[]'::jsonb,
+    map_url TEXT,
+    working_hours TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (courier_id, station_code)
+);
+
+CREATE TABLE IF NOT EXISTS public.courier_api_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    courier_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    method TEXT NOT NULL DEFAULT 'GET',
+    status_code INTEGER,
+    latency_ms INTEGER,
+    rate_limit_remaining INTEGER,
+    rate_limit_reset TEXT,
+    success BOOLEAN NOT NULL DEFAULT true,
+    error_message TEXT,
+    payload_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.reconciliation_imports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    courier_id TEXT NOT NULL,
+    courier_name TEXT NOT NULL,
+    source_type TEXT NOT NULL CHECK (source_type IN ('excel', 'csv', 'api_sync', 'multi_file')),
+    file_name TEXT,
+    file_hash TEXT,
+    file_role TEXT NOT NULL DEFAULT 'courier_export',
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    total_rows INTEGER NOT NULL DEFAULT 0 CHECK (total_rows >= 0),
+    matched_synced INTEGER NOT NULL DEFAULT 0 CHECK (matched_synced >= 0),
+    matched_unsynced INTEGER NOT NULL DEFAULT 0 CHECK (matched_unsynced >= 0),
+    store_only INTEGER NOT NULL DEFAULT 0 CHECK (store_only >= 0),
+    courier_only INTEGER NOT NULL DEFAULT 0 CHECK (courier_only >= 0),
+    duplicates_count INTEGER NOT NULL DEFAULT 0 CHECK (duplicates_count >= 0),
+    store_owned_returns_count INTEGER NOT NULL DEFAULT 0 CHECK (store_owned_returns_count >= 0),
+    comparison_vs_previous JSONB NOT NULL DEFAULT '{}'::jsonb,
+    notification_level TEXT NOT NULL DEFAULT 'info' CHECK (
+        notification_level IN ('info', 'fresh', 'updated', 'duplicate', 'stale_warning')
+    ),
+    notification_message TEXT,
+    accounting_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ai_summary TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.reconciliation_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_id UUID NOT NULL REFERENCES public.reconciliation_imports(id) ON DELETE CASCADE,
+    courier_id TEXT NOT NULL,
+    bucket TEXT NOT NULL CHECK (bucket IN ('matched_synced', 'matched_unsynced', 'store_only', 'courier_only', 'duplicate')),
+    store_order_id TEXT,
+    tracking_code TEXT,
+    reference TEXT,
+    customer_name TEXT,
+    customer_phone TEXT,
+    wilaya_code INTEGER,
+    wilaya_name TEXT,
+    commune TEXT,
+    store_status TEXT,
+    courier_status TEXT,
+    normalized_courier_status TEXT,
+    cod_amount NUMERIC DEFAULT 0,
+    delivery_fee NUMERIC DEFAULT 0,
+    return_fee NUMERIC DEFAULT 0,
+    financial_status TEXT,
+    is_store_owned_return BOOLEAN NOT NULL DEFAULT false,
+    diff JSONB NOT NULL DEFAULT '{}'::jsonb,
+    resolution_status TEXT NOT NULL DEFAULT 'open' CHECK (
+        resolution_status IN ('open', 'synced', 'imported', 'pushed', 'linked', 'switched', 'resolved', 'ignored')
+    ),
+    resolved_at TIMESTAMPTZ,
+    raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.ai_uploaded_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name TEXT NOT NULL,
+    file_hash TEXT NOT NULL,
+    mime_type TEXT,
+    file_size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (file_size_bytes >= 0),
+    file_role TEXT NOT NULL DEFAULT 'orders_export',
+    courier_id TEXT,
+    courier_name TEXT,
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    row_count INTEGER NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+    order_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    accounting_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    diff_vs_previous JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status_alert TEXT NOT NULL DEFAULT 'fresh' CHECK (
+        status_alert IN ('fresh', 'updated', 'duplicate', 'stale_warning')
+    ),
+    alert_message TEXT,
+    raw_preview JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.product_campaign_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    campaign_key TEXT NOT NULL,
+    campaign_id TEXT,
+    campaign_name TEXT,
+    adset_id TEXT,
+    adset_name TEXT,
+    ad_id TEXT,
+    ad_name TEXT,
+    cost_mode TEXT NOT NULL DEFAULT 'meta_live_cpa' CHECK (
+        cost_mode IN ('meta_live_cpa', 'campaign_budget_cpa', 'fixed_cpa')
+    ),
+    campaign_spend_usd NUMERIC,
+    campaign_spend_dzd NUMERIC,
+    exchange_rate_dzd NUMERIC DEFAULT 245 CHECK (exchange_rate_dzd IS NULL OR exchange_rate_dzd > 0),
+    attributed_orders_count INTEGER DEFAULT 0 CHECK (attributed_orders_count IS NULL OR attributed_orders_count >= 0),
+    computed_cpa_dzd NUMERIC NOT NULL DEFAULT 0 CHECK (computed_cpa_dzd >= 0),
+    allocation_weight NUMERIC NOT NULL DEFAULT 1.0 CHECK (allocation_weight > 0),
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (product_id, campaign_key)
 );
 
 -- ============================================================================
@@ -422,7 +619,7 @@ CREATE TABLE IF NOT EXISTS public.site_settings (
     localization JSONB DEFAULT '{"default_language": "ar", "supported_languages": ["ar", "fr"]}'::jsonb,
     reassurance_pillars JSONB DEFAULT '[
       {"id": 1, "titleAr": "المعاينة قبل الدفع", "descAr": "يحق لك فتح الطرد والتأكد من مطابقة جميع السلع قبل دفع المستحقات للموزع."},
-      {"id": 2, "titleAr": "شحن سريع 24-48 ساعة", "descAr": "توصيل مضمون ومحكم إلى 58 ولاية من مركز التوزيع المركزي ببسكرة."},
+      {"id": 2, "titleAr": "شحن سريع 24-48 ساعة", "descAr": "توصيل مضمون ومحكم إلى 69 ولاية من مركز التوزيع المركزي ببسكرة."},
       {"id": 3, "titleAr": "الدفع عند الاستلام 100%", "descAr": "تسوق بأمان تام بدون الحاجة إلى بطاقة بنكية، ادفع نقداً لموزع البريد عند الاستلام."},
       {"id": 4, "titleAr": "تأكيد الطلب هاتفياً", "descAr": "يتصل بك فريق خدمة العملاء قبل الشحن لتأكيد العنوان وموعد الاستلام المناسب."}
     ]'::jsonb,
@@ -432,7 +629,7 @@ CREATE TABLE IF NOT EXISTS public.site_settings (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE OR REPLACE VIEW public.public_site_settings AS
+CREATE OR REPLACE VIEW public.public_site_settings WITH (security_invoker = true) AS
 SELECT
     brand_name,
     brand_name_ar,
@@ -475,12 +672,22 @@ CREATE INDEX IF NOT EXISTS idx_deliv_val_recon_lease ON public.delivery_validati
 CREATE INDEX IF NOT EXISTS idx_reconciliation_order ON public.cod_reconciliations(order_id);
 CREATE INDEX IF NOT EXISTS idx_revocations_expires_at ON public.admin_session_revocations(expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON public.audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_orders_courier_id ON public.orders(courier_id) WHERE courier_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_normalized_courier_status ON public.orders(normalized_courier_status) WHERE normalized_courier_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_external_order_id ON public.orders(external_order_id) WHERE external_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_courier_wilaya_coverage_wilaya ON public.courier_wilaya_coverage(wilaya_code, is_active);
+CREATE INDEX IF NOT EXISTS idx_courier_stop_desks_courier_wilaya ON public.courier_stop_desks(courier_id, wilaya_code, is_active);
+CREATE INDEX IF NOT EXISTS idx_courier_api_logs_courier_created ON public.courier_api_logs(courier_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_imports_courier_created ON public.reconciliation_imports(courier_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_rows_import_bucket ON public.reconciliation_rows(import_id, bucket);
+CREATE INDEX IF NOT EXISTS idx_ai_uploaded_files_hash ON public.ai_uploaded_files(file_hash);
+CREATE INDEX IF NOT EXISTS idx_product_campaign_links_product ON public.product_campaign_links(product_id);
 
 -- ============================================================================
 -- 6. ROW LEVEL SECURITY (RLS) & PRIVILEGE HARDENING
 -- ============================================================================
 
--- 6.1 Enable RLS on all 18 tables
+-- 6.1 Enable RLS on all tables
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
@@ -499,6 +706,14 @@ ALTER TABLE admin_session_revocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courier_configurations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_fees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courier_wilaya_coverage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courier_stop_desks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courier_api_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reconciliation_imports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reconciliation_rows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_uploaded_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_campaign_links ENABLE ROW LEVEL SECURITY;
 
 -- 6.2 Drop existing policies idempotently
 DO $$
@@ -515,7 +730,9 @@ BEGIN
               'deliveries', 'order_timeline_events', 'order_conversions',
               'delivery_validation_reconciliations', 'cod_reconciliations',
               'admin_session_revocations', 'site_settings', 'courier_configurations',
-              'audit_logs'
+              'audit_logs', 'delivery_fees', 'courier_wilaya_coverage',
+              'courier_stop_desks', 'courier_api_logs', 'reconciliation_imports',
+              'reconciliation_rows', 'ai_uploaded_files', 'product_campaign_links'
           )
     LOOP
         FOR pol IN
@@ -566,6 +783,17 @@ CREATE POLICY "Service role full access on admin_session_revocations" ON admin_s
 CREATE POLICY "Service role full access on site_settings" ON site_settings FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access on courier_configurations" ON courier_configurations FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access on audit_logs" ON audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Delivery fees are readable" ON delivery_fees FOR SELECT TO anon, authenticated, service_role USING (true);
+CREATE POLICY "Service role full access on delivery_fees" ON delivery_fees FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Public coverage readable" ON courier_wilaya_coverage FOR SELECT TO anon, authenticated, service_role USING (is_active = true);
+CREATE POLICY "Service role full access on courier_wilaya_coverage" ON courier_wilaya_coverage FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Public stop desks readable" ON courier_stop_desks FOR SELECT TO anon, authenticated, service_role USING (is_active = true);
+CREATE POLICY "Service role full access on courier_stop_desks" ON courier_stop_desks FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on courier_api_logs" ON courier_api_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on reconciliation_imports" ON reconciliation_imports FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on reconciliation_rows" ON reconciliation_rows FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on ai_uploaded_files" ON ai_uploaded_files FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on product_campaign_links" ON product_campaign_links FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- 6.6 Authenticated Admin Full Access Policies
 CREATE POLICY "Admins full access on categories" ON categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -592,7 +820,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC, anon, authenticated;
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
 
-GRANT SELECT ON TABLE categories, collections, products, product_collections, variants, product_media TO anon;
+GRANT SELECT ON TABLE categories, collections, products, product_collections, variants, product_media, delivery_fees, courier_wilaya_coverage, courier_stop_desks TO anon, authenticated;
 GRANT SELECT ON public.public_site_settings TO anon, authenticated, service_role;
 GRANT INSERT ON TABLE orders, customers, order_items, deliveries TO anon;
 

@@ -1,12 +1,8 @@
-"use strict";
 "use client";
 
 import * as React from "react";
-import {
-  AlertCircle,
-  Forklift,
-  RefreshCw,
-} from "lucide-react";
+
+import { AlertCircle, Forklift, RefreshCw } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,11 +11,10 @@ import { fetchOrvaOrders, formatDzd, type OrvaOrder } from "@/lib/orva-api";
 import { OrderSwitchDialog } from "../../ecommerce/_components/order-switch-dialog";
 import { AlgeriaMap } from "./algeria-map";
 import { DeliveryStatsStrip } from "./delivery-stats-strip";
-import { ShipmentDetailsCard } from "./shipment-details-card";
 import { SelectedShipmentSummary } from "./selected-shipment-summary";
+import { ShipmentDetailsCard } from "./shipment-details-card";
 import { ShipmentTrackingDetails } from "./shipment-tracking-details";
 import { ShipmentsTable } from "./shipments-table";
-
 
 function extractConversionsFromRemarks(remarks: any): { isSwitched: boolean } {
   if (!remarks) return { isSwitched: false };
@@ -92,16 +87,13 @@ export function Logistics() {
     };
   }, [fetchOrders]);
 
-
   const handleOpenSwitch = (ord: any) => {
     setOrderToSwitch(ord);
     setSwitchDialogOpen(true);
   };
 
   const handleOrderSwitched = (updatedOrder: any) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder, isSwitched: true } : o))
-    );
+    setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder, isSwitched: true } : o)));
     if (selectedOrder && selectedOrder.id === updatedOrder.id) {
       setSelectedOrder({ ...selectedOrder, ...updatedOrder, isSwitched: true });
     }
@@ -132,7 +124,7 @@ export function Logistics() {
             </h1>
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm">
-            نظام لوجستي متكامل لإدارة وجهات الشحن، وحساب المسافات الجغرافية، وتتبع بوليصات التوصيل عبر 58 ولاية.
+            نظام لوجستي متكامل لإدارة وجهات الشحن، وحساب المسافات الجغرافية، وتتبع بوليصات التوصيل عبر 69 ولاية.
           </p>
         </div>
 
@@ -147,19 +139,18 @@ export function Logistics() {
             <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
             <span>تحديث الشحنات</span>
           </Button>
-
-
         </div>
       </div>
 
       {loadError && (
-
         <Alert variant="destructive">
           <AlertCircle aria-hidden="true" />
           <AlertTitle>بيانات الشحن غير متاحة</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>{loadError}</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => void fetchOrders()} disabled={isLoading}>إعادة المحاولة</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => void fetchOrders()} disabled={isLoading}>
+              إعادة المحاولة
+            </Button>
           </AlertDescription>
         </Alert>
       )}

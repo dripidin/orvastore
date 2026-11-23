@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(ORVA_CANONICAL_ORIGIN),
   title: "متجر أورفا | ORVA STORE DZ — عتاد ومعدات الصيانة والورشة الأصلية",
   description:
-    "المتجر الجزائري الأول المتخصص في باقات العتاد وأدوات الصيانة الأصلية من كراون (CROWN) وستاركل برو (STARCLE PRO). الدفع عند الاستلام مع حق المعاينة والتوصيل لـ 58 ولاية.",
+    "المتجر الجزائري الأول المتخصص في باقات العتاد وأدوات الصيانة الأصلية من كراون (CROWN) وستاركل برو (STARCLE PRO). الدفع عند الاستلام مع حق المعاينة والتوصيل لـ 69 ولاية.",
 };
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {

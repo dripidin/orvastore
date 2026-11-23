@@ -3,6 +3,7 @@ import {
   FolderTree,
   Forklift,
   Gauge,
+  GitCompareArrows,
   Globe,
   Images,
   LayoutTemplate,
@@ -11,6 +12,7 @@ import {
   Package,
   Settings2,
   ShoppingBag,
+  TrendingUp,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -64,8 +66,22 @@ export const sidebarItems: NavGroup[] = [
         icon: ShoppingBag,
       },
       {
+        id: "reconciliation",
+        title: "Orders Reconciliation",
+        url: "/dashboard/reconciliation",
+        icon: GitCompareArrows,
+        badge: "new",
+      },
+      {
+        id: "profitability",
+        title: "Campaign Profitability",
+        url: "/dashboard/profitability",
+        icon: TrendingUp,
+        badge: "new",
+      },
+      {
         id: "delivery-management",
-        title: "Delivery & Tariffs (58 Wilayas)",
+        title: "Delivery & Tariffs (69 Wilayas)",
         url: "/dashboard/logistics",
         icon: Forklift,
       },

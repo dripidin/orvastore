@@ -3,7 +3,7 @@ import type { OrderStatus } from "./types";
 
 /**
  * ORVA Store — Phase 7A Data Architecture & Contracts
- * 
+ *
  * Strict separation:
  * - Product Management
  * - Product Analytics & Profitability
@@ -17,6 +17,7 @@ import type { OrderStatus } from "./types";
 export type ProductStatus = "active" | "draft" | "archived";
 
 export interface ProductMetaAdLink {
+  id?: string;
   enabled: boolean;
   campaignId?: string | null;
   campaignName?: string | null;
@@ -29,8 +30,24 @@ export interface ProductMetaAdLink {
   campaignSpendDzd?: number | null;
   exchangeRateDzd?: number | null;
   attributedOrdersCount?: number | null;
+  allocationWeight?: number;
+  isPrimary?: boolean;
   computedCpaDzd: number;
   lastSyncedAt?: string | null;
+}
+
+export function computeWeightedProductCpa(links: ProductMetaAdLink[] | null | undefined, fallbackCpaDzd = 0): number {
+  const active = (links ?? []).filter((l) => l.enabled && Number(l.computedCpaDzd) > 0);
+  if (active.length === 0) return Math.max(0, Math.round(fallbackCpaDzd));
+
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (const link of active) {
+    const w = Math.max(0.01, Number(link.allocationWeight) || Number(link.attributedOrdersCount) || 1);
+    weightedSum += Number(link.computedCpaDzd) * w;
+    weightTotal += w;
+  }
+  return weightTotal > 0 ? Math.round(weightedSum / weightTotal) : Math.max(0, Math.round(fallbackCpaDzd));
 }
 
 export interface Product {
@@ -40,23 +57,24 @@ export interface Product {
   subtitle: string;
   description: string;
   images: string[];
-  sellingPrice: number;            // in DZD
-  purchaseCost: number;            // in DZD (Internal/Confidential — never exposed on public storefront)
-  marketingCostPerOrder: number;   // in DZD (Internal/Confidential — never exposed on public storefront)
-  metaAdsLink?: ProductMetaAdLink | null; // Linked Meta Ads campaign/ad for automatic CPA calculation (Confidential)
+  sellingPrice: number; // in DZD
+  purchaseCost: number; // in DZD (Internal/Confidential — never exposed on public storefront)
+  marketingCostPerOrder: number; // in DZD (Internal/Confidential — never exposed on public storefront)
+  metaAdsLink?: ProductMetaAdLink | null; // Primary/first linked Meta Ads campaign (legacy compatible)
+  metaAdsLinks?: ProductMetaAdLink[]; // Many-to-Many Meta Ads campaign links
   stockQuantity: number;
   lowStockThreshold: number;
   status: ProductStatus;
-  createdAt: string;               // ISO 8601 UTC
-  updatedAt: string;               // ISO 8601 UTC
+  createdAt: string; // ISO 8601 UTC
+  updatedAt: string; // ISO 8601 UTC
   /** Storefront fields (server catalog). Optional so mock data stays valid. */
   slug?: string;
-  publicUrl?: string;              // e.g. "/p/my-product/" — live only when status is "active"
-  originalPrice?: number | null;   // price before discount, shown struck-through
-  highlights?: string[];           // landing-page bullet points
+  publicUrl?: string; // e.g. "/p/my-product/" — live only when status is "active"
+  originalPrice?: number | null; // price before discount, shown struck-through
+  highlights?: string[]; // landing-page bullet points
   layout?: ProductPageLayoutConfig | null; // live landing-page section layout (designer)
   layoutDraft?: ProductPageLayoutConfig | null; // unpublished designer draft
-  showOutOfStock?: boolean;        // admin switch: show "نفدت الكمية مؤقتاً" on cards and landing page
+  showOutOfStock?: boolean; // admin switch: show "نفدت الكمية مؤقتاً" on cards and landing page
   categoryId?: string | null;
   categoryName?: string | null;
   categoryIcon?: string | null;
@@ -75,15 +93,15 @@ export interface WilayaDemandStat {
   wilayaCode: string;
   wilayaName: string;
   orderCount: number;
-  demandShare: number;             // percentage: (orders in wilaya / total orders of product) * 100
+  demandShare: number; // percentage: (orders in wilaya / total orders of product) * 100
 }
 
 export interface TimeToPurchaseDistribution {
-  under1Min: number;               // count of purchases made in < 60s
-  between1And5Min: number;         // 1 - 5 mins
-  between5And15Min: number;        // 5 - 15 mins
-  between15And30Min: number;       // 15 - 30 mins
-  over30Min: number;               // > 30 mins
+  under1Min: number; // count of purchases made in < 60s
+  between1And5Min: number; // 1 - 5 mins
+  between5And15Min: number; // 5 - 15 mins
+  between15And30Min: number; // 15 - 30 mins
+  over30Min: number; // > 30 mins
 }
 
 export interface ProductAnalytics {
@@ -91,12 +109,12 @@ export interface ProductAnalytics {
   productTitle: string;
   uniqueProductViews: number;
   uniquePurchasingSessions: number;
-  conversionRate: number;          // (uniquePurchasingSessions / uniqueProductViews) * 100
+  conversionRate: number; // (uniquePurchasingSessions / uniqueProductViews) * 100
   averageTimeToPurchaseSeconds: number;
   orderCount: number;
   wilayaDistribution: WilayaDemandStat[];
   collectedRevenueDzd: number;
-  estimatedNetProfitDzd: number;   // Collected Revenue - (Purchase Cost * units) - (Marketing Cost * orders)
+  estimatedNetProfitDzd: number; // Collected Revenue - (Purchase Cost * units) - (Marketing Cost * orders)
 }
 
 // ── 3. Visitor Analytics (First-party, Consent-aware) ─────────────────────────
@@ -111,13 +129,13 @@ export type VisitorEventType =
 
 export interface VisitorAnalyticsEvent {
   id: string;
-  pseudonymousSessionId: string;   // random UUID or hash, NO fingerprinting
+  pseudonymousSessionId: string; // random UUID or hash, NO fingerprinting
   eventType: VisitorEventType;
   productId: string;
-  timestamp: string;               // ISO 8601 UTC
+  timestamp: string; // ISO 8601 UTC
   sessionDurationSeconds: number;
-  selectedWilaya?: string;         // Voluntarily chosen at checkout ONLY, never IP-geolocated
-  orderId?: string;                // Attached ONLY after order is successfully placed
+  selectedWilaya?: string; // Voluntarily chosen at checkout ONLY, never IP-geolocated
+  orderId?: string; // Attached ONLY after order is successfully placed
   metadata?: Record<string, unknown>;
 }
 
@@ -138,11 +156,11 @@ export interface VisitorSessionSummary {
 export interface StockAdjustment {
   id: string;
   productId: string;
-  change: number;                  // Positive (restock) or negative (deduction/damage)
+  change: number; // Positive (restock) or negative (deduction/damage)
   quantityBefore: number;
   quantityAfter: number;
-  reason: string;                  // e.g. "Restock from supplier", "Damaged in transit", "Physical count audit"
-  timestamp: string;               // ISO 8601 UTC
+  reason: string; // e.g. "Restock from supplier", "Damaged in transit", "Physical count audit"
+  timestamp: string; // ISO 8601 UTC
   operator?: string;
 }
 
@@ -151,8 +169,8 @@ export interface InventoryRecord {
   sku: string;
   productTitle: string;
   availableQuantity: number;
-  reservedQuantity: number;        // in active pending/confirmed/shipped orders
-  totalPhysicalQuantity: number;   // available + reserved
+  reservedQuantity: number; // in active pending/confirmed/shipped orders
+  totalPhysicalQuantity: number; // available + reserved
   lowStockThreshold: number;
   isLowStock: boolean;
   stockAdjustments: StockAdjustment[];
@@ -169,8 +187,8 @@ export interface DeliveryTrackingRecord {
   courierName: "Redex" | "Ecotrack" | "Internal" | string;
   trackingCode: string;
   internalOrderStatus: OrderStatus | string;
-  externalCourierStatus: string;   // e.g. "LIVRE", "EN_COURS", "RETOUR_CENTRE", "ATTENTE_PICKUP"
-  lastSyncedAt: string;            // ISO 8601 UTC
+  externalCourierStatus: string; // e.g. "LIVRE", "EN_COURS", "RETOUR_CENTRE", "ATTENTE_PICKUP"
+  lastSyncedAt: string; // ISO 8601 UTC
   syncResult: CourierSyncResultStatus;
   rawCourierResponse?: Record<string, unknown>;
 }
@@ -208,7 +226,11 @@ export interface IProductsRepository {
 
 export interface IVisitorAnalyticsRepository {
   recordEvent(event: Omit<VisitorAnalyticsEvent, "id">): Promise<VisitorAnalyticsEvent>;
-  getEvents(filter?: { productId?: string; eventType?: VisitorEventType; fromDate?: string }): Promise<VisitorAnalyticsEvent[]>;
+  getEvents(filter?: {
+    productId?: string;
+    eventType?: VisitorEventType;
+    fromDate?: string;
+  }): Promise<VisitorAnalyticsEvent[]>;
   getSessions(): Promise<VisitorSessionSummary[]>;
   getProductAnalytics(productId: string): Promise<ProductAnalytics | null>;
   getAllProductsAnalytics(): Promise<ProductAnalytics[]>;
@@ -490,8 +512,8 @@ export function computeUnitMargin(sellingPrice: number, purchaseCost: number): n
 export function computeEstimatedOrderProfit(
   sellingPrice: number,
   purchaseCost: number,
-  marketingCostPerOrder: number = 0,
-  quantity: number = 1
+  marketingCostPerOrder = 0,
+  quantity = 1,
 ): number {
   const qty = Math.max(1, Number(quantity) || 1);
   const unitMargin = computeUnitMargin(sellingPrice, purchaseCost);
@@ -499,5 +521,3 @@ export function computeEstimatedOrderProfit(
   const marketing = Number(marketingCostPerOrder) || 0;
   return Math.max(0, totalUnitMargin - marketing);
 }
-
-

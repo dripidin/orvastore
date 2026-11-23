@@ -1,23 +1,19 @@
 "use client";
 
 import * as React from "react";
-import {
-  Truck,
-  RefreshCw,
-  RotateCcw,
-  CheckCircle2,
-  AlertTriangle,
-  Info,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+
+import { AlertTriangle, CheckCircle2, Info, RefreshCw, RotateCcw, Truck } from "lucide-react";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useDeliveryTracking } from "@/lib/delivery/use-delivery-tracking";
-import { DeliveryKpiCards } from "./_components/delivery-kpi-cards";
-import { DeliveryFilters } from "./_components/delivery-filters";
-import { CustomersOrdersTable } from "./_components/customers-orders-table";
-import { DeliveryTimelineDrawer } from "./_components/delivery-timeline-drawer";
-import { CustomerDetailsDialog } from "./_components/customer-details-dialog";
 import type { OrvaOrder } from "@/lib/repository/types";
+
+import { CustomerDetailsDialog } from "./_components/customer-details-dialog";
+import { CustomersOrdersTable } from "./_components/customers-orders-table";
+import { DeliveryFilters } from "./_components/delivery-filters";
+import { DeliveryKpiCards } from "./_components/delivery-kpi-cards";
+import { DeliveryTimelineDrawer } from "./_components/delivery-timeline-drawer";
 
 export default function CustomersDeliveryPage() {
   React.useEffect(() => {
@@ -69,13 +65,11 @@ export default function CustomersDeliveryPage() {
             <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
               <Truck className="size-5" />
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">
-              Customers & Delivery
-            </h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Customers & Delivery</h1>
           </div>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            نظام موحد لمتابعة استلام العملاء، مزامنة شحنات ريديكس وإيكوتراك (Redex & Ecotrack)،
-            والتحقق من حالة التسليم الفعلي عبر 58 ولاية جزائرية.
+            نظام موحد لمتابعة استلام العملاء، مزامنة شحنات ريديكس وإيكوتراك (Redex & Ecotrack)، والتحقق من حالة التسليم
+            الفعلي عبر 69 ولاية جزائرية.
           </p>
         </div>
 
@@ -114,8 +108,8 @@ export default function CustomersDeliveryPage() {
             syncFeedback.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
               : syncFeedback.type === "info"
-              ? "bg-blue-500/10 border-blue-500/30 text-blue-800 dark:text-blue-300"
-              : ""
+                ? "bg-blue-500/10 border-blue-500/30 text-blue-800 dark:text-blue-300"
+                : ""
           }`}
         >
           {syncFeedback.type === "success" ? (
@@ -129,45 +123,43 @@ export default function CustomersDeliveryPage() {
             {syncFeedback.type === "success"
               ? "اكتملت المزامنة بنجاح"
               : syncFeedback.type === "error"
-              ? "تنبيه مزامنة التتبع"
-              : "معلومات الشحنة"}
+                ? "تنبيه مزامنة التتبع"
+                : "معلومات الشحنة"}
           </AlertTitle>
-          <AlertDescription className="text-xs">
-            {syncFeedback.message}
-          </AlertDescription>
+          <AlertDescription className="text-xs">{syncFeedback.message}</AlertDescription>
         </Alert>
       )}
 
       <div className="space-y-5">
-          <DeliveryKpiCards metrics={kpiMetrics} />
+        <DeliveryKpiCards metrics={kpiMetrics} />
 
-          <DeliveryFilters
-            filters={filters}
-            onFiltersChange={setFilters}
-            onResetFilters={() =>
-              setFilters({
-                searchTerm: "",
-                wilayaCode: "all",
-                courierId: "all",
-                orvaStatus: "all",
-                courierStatus: "all",
-                receiptStatus: "all",
-                dateRange: "all",
-              })
-            }
-            totalFilteredCount={filteredOrders.length}
-            totalOrdersCount={orders.length}
-          />
+        <DeliveryFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          onResetFilters={() =>
+            setFilters({
+              searchTerm: "",
+              wilayaCode: "all",
+              courierId: "all",
+              orvaStatus: "all",
+              courierStatus: "all",
+              receiptStatus: "all",
+              dateRange: "all",
+            })
+          }
+          totalFilteredCount={filteredOrders.length}
+          totalOrdersCount={orders.length}
+        />
 
-          <CustomersOrdersTable
-            orders={filteredOrders}
-            trackingMap={trackingMap}
-            onSelectOrderTimeline={handleOpenTimeline}
-            onSelectCustomerDetails={handleOpenCustomerDetails}
-            onRefreshTracking={refreshOrderTracking}
-            syncingOrderId={syncingOrderId}
-            isSyncingBulk={isSyncing}
-          />
+        <CustomersOrdersTable
+          orders={filteredOrders}
+          trackingMap={trackingMap}
+          onSelectOrderTimeline={handleOpenTimeline}
+          onSelectCustomerDetails={handleOpenCustomerDetails}
+          onRefreshTracking={refreshOrderTracking}
+          syncingOrderId={syncingOrderId}
+          isSyncingBulk={isSyncing}
+        />
       </div>
 
       {/* Delivery Timeline Drawer */}

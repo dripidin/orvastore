@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 
-import { CampaignProfitabilityWrapper } from "./campaign-profitability-wrapper";
 import {
   type EcommerceChannel,
   EcommerceOverviewProvider,
@@ -146,9 +145,6 @@ function EcommerceOverviewContent() {
         </div>
         <div className="xl:col-span-12">
           <RecentOrders />
-        </div>
-        <div className="xl:col-span-12">
-          <CampaignProfitabilityWrapper />
         </div>
       </div>
     </div>

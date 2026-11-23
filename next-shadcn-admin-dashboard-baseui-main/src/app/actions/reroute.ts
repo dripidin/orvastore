@@ -1,22 +1,26 @@
-'use server';
+"use server";
 
-import crypto from 'node:crypto';
-import {
-  OrderReRoutingPayload,
-  OrderReRoutingResult,
-  orderReRoutingSchema,
-  generateCourierInstructionNote,
-  isTerminalStatus,
-} from '@/lib/types/re-routing';
+import { getCourierProviderManager } from "@/lib/couriers";
+import { isSwitchableAtCourier } from "@/lib/delivery/courier-status-mapper";
+import { type FallbackOrderRecord, fallbackOrdersStore, saveFallbackOrder } from "@/lib/orders-store";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   calculateDeliveryTariff,
-  normalizeAlgerianPhone,
-  isValidAlgerianPhone,
   isStopDeskAllowed,
+  isValidAlgerianPhone,
+  normalizeAlgerianPhone,
   setLiveTariffs,
-} from '@/lib/types/checkout';
-import { fallbackOrdersStore, FallbackOrderRecord } from '@/lib/orders-store';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+} from "@/lib/types/checkout";
+import {
+  generateCompactCourierSwitchMaj,
+  generateCourierInstructionNote,
+  isTerminalStatus,
+  type OrderReRoutingPayload,
+  type OrderReRoutingResult,
+  orderReRoutingSchema,
+} from "@/lib/types/re-routing";
+
+import crypto from "node:crypto";
 
 let rerouteSequenceCounter = 100;
 
@@ -25,21 +29,21 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 function orderIdFilter(...ids: (string | null | undefined)[]): string {
   const parts: string[] = [];
   for (const raw of ids) {
-    const clean = String(raw || '').trim().replace(/[,()]/g, '');
+    const clean = String(raw || "")
+      .trim()
+      .replace(/[,()]/g, "");
     if (!clean) continue;
     if (UUID_PATTERN.test(clean)) parts.push(`id.eq.${clean}`);
     parts.push(`order_id.eq.${clean}`, `order_number.eq.${clean}`);
   }
-  return Array.from(new Set(parts)).join(',');
+  return Array.from(new Set(parts)).join(",");
 }
 
-export async function rerouteOrderAction(
-  payload: OrderReRoutingPayload
-): Promise<OrderReRoutingResult> {
+export async function rerouteOrderAction(payload: OrderReRoutingPayload): Promise<OrderReRoutingResult> {
   // 1. Validate payload with Zod
   const parseResult = orderReRoutingSchema.safeParse(payload);
   if (!parseResult.success) {
-    const errorMsg = parseResult.error.issues[0]?.message || 'Invalid re-routing payload';
+    const errorMsg = parseResult.error.issues[0]?.message || "Invalid re-routing payload";
     throw new Error(errorMsg);
   }
 
@@ -53,21 +57,27 @@ export async function rerouteOrderAction(
     customerPhone: string;
     wilayaName: string;
     communeName: string;
-    deliveryType: 'DOMICILE' | 'STOP_DESK';
+    deliveryType: "DOMICILE" | "STOP_DESK";
     productPrice: number;
     shippingFee: number;
     totalPayable: number;
     status: string;
     packId?: string;
     productName?: string;
+    trackingCode?: string | null;
+    courierId?: string | null;
+    courierStatus?: string | null;
+    existingRemarks?: unknown[];
+    existingCourierRemarks?: unknown[];
   } | null = null;
 
   // Try locating in fallbackOrdersStore first
   const fallbackOrder = fallbackOrdersStore.find(
-    (o) => o.id === validated.orderId || o.orderNumber === validated.orderId
+    (o) => o.id === validated.orderId || o.orderNumber === validated.orderId,
   );
 
   if (fallbackOrder) {
+    const fbAny = fallbackOrder as any;
     sourceOrder = {
       id: fallbackOrder.id,
       orderNumber: fallbackOrder.orderNumber,
@@ -82,6 +92,11 @@ export async function rerouteOrderAction(
       status: fallbackOrder.status,
       packId: fallbackOrder.packId,
       productName: fallbackOrder.productName,
+      trackingCode: fbAny.redex_tracking_code || fbAny.tracking_code || fallbackOrder.redexTrackingId || null,
+      courierId: fbAny.courier_id || fbAny.courier || "redex",
+      courierStatus: fbAny.courier_status || fbAny.carrier_status || null,
+      existingRemarks: Array.isArray(fbAny.remarks) ? fbAny.remarks : [],
+      existingCourierRemarks: Array.isArray(fbAny.courier_remarks) ? fbAny.courier_remarks : [],
     };
   }
 
@@ -90,16 +105,16 @@ export async function rerouteOrderAction(
     try {
       const supabase = getSupabaseServerClient() as any;
       const { data, error } = await supabase
-        .from('orders')
-        .select('*')
+        .from("orders")
+        .select("*")
         .or(orderIdFilter(validated.orderId))
         .maybeSingle();
 
       if (!error && data) {
         const parseAmount = (val: unknown): number => {
-          if (typeof val === 'number' && Number.isFinite(val)) return val;
-          if (typeof val === 'string') {
-            const m = val.replace(/,/g, '').match(/(\d+(?:\.\d+)?)/);
+          if (typeof val === "number" && Number.isFinite(val)) return val;
+          if (typeof val === "string") {
+            const m = val.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
             return m ? Number(m[1]) : 0;
           }
           return 0;
@@ -110,10 +125,7 @@ export async function rerouteOrderAction(
           parseAmount(data.unit_price) * Math.max(Number(data.quantity || 1), 1) ||
           parseAmount(data.price_num) ||
           4950;
-        const resolvedShippingFee =
-          parseAmount(data.delivery_fee) ||
-          parseAmount(data.shipping_fee) ||
-          500;
+        const resolvedShippingFee = parseAmount(data.delivery_fee) || parseAmount(data.shipping_fee) || 500;
         const resolvedTotalPayable =
           parseAmount(data.total_payable) ||
           parseAmount(data.total) ||
@@ -125,21 +137,26 @@ export async function rerouteOrderAction(
         sourceOrder = {
           id: data.id,
           orderNumber: data.order_id || data.order_number || data.id,
-          customerName: data.customer_name || data.full_name || 'Client',
-          customerPhone: data.customer_phone || data.phone || '',
-          wilayaName: data.wilaya_name || data.wilaya || '',
-          communeName: data.commune_name || data.commune || '',
-          deliveryType: (data.delivery_method || data.delivery_type || 'DOMICILE') as any,
+          customerName: data.customer_name || data.full_name || "Client",
+          customerPhone: data.customer_phone || data.phone || "",
+          wilayaName: data.wilaya_name || data.wilaya || "",
+          communeName: data.commune_name || data.commune || "",
+          deliveryType: (data.delivery_method || data.delivery_type || "DOMICILE") as any,
           productPrice: resolvedSubtotal,
           shippingFee: resolvedShippingFee,
           totalPayable: resolvedTotalPayable,
-          status: data.status || 'PENDING',
-          packId: data.pack_id || data.metadata?.packId || 'PACK1',
-          productName: data.product_title || data.product_name || data.metadata?.productName || 'ORVA Pack',
+          status: data.status || "PENDING",
+          packId: data.pack_id || data.metadata?.packId || "PACK1",
+          productName: data.product_title || data.product_name || data.metadata?.productName || "ORVA Pack",
+          trackingCode: data.redex_tracking_code || data.tracking_code || data.redex_tracking_id || null,
+          courierId: data.courier_id || data.courier_provider || data.courier || "redex",
+          courierStatus: data.courier_status || data.carrier_status || null,
+          existingRemarks: Array.isArray(data.remarks) ? data.remarks : [],
+          existingCourierRemarks: Array.isArray(data.courier_remarks) ? data.courier_remarks : [],
         };
       }
     } catch (err) {
-      console.warn('[Reroute] Supabase lookup warning:', err);
+      console.warn("[Reroute] Supabase lookup warning:", err);
     }
   }
 
@@ -147,44 +164,61 @@ export async function rerouteOrderAction(
   if (!sourceOrder) {
     sourceOrder = {
       id: validated.orderId,
-      orderNumber: validated.orderId.startsWith('ORV-') ? validated.orderId : `ORV-SRC-${validated.orderId.slice(0, 8)}`,
-      customerName: 'Client Antérieur',
-      customerPhone: '0550000000',
-      wilayaName: 'Biskra',
-      communeName: 'Biskra',
-      deliveryType: 'DOMICILE',
+      orderNumber: validated.orderId.startsWith("ORV-")
+        ? validated.orderId
+        : `ORV-SRC-${validated.orderId.slice(0, 8)}`,
+      customerName: "Client Antérieur",
+      customerPhone: "0550000000",
+      wilayaName: "Biskra",
+      communeName: "Biskra",
+      deliveryType: "DOMICILE",
       productPrice: 4950,
       shippingFee: 450,
       totalPayable: 5400,
-      status: 'CANCELLED',
-      packId: 'PACK1',
-      productName: 'Pack ORVA',
+      status: "CANCELLED",
+      packId: "PACK1",
+      productName: "Pack ORVA",
+      trackingCode: null,
+      courierId: "redex",
+      courierStatus: null,
+      existingRemarks: [],
+      existingCourierRemarks: [],
     };
   }
 
-  // 3. Terminal status verification
-  const normalizedStatus = (sourceOrder.status || '').toUpperCase();
+  // 3. Terminal status & courier switchability verification (allows suspended / abandoned at-station parcels)
+  const normalizedStatus = (sourceOrder.status || "").toUpperCase();
+  const courierSuspendedOrAbandoned = sourceOrder.courierStatus
+    ? isSwitchableAtCourier(sourceOrder.courierStatus)
+    : false;
   if (isTerminalStatus(normalizedStatus)) {
     throw new Error(
-      `Cannot re-route order ${sourceOrder.orderNumber}: terminal status ${sourceOrder.status} prohibits modification.`
+      `Cannot re-route order ${sourceOrder.orderNumber}: terminal status ${sourceOrder.status} prohibits modification.`,
+    );
+  }
+  if (
+    sourceOrder.courierStatus &&
+    !courierSuspendedOrAbandoned &&
+    ["RETURN_ASKED", "RETOUR_RECU"].includes(sourceOrder.courierStatus.toUpperCase())
+  ) {
+    throw new Error(
+      `لا يمكن تحويل الطرد (${sourceOrder.trackingCode || sourceOrder.orderNumber}) لأنه قيد الإرجاع أو مسترجع لدى شركة التوصيل.`,
     );
   }
 
   // 4. Shipped override check
   if (
-    (normalizedStatus === 'SHIPPED' || normalizedStatus === 'READY_TO_SHIP') &&
+    (normalizedStatus === "SHIPPED" || normalizedStatus === "READY_TO_SHIP" || Boolean(sourceOrder.trackingCode)) &&
     !validated.shippedOverrideConfirmed
   ) {
-    throw new Error(
-      'Confirmation requise pour les commandes déjà expédiées (shippedOverrideConfirmed).'
-    );
+    throw new Error("Confirmation requise pour les commandes déjà expédiées (shippedOverrideConfirmed).");
   }
 
   // 5. Dynamic Tariff & Total Calculation
   // A switched parcel is priced exactly like a fresh order shipped from the hub (Biskra 07):
   // same live EcoTrack tariffs as checkout, static matrix only as a fallback.
   try {
-    const { getDeliveryFees } = await import('@/lib/delivery-fees');
+    const { getDeliveryFees } = await import("@/lib/delivery-fees");
     const live = await getDeliveryFees(false);
     if (live.success) setLiveTariffs(live.fees);
   } catch {
@@ -215,15 +249,59 @@ export async function rerouteOrderAction(
     reason: validated.reason,
   });
 
+  const compactCourierMaj = generateCompactCourierSwitchMaj({
+    originalOrderNumber: sourceOrder.orderNumber,
+    newCustomerName: validated.newCustomerName,
+    newCustomerPhone: validated.newCustomerPhone,
+    newWilayaCode: validated.newWilayaCode,
+    newCommuneName: validated.newCommuneName,
+    newDeliveryType: validated.newDeliveryType,
+    updatedCodAmount: updatedTotal,
+  });
+
+  // 6b. Automatically push <=240 char Switch MAJ remark to carrier API when parcel has tracking code
+  let majPushedToCourier = false;
+  let majTrackingCode: string | undefined;
+  let majError: string | undefined;
+  const sourceTracking = (sourceOrder.trackingCode || "").trim();
+  const resolvedCourierId =
+    String(sourceOrder.courierId || "redex")
+      .trim()
+      .toLowerCase() || "redex";
+  if (sourceTracking && !sourceTracking.startsWith("MOCK-")) {
+    majTrackingCode = sourceTracking;
+    try {
+      const { provider, credentials } = await getCourierProviderManager().resolveConfiguredProvider(resolvedCourierId);
+      if (provider.addRemark) {
+        const majRes = await provider.addRemark(sourceTracking, compactCourierMaj, credentials);
+        majPushedToCourier = majRes.success;
+        if (!majRes.success) {
+          majError = majRes.error || "تعذر إرسال التحديث التلقائي لشركة التوصيل";
+        }
+      }
+    } catch (majEx: any) {
+      majError = majEx?.message || "تعذر الاتصال بشركة التوصيل لإرسال تعليق التحويل";
+    }
+  }
+
   // 7. Update source order history & remarks
+  const sellerMajItem = {
+    remarque: compactCourierMaj,
+    createdAt: timestampUtc,
+    authorRole: "seller",
+    station: resolvedCourierId,
+  };
   const conversionLog = {
-    event: 'ORDER_CONVERSION',
-    switch_status: 'switched',
+    event: "ORDER_CONVERSION",
+    switch_status: "switched",
     conversion_sequence: sequence,
     timestamp_utc: timestampUtc,
     operator: validated.operator,
     reason: validated.reason,
     childOrderId: newOrderId,
+    redex_tracking_code: sourceTracking || null,
+    maj_pushed: majPushedToCourier,
+    compact_maj: compactCourierMaj,
     override_applied: validated.shippedOverrideConfirmed,
     diff: {
       customer: { from: sourceOrder.customerName, to: validated.newCustomerName },
@@ -239,8 +317,10 @@ export async function rerouteOrderAction(
   if (fallbackOrder) {
     (fallbackOrder as any).remarks = (fallbackOrder as any).remarks || [];
     (fallbackOrder as any).remarks.push(conversionLog);
+    (fallbackOrder as any).courier_remarks = [...(sourceOrder.existingCourierRemarks ?? []), sellerMajItem];
     (fallbackOrder as any).isSwitched = true;
     (fallbackOrder as any).conversionCount = ((fallbackOrder as any).conversionCount || 0) + 1;
+    saveFallbackOrder(fallbackOrder);
   }
 
   // Push new child order into fallback store
@@ -254,14 +334,14 @@ export async function rerouteOrderAction(
     wilayaName: validated.newWilayaName,
     communeName: validated.newCommuneName,
     deliveryType: validated.newDeliveryType,
-    deliveryAddress: validated.newDeliveryAddress || '',
-    packId: sourceOrder.packId || 'PACK1',
-    productName: sourceOrder.productName || 'Pack ORVA',
+    deliveryAddress: validated.newDeliveryAddress || "",
+    packId: sourceOrder.packId || "PACK1",
+    productName: sourceOrder.productName || "Pack ORVA",
     productPrice: sourceOrder.productPrice,
     shippingFee: newShippingFee,
     totalPayable: updatedTotal,
-    status: 'PENDING',
-    originHub: 'BISKRA_07',
+    status: "PENDING",
+    originHub: "BISKRA_07",
     createdAt: timestampUtc,
   };
   (newChildOrder as any).remarks = [conversionLog];
@@ -273,10 +353,11 @@ export async function rerouteOrderAction(
   try {
     const supabase = getSupabaseServerClient() as any;
 
-    // Update source order metadata
+    // Update source order metadata + remarks
     await supabase
-      .from('orders')
+      .from("orders")
       .update({
+        remarks: [...(sourceOrder.existingRemarks ?? []), conversionLog],
         metadata: {
           reroutedTo: newOrderId,
           reroutedAt: timestampUtc,
@@ -285,8 +366,34 @@ export async function rerouteOrderAction(
       })
       .or(orderIdFilter(sourceOrder.id, sourceOrder.orderNumber));
 
+    // Best-effort mirror to courier_remarks + timeline (may not be migrated on live DB yet)
+    if (majTrackingCode) {
+      try {
+        await supabase
+          .from("orders")
+          .update({
+            courier_remarks: [...(sourceOrder.existingCourierRemarks ?? []), sellerMajItem],
+          })
+          .or(orderIdFilter(sourceOrder.id, sourceOrder.orderNumber));
+      } catch {
+        // Ignore when courier_remarks column is absent
+      }
+      try {
+        await supabase.from("order_timeline_events").insert({
+          order_id: sourceOrder.orderNumber,
+          event_type: "ORDER_SWITCH_MAJ",
+          title: majPushedToCourier ? "إرسال تحويل (MAJ) تلقائياً للناقل" : "تحضير تعليق تحويل الطلبية (MAJ)",
+          description: compactCourierMaj,
+          actor: validated.operator,
+          metadata: { majTrackingCode, majPushedToCourier, majError, childOrderId: newOrderId },
+        });
+      } catch {
+        // Ignore timeline errors
+      }
+    }
+
     // Insert new child order
-    await supabase.from('orders').insert({
+    await supabase.from("orders").insert({
       order_id: newOrderId,
       order_number: newOrderId,
       customer_name: validated.newCustomerName,
@@ -299,29 +406,30 @@ export async function rerouteOrderAction(
       delivery_commune: validated.newCommuneName,
       delivery_method: validated.newDeliveryType,
       delivery_type: validated.newDeliveryType,
-      delivery_address: validated.newDeliveryAddress || (validated.newDeliveryType === 'STOP_DESK' ? 'Bureau Stop-Desk' : ''),
-      origin_hub: 'BISKRA_07',
+      delivery_address:
+        validated.newDeliveryAddress || (validated.newDeliveryType === "STOP_DESK" ? "Bureau Stop-Desk" : ""),
+      origin_hub: "BISKRA_07",
       subtotal: sourceOrder.productPrice,
       delivery_fee: newShippingFee,
       total: updatedTotal,
-      currency: 'DZD',
-      payment_method: 'COD',
-      payment_status: 'UNPAID',
-      status: 'PENDING',
-      courier_provider: 'REDEX',
+      currency: "DZD",
+      payment_method: "COD",
+      payment_status: "UNPAID",
+      status: "PENDING",
+      courier_provider: "REDEX",
       risk_score: 0,
-      risk_level: 'LOW',
-      risk_decision: 'ACCEPT',
+      risk_level: "LOW",
+      risk_decision: "ACCEPT",
       metadata: {
         sourceOrderId: sourceOrder.id,
         sourceOrderNumber: sourceOrder.orderNumber,
-        packId: sourceOrder.packId || 'PACK1',
-        source: 'order_reroute_action',
+        packId: sourceOrder.packId || "PACK1",
+        source: "order_reroute_action",
         conversionLog,
       },
     });
   } catch (dbErr) {
-    console.warn('[Reroute] Supabase child order persistence skipped/failed:', dbErr);
+    console.warn("[Reroute] Supabase child order persistence skipped/failed:", dbErr);
   }
 
   return {
@@ -329,6 +437,10 @@ export async function rerouteOrderAction(
     orderId: newOrderId,
     sequence,
     formattedCourierNote,
+    compactCourierMaj,
+    majPushedToCourier,
+    majTrackingCode,
+    majError,
     updatedShippingFee: newShippingFee,
     updatedTotal,
     timestampUtc,

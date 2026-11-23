@@ -25,7 +25,6 @@
  * SERVER-ONLY MODULE: Never import into Client Components.
  */
 
-import crypto from "node:crypto";
 import { getAdminSettingsAction } from "@/app/actions/settings";
 import { ALGERIA_COMMUNES_BY_WILAYA_ID } from "@/data/algeria-locations";
 import { getCommunesByWilayaCode } from "@/data/geoalgeria/geo-helper";
@@ -37,24 +36,26 @@ import type { Product } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   ALGERIA_58_WILAYAS,
-  type LiveTariff,
-  type WilayaRecord,
   calculateDeliveryTariff,
   isStopDeskAllowed,
   isValidAlgerianPhone,
+  type LiveTariff,
   maskPhoneForPrivacy,
   normalizeAlgerianPhone,
   setLiveTariffs,
+  type WilayaRecord,
 } from "@/lib/types/checkout";
+
 import {
   DEFAULT_ORVA_STORE_ID,
+  redactSensitiveForLog,
   TikTokApiError,
   type TikTokDeliveryType,
   type TikTokFormProductMappingRow,
   type TikTokLeadRow,
   type TikTokLeadSyncStatus,
-  redactSensitiveForLog,
 } from "./types";
+import crypto from "node:crypto";
 
 export const TIKTOK_TELEGRAM_TIMEOUT_MS = 2_500;
 export const MISSING_ADDRESS_CONFIRMATION_NOTE =
@@ -403,11 +404,10 @@ export function resolveAlgerianWilaya(
   fallbackWilayaCode = 16,
 ): ResolvedWilayaResult {
   const safeFallbackCode =
-    Number.isInteger(fallbackWilayaCode) && fallbackWilayaCode >= 1 && fallbackWilayaCode <= 58
+    Number.isInteger(fallbackWilayaCode) && fallbackWilayaCode >= 1 && fallbackWilayaCode <= 69
       ? fallbackWilayaCode
       : 16;
-  const fallbackRecord =
-    ALGERIA_58_WILAYAS.find((w) => w.code === safeFallbackCode) ?? ALGERIA_58_WILAYAS[15]; // 16 - Alger
+  const fallbackRecord = ALGERIA_58_WILAYAS.find((w) => w.code === safeFallbackCode) ?? ALGERIA_58_WILAYAS[15]; // 16 - Alger
 
   const trimmed = (rawWilaya || "").trim();
   if (!trimmed) {
@@ -424,7 +424,7 @@ export function resolveAlgerianWilaya(
 
   if (codeMatch) {
     const code = Number.parseInt(codeMatch[1], 10);
-    if (code >= 1 && code <= 58) {
+    if (code >= 1 && code <= 69) {
       const matchByCode = ALGERIA_58_WILAYAS.find((w) => w.code === code);
       if (matchByCode) {
         return { wilaya: matchByCode, wilayaFallbackApplied: false };
@@ -457,10 +457,7 @@ export function resolveAlgerianWilaya(
   for (const w of ALGERIA_58_WILAYAS) {
     const normFr = normalizeLookupText(w.nameFr);
     const normAr = normalizeLookupText(w.nameAr);
-    if (
-      (normFr.length >= 3 && norm.includes(normFr)) ||
-      (normAr.length >= 3 && norm.includes(normAr))
-    ) {
+    if ((normFr.length >= 3 && norm.includes(normFr)) || (normAr.length >= 3 && norm.includes(normAr))) {
       return { wilaya: w, wilayaFallbackApplied: false };
     }
   }
@@ -506,10 +503,7 @@ export function resolveAlgerianCommune(
   }
 
   const defaultCommune =
-    ALGERIA_COMMUNES_BY_WILAYA_ID[String(wilayaCode)]?.[0] ??
-    wilayaRecord?.nameAr ??
-    wilayaRecord?.nameFr ??
-    "Centre";
+    ALGERIA_COMMUNES_BY_WILAYA_ID[String(wilayaCode)]?.[0] ?? wilayaRecord?.nameAr ?? wilayaRecord?.nameFr ?? "Centre";
 
   return { communeName: defaultCommune, communeFallbackApplied: true };
 }
@@ -680,7 +674,10 @@ function extractFieldMapFromArray(items: unknown[]): Record<string, string> {
     const key = String(rec.field_name ?? rec.field ?? rec.name ?? rec.label ?? "").trim();
     const rawVal = rec.field_value ?? rec.value ?? rec.values ?? "";
     const val = Array.isArray(rawVal)
-      ? rawVal.map((v) => String(v ?? "").trim()).filter(Boolean).join(", ")
+      ? rawVal
+          .map((v) => String(v ?? "").trim())
+          .filter(Boolean)
+          .join(", ")
       : String(rawVal ?? "").trim();
     if (key && val) {
       out[key] = val;
@@ -756,11 +753,7 @@ export function extractLeadsFromWebhookPayload(
 
   const root = payload as Record<string, unknown>;
   const rootAdvertiserId = root.advertiser_id ? String(root.advertiser_id) : defaults?.advertiserId;
-  const rootFormId = root.form_id
-    ? String(root.form_id)
-    : root.page_id
-      ? String(root.page_id)
-      : defaults?.formId;
+  const rootFormId = root.form_id ? String(root.form_id) : root.page_id ? String(root.page_id) : defaults?.formId;
 
   // Shape A: `{ entry: [...] }`
   if (Array.isArray(root.entry)) {
@@ -769,11 +762,7 @@ export function extractLeadsFromWebhookPayload(
       if (!rawEntry || typeof rawEntry !== "object") continue;
       const entry = rawEntry as Record<string, unknown>;
       const entryAdvId = entry.advertiser_id ? String(entry.advertiser_id) : rootAdvertiserId;
-      const entryFormId = entry.page_id
-        ? String(entry.page_id)
-        : entry.form_id
-          ? String(entry.form_id)
-          : rootFormId;
+      const entryFormId = entry.page_id ? String(entry.page_id) : entry.form_id ? String(entry.form_id) : rootFormId;
 
       // Case A1: Entry itself carries lead_id + changes as field/value answers
       if (entry.lead_id && Array.isArray(entry.changes)) {
@@ -885,9 +874,7 @@ export interface TikTokTelegramNotifyOptions {
  * 3. Server-side `site_settings.integrations.tiktok.telegram_alerts_enabled === true`
  *    (future Phase C admin toggle — completely independent of checkout's `telegram_alerts_enabled`).
  */
-export async function isTikTokTelegramAlertsEnabled(options?: {
-  optInEnabled?: boolean;
-}): Promise<boolean> {
+export async function isTikTokTelegramAlertsEnabled(options?: { optInEnabled?: boolean }): Promise<boolean> {
   if (options?.optInEnabled !== undefined) {
     return Boolean(options.optInEnabled);
   }
@@ -903,11 +890,7 @@ export async function isTikTokTelegramAlertsEnabled(options?: {
   // Optional future Phase C persisted server flag inside site_settings.integrations.tiktok
   try {
     const db = getSupabaseServerClient() as any;
-    const { data } = await db
-      .from("site_settings")
-      .select("integrations")
-      .eq("id", 1)
-      .maybeSingle();
+    const { data } = await db.from("site_settings").select("integrations").eq("id", 1).maybeSingle();
 
     return data?.integrations?.tiktok?.telegram_alerts_enabled === true;
   } catch {
@@ -995,15 +978,13 @@ export async function sendOptionalTikTokLeadTelegramAlert(
       chatId = `-100${chatId}`;
     }
 
-    const appUrl = (
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.APP_URL ||
-      "https://orva-store.com"
-    ).replace(/\/$/, "");
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://orva-store.com").replace(
+      /\/$/,
+      "",
+    );
     const dashboardOrderUrl = `${appUrl}/dashboard/ecommerce/?orderId=${encodeURIComponent(params.orderNumber)}#orders`;
 
-    const deliveryLabel =
-      params.deliveryType === "DOMICILE" ? "توصيل للمنزل" : "توصيل للمكتب (Stop Desk)";
+    const deliveryLabel = params.deliveryType === "DOMICILE" ? "توصيل للمنزل" : "توصيل للمكتب (Stop Desk)";
 
     const lines = [
       `🎵 <b>طلب جديد من TikTok Lead Gen</b>`,
@@ -1013,9 +994,7 @@ export async function sendOptionalTikTokLeadTelegramAlert(
       `📱 <b>رقم الهاتف:</b> <code>${escapeHtml(params.customerPhone)}</code>`,
       `📍 <b>الولاية والبلدية:</b> ${escapeHtml(params.wilayaDisplay)} — ${escapeHtml(params.communeName)}`,
       `🚚 <b>نوع التوصيل:</b> ${escapeHtml(deliveryLabel)}`,
-      ...(params.addressMissing
-        ? [`⚠️ <b>ملاحظة العنوان:</b> العنوان غير متوفر — يرجى تأكيده هاتفياً.`]
-        : []),
+      ...(params.addressMissing ? [`⚠️ <b>ملاحظة العنوان:</b> العنوان غير متوفر — يرجى تأكيده هاتفياً.`] : []),
       `📦 <b>المنتج:</b> ${escapeHtml(params.productName)}`,
       `💵 <b>سعر المنتج:</b> ${params.productPrice} د.ج | 🚚 <b>التوصيل:</b> ${params.shippingFee} د.ج`,
       `💰 <b>المجموع الكلي (COD):</b> <b>${params.totalPayable} د.ج</b>`,
@@ -1193,10 +1172,7 @@ export async function createPendingOrderFromTikTokLead(
     params.normalized.wilayaRaw,
     params.mapping.default_wilaya_code,
   );
-  const { communeName, communeFallbackApplied } = resolveAlgerianCommune(
-    params.normalized.communeRaw,
-    wilaya.code,
-  );
+  const { communeName, communeFallbackApplied } = resolveAlgerianCommune(params.normalized.communeRaw, wilaya.code);
 
   const requestedDeliveryType: TikTokDeliveryType =
     params.normalized.requestedDeliveryType ?? params.mapping.default_delivery_type ?? "DOMICILE";
@@ -1226,7 +1202,7 @@ export async function createPendingOrderFromTikTokLead(
         const cachedTariffs: Record<number, LiveTariff> = {};
         for (const row of feeRows) {
           const wId = Number(row.wilaya_id);
-          if (Number.isFinite(wId) && wId >= 1 && wId <= 58) {
+          if (Number.isFinite(wId) && wId >= 1 && wId <= 69) {
             cachedTariffs[wId] = {
               domicile: Number(row.tarif_domicile) || 0,
               stopdesk: Number(row.tarif_stopdesk) || 0,
@@ -1246,11 +1222,8 @@ export async function createPendingOrderFromTikTokLead(
   // Decision 2: Never fabricate street address when omitted by Instant Form
   const rawAddress = (params.normalized.deliveryAddressRaw || "").trim();
   const addressMissing = effectiveDeliveryType === "DOMICILE" && rawAddress.length === 0;
-  const deliveryAddress =
-    effectiveDeliveryType === "STOP_DESK" ? "Bureau Stop-Desk" : rawAddress;
-  const orderNotes = addressMissing
-    ? MISSING_ADDRESS_CONFIRMATION_NOTE
-    : deliveryAddress || "TikTok Instant Form Lead";
+  const deliveryAddress = effectiveDeliveryType === "STOP_DESK" ? "Bureau Stop-Desk" : rawAddress;
+  const orderNotes = addressMissing ? MISSING_ADDRESS_CONFIRMATION_NOTE : deliveryAddress || "TikTok Instant Form Lead";
 
   // 4. Authoritative Idempotency Check on public.orders
   const idempotencyKey = `tiktok_lead_${externalLeadId}`;
@@ -1295,8 +1268,7 @@ export async function createPendingOrderFromTikTokLead(
   // 5. Build ORVA dual-column public.orders row matching checkout.ts conventions
   const random6 = crypto.randomInt(100_000, 1_000_000).toString();
   const orderNumber = cleanPackUpper ? `${cleanPackUpper}-${random6}` : generateOrderNumber();
-  const deliveryLabel =
-    effectiveDeliveryType === "DOMICILE" ? "توصيل للمنزل" : "توصيل للمكتب (Stop Desk)";
+  const deliveryLabel = effectiveDeliveryType === "DOMICILE" ? "توصيل للمنزل" : "توصيل للمكتب (Stop Desk)";
   const wilayaFull = `${wilaya.code} - ${wilaya.nameAr} — ${communeName}`;
   const attributionSource = (params.mapping.lead_source_label || "tiktok_ads").trim() || "tiktok_ads";
   const utmCampaign = (params.lead.campaignName || params.lead.campaignId || "").trim() || null;
@@ -1527,12 +1499,7 @@ export interface ProcessTikTokLeadResult {
   telegramNotificationPromise?: Promise<TikTokTelegramNotifyResult>;
 }
 
-async function incrementFormImportedCounter(
-  db: any,
-  storeId: string,
-  formId: string,
-  nowIso: string,
-): Promise<void> {
+async function incrementFormImportedCounter(db: any, storeId: string, formId: string, nowIso: string): Promise<void> {
   try {
     const { data: formRow } = await db
       .from("tiktok_forms")
@@ -1564,9 +1531,7 @@ async function incrementFormImportedCounter(
  * 4. Preserves invalid / unmapped / lead-only / failed leads cleanly (never silently discarded).
  * 5. Calls createPendingOrderFromTikTokLead() for valid mapped leads with auto_create_order=true.
  */
-export async function processNormalizedTikTokLead(
-  params: ProcessTikTokLeadParams,
-): Promise<ProcessTikTokLeadResult> {
+export async function processNormalizedTikTokLead(params: ProcessTikTokLeadParams): Promise<ProcessTikTokLeadResult> {
   const storeId = (params.storeId || DEFAULT_ORVA_STORE_ID).trim();
   const externalLeadId = (params.lead.externalLeadId || "").trim();
   const formId = (params.lead.formId || "").trim();
@@ -1635,10 +1600,7 @@ export async function processNormalizedTikTokLead(
   }
 
   const mapping = mappingRow as TikTokFormProductMappingRow | null;
-  const resolvedWilaya = resolveAlgerianWilaya(
-    normalized.wilayaRaw,
-    mapping?.default_wilaya_code ?? 16,
-  );
+  const resolvedWilaya = resolveAlgerianWilaya(normalized.wilayaRaw, mapping?.default_wilaya_code ?? 16);
   const resolvedCommune = resolveAlgerianCommune(normalized.communeRaw, resolvedWilaya.wilaya.code);
 
   const baseLeadRecord = {
@@ -1677,21 +1639,16 @@ export async function processNormalizedTikTokLead(
   ): Promise<void> => {
     const payload = {
       ...baseLeadRecord,
-      order_id: extra.orderId !== undefined ? extra.orderId : typedExisting?.order_id ?? null,
-      mapped_product_id:
-        extra.mappedProductId !== undefined ? extra.mappedProductId : baseLeadRecord.mapped_product_id,
+      order_id: extra.orderId !== undefined ? extra.orderId : (typedExisting?.order_id ?? null),
+      mapped_product_id: extra.mappedProductId !== undefined ? extra.mappedProductId : baseLeadRecord.mapped_product_id,
       mapped_product_name:
-        extra.mappedProductName !== undefined
-          ? extra.mappedProductName
-          : baseLeadRecord.mapped_product_name,
+        extra.mappedProductName !== undefined ? extra.mappedProductName : baseLeadRecord.mapped_product_name,
       sync_status: syncStatus,
       retry_count: extra.retryCount ?? typedExisting?.retry_count ?? 0,
       error_message: extra.errorMessage ?? null,
     };
 
-    const { error: upsertErr } = await db
-      .from("tiktok_leads")
-      .upsert(payload, { onConflict: "external_lead_id" });
+    const { error: upsertErr } = await db.from("tiktok_leads").upsert(payload, { onConflict: "external_lead_id" });
 
     if (upsertErr) {
       throw new TikTokApiError({
@@ -1782,8 +1739,7 @@ export async function processNormalizedTikTokLead(
       telegramNotificationPromise: orderResult.telegramNotificationPromise,
     };
   } catch (orderErr) {
-    const safeMsg =
-      orderErr instanceof Error ? orderErr.message : "Failed to create pending order from TikTok lead.";
+    const safeMsg = orderErr instanceof Error ? orderErr.message : "Failed to create pending order from TikTok lead.";
     await persistLeadState("order_creation_failed", {
       retryCount: (typedExisting?.retry_count ?? 0) + 1,
       errorMessage: safeMsg,

@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { CheckCircle2, Lightbulb, Loader2, Send } from "lucide-react";
 
-import { ALGERIA_58_WILAYAS } from "@/lib/types/checkout";
+import { ALGERIA_69_WILAYAS } from "@/lib/types/checkout";
 
 const inputCls =
   "w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 placeholder-slate-400 outline-hidden transition focus:border-amber-500 focus:bg-white";
@@ -16,8 +16,9 @@ export function ProductRequestForm() {
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }));
+  const set =
+    (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,8 +50,8 @@ export function ProductRequestForm() {
           </span>
           <h2 className="font-black text-2xl leading-snug sm:text-3xl">ما لقيتش واش تحوس عليه؟</h2>
           <p className="text-slate-300 text-sm leading-relaxed">
-            قولنا على المنتج أو الأداة اللي تحب نوفروها في المتجر. نقراو كل الطلبات ونزيدو المنتجات الأكثر طلباً،
-            ونتصلو بيك كي يتوفر.
+            قولنا على المنتج أو الأداة اللي تحب نوفروها في المتجر. نقراو كل الطلبات ونزيدو المنتجات الأكثر طلباً، ونتصلو
+            بيك كي يتوفر.
           </p>
         </div>
 
@@ -84,7 +85,14 @@ export function ProductRequestForm() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">الاسم *</span>
-                  <input name="customerName" className={inputCls} value={form.customerName} onChange={set("customerName")} placeholder="اسمك" required />
+                  <input
+                    name="customerName"
+                    className={inputCls}
+                    value={form.customerName}
+                    onChange={set("customerName")}
+                    placeholder="اسمك"
+                    required
+                  />
                 </label>
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">رقم الهاتف (اختياري)</span>
@@ -113,9 +121,14 @@ export function ProductRequestForm() {
                 </label>
                 <label className="space-y-1.5">
                   <span className="font-bold text-slate-800 text-sm">الولاية</span>
-                  <select name="wilaya" className={`${inputCls} cursor-pointer`} value={form.wilaya} onChange={set("wilaya")}>
+                  <select
+                    name="wilaya"
+                    className={`${inputCls} cursor-pointer`}
+                    value={form.wilaya}
+                    onChange={set("wilaya")}
+                  >
                     <option value="">اختر الولاية</option>
-                    {ALGERIA_58_WILAYAS.map((w) => (
+                    {ALGERIA_69_WILAYAS.map((w) => (
                       <option key={w.code} value={`${w.code} - ${w.nameAr}`}>
                         {String(w.code).padStart(2, "0")} - {w.nameAr}
                       </option>

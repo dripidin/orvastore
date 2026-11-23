@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+
 import {
-  Bot,
   BarChart3,
+  Bot,
   CheckCircle2,
   Loader2,
   MapPin,
@@ -19,13 +20,7 @@ import {
 import { sendAiChatMessageFallbackAction } from "@/app/actions/ai-agent";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CampaignProfitabilityRow } from "@/lib/analytics/campaign-profitability";
@@ -60,6 +55,12 @@ interface WilayaStatRow {
 
 const MARKETING_CONSULT_PROMPTS = [
   {
+    id: "executive_summary",
+    label: "📋 الملخص التنفيذي الأسبوعي (last_7d)",
+    prompt:
+      "اعرض الملخص التنفيذي الأسبوعي لحملات Meta Ads وفق قالب Meta Ads Expert: صافي الإنفاق، المبيعات المحصلة، CPA، CPD، ROAS، وتكلفة المرتجعات الحقيقية (tarif_retour) مع أبرز التوصيات (يتطلب تأكيدك قبل أي تعديل للميزانية).",
+  },
+  {
     id: "budget_decisions",
     label: "🎯 قرارات الميزانية (Scale vs Pause)",
     prompt:
@@ -67,21 +68,20 @@ const MARKETING_CONSULT_PROMPTS = [
   },
   {
     id: "cpa_spike",
-    label: "📈 تشخيص تكلفة الطلب (CPA) وتحسين الإعلانات",
+    label: "📈 تشخيص ارتفاع CPA (Spike Investigation)",
     prompt:
-      "حلّل متوسط تكلفة الطلب (CPA) وتكلفة الطلب المسلّم (CPD) مقارنة بهامش ربح كل منتج (Break-Even CPA)، واقترح خطة عملية لخفض تكلفة الإعلان ورفع نسبة التحويل في صفحات الهبوط.",
+      "تحقق من وجود ارتفاع غير طبيعي في تكلفة الطلب (CPA Spike Investigation) وقارن CPA وCPD بحد الأمان Break-Even CPA لكل منتج (بما يشمل تسعيرة الإرجاع في الولايات)، وحدد ما إذا كانت المشكلة في السعر أم الاستهداف أم الإلغاء.",
   },
   {
     id: "wilaya_targeting",
-    label: "🗺️ أفضل الولايات للاستهداف في Meta Ads",
+    label: "🗺️ أفضل الولايات للاستهداف في Meta Ads (69 ولاية)",
     prompt:
-      "بناءً على إحصائيات الولايات ونسب التسليم والمرتجعات في المتجر، ما هي أفضل الولايات الجزائرية التي يجب تركيز ميزانية إعلانات Meta Ads عليها، وأي ولايات تحتاج تشديد التأكيد الهاتفي لتقليل خسائر المرتجعات؟",
+      "بناءً على إحصائيات الولايات ونسب التسليم والمرتجعات وتكلفة الإرجاع الحقيقية في المتجر، ما هي أفضل الولايات الجزائرية التي يجب تركيز ميزانية إعلانات Meta Ads عليها؟",
   },
   {
     id: "bundle_strategy",
-    label: "💡 استراتيجية الباقات وتعظيم صافي الربح",
-    prompt:
-      "اقترح خطة تسويقية لزيادة متوسط سلة الشراء وصافي الربح للباقات الحالية في المتجر بناءً على أسعار البيع، تكلفة الشراء، وتكلفة التسويق لكل طلب.",
+    label: "💡 استراتيجية الباقات والربط المتعدد",
+    prompt: "اقترح خطة تسويقية للربط المتعدد بين المنتجات والحملات في المتجر لزيادة متوسط سلة الشراء وصافي الربح.",
   },
 ] as const;
 
@@ -117,8 +117,7 @@ export function AiMarketingAdvisorDialog({
       const totalOrders = campaigns.reduce((acc, c) => acc + c.totalOrders, 0);
       const overallRoas = totals.adSpend > 0 ? (totals.revenue / totals.adSpend).toFixed(2) : "—";
       const overallCpa = totals.adSpend > 0 && totalOrders > 0 ? Math.round(totals.adSpend / totalOrders) : 0;
-      const overallCpd =
-        totals.adSpend > 0 && totals.delivered > 0 ? Math.round(totals.adSpend / totals.delivered) : 0;
+      const overallCpd = totals.adSpend > 0 && totals.delivered > 0 ? Math.round(totals.adSpend / totals.delivered) : 0;
       const outcomes = totals.delivered + totals.returned;
       const deliveryRate = outcomes > 0 ? Math.round((totals.delivered / outcomes) * 100) : 0;
 
@@ -127,7 +126,10 @@ export function AiMarketingAdvisorDialog({
 
       const prodLines = products.slice(0, 4).map((p) => {
         const margin = computeUnitMargin(p.sellingPrice, p.purchaseCost);
-        const cpa = p.metaAdsLink?.enabled && p.metaAdsLink.computedCpaDzd > 0 ? p.metaAdsLink.computedCpaDzd : p.marketingCostPerOrder || 850;
+        const cpa =
+          p.metaAdsLink?.enabled && p.metaAdsLink.computedCpaDzd > 0
+            ? p.metaAdsLink.computedCpaDzd
+            : p.marketingCostPerOrder || 850;
         const profit = computeEstimatedOrderProfit(p.sellingPrice, p.purchaseCost, cpa, 1);
         const breakEven = Math.max(0, margin - 200);
         return `• ${p.title}: سعر البيع ${formatDzd(p.sellingPrice)} | هامش القطعة ${formatDzd(margin)} | تكلفة الإعلان الحالية ${formatDzd(cpa)} | الحد الأقصى الآمن لـ CPA (Break-Even): ${formatDzd(breakEven)} | صافي ربح الطلب: ${formatDzd(profit)}`;
@@ -152,7 +154,9 @@ export function AiMarketingAdvisorDialog({
           : `• جميع الحملات المسجلة ضمن نطاق الأمان؛ حافظ على نسبة تسليم أعلى من 70% لتعظيم العائد.`,
         ``,
         `3️⃣ **حدود الأمان المالية للمنتجات (Break-Even CPA)**:`,
-        ...(prodLines.length > 0 ? prodLines : ["• أضف تكلفة الشراء وتكلفة التسويق للمنتجات لحساب حدود الأمان تلقائياً."]),
+        ...(prodLines.length > 0
+          ? prodLines
+          : ["• أضف تكلفة الشراء وتكلفة التسويق للمنتجات لحساب حدود الأمان تلقائياً."]),
       ].join("\n");
     },
     [campaigns, products, totals],
@@ -255,12 +259,16 @@ export function AiMarketingAdvisorDialog({
               <div>
                 <DialogTitle className="flex items-center gap-2 font-bold text-base">
                   <span>مستشار التسويق الذكي وخبير Meta Ads</span>
-                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+                  >
                     Meta Ads Expert Skill
                   </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs">
-                  يحلل أرقام الطلبيات الحية، تكاليف الإعلانات، هوامش المنتجات، ونسب تسليم Redex لتقديم توصيات تسويقية دقيقة.
+                  يحلل أرقام الطلبيات الحية، تكاليف الإعلانات، هوامش المنتجات، ونسب تسليم Redex لتقديم توصيات تسويقية
+                  دقيقة.
                 </DialogDescription>
               </div>
             </div>
@@ -283,7 +291,9 @@ export function AiMarketingAdvisorDialog({
             <div className="rounded-lg border bg-background/80 p-2.5">
               <span className="block text-[10px] text-muted-foreground">الإيراد المحصّل الفعلي</span>
               <span className="font-bold font-mono text-sm tabular-nums">{formatDzd(totals.revenue)}</span>
-              <span className="block text-[10px] text-muted-foreground">{totals.delivered} مسلّم / {totals.returned} مرتجع</span>
+              <span className="block text-[10px] text-muted-foreground">
+                {totals.delivered} مسلّم / {totals.returned} مرتجع
+              </span>
             </div>
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
               <span className="block text-[10px] text-muted-foreground">صافي الربح بعد الإعلانات</span>
@@ -379,7 +389,11 @@ export function AiMarketingAdvisorDialog({
                   disabled={isConsulting || !customQuestion.trim()}
                   className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  {isConsulting ? <Loader2 className="size-3.5 animate-spin" /> : <SendHorizontal className="size-3.5" />}
+                  {isConsulting ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <SendHorizontal className="size-3.5" />
+                  )}
                   <span>استشارة</span>
                 </Button>
               </form>
@@ -388,7 +402,9 @@ export function AiMarketingAdvisorDialog({
               {isConsulting && (
                 <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-xs">
                   <Loader2 className="size-4 animate-spin text-emerald-600" />
-                  <span>يقوم الوكيل الذكي بتحليل أرقام الحملات والمنتجات ونسب التسليم لإعداد الاستشارة التسويقية...</span>
+                  <span>
+                    يقوم الوكيل الذكي بتحليل أرقام الحملات والمنتجات ونسب التسليم لإعداد الاستشارة التسويقية...
+                  </span>
                 </div>
               )}
 
@@ -402,13 +418,15 @@ export function AiMarketingAdvisorDialog({
                         <span>{item.question}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                        {item.model && <Badge variant="secondary" className="text-[10px]">{item.model}</Badge>}
+                        {item.model && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {item.model}
+                          </Badge>
+                        )}
                         <span>{item.timestamp}</span>
                       </div>
                     </div>
-                    <div className="whitespace-pre-wrap leading-relaxed text-foreground text-xs">
-                      {item.answer}
-                    </div>
+                    <div className="whitespace-pre-wrap leading-relaxed text-foreground text-xs">{item.answer}</div>
                   </div>
                 ))}
               </div>
@@ -420,7 +438,9 @@ export function AiMarketingAdvisorDialog({
               <div className="rounded-lg border bg-muted/30 p-3 text-xs">
                 <strong>كيف يقرأ المستشار جدول حدود الأمان (Break-Even CPA)؟</strong>
                 <p className="mt-1 text-muted-foreground">
-                  الحد الأقصى الآمن لتكلفة الإعلان للطلب (Break-Even CPA) هو هامش ربح القطعة مطروحاً منه احتياطي المرتجعات. طالما أن تكلفة التسويق الفعلية للطلب أقل من هذا الحد، فالحملة تحقق ربحاً صافياً ويمكن توسيع ميزانيتها (Scale).
+                  الحد الأقصى الآمن لتكلفة الإعلان للطلب (Break-Even CPA) هو هامش ربح القطعة مطروحاً منه احتياطي
+                  المرتجعات. طالما أن تكلفة التسويق الفعلية للطلب أقل من هذا الحد، فالحملة تحقق ربحاً صافياً ويمكن توسيع
+                  ميزانيتها (Scale).
                 </p>
               </div>
               <div className="overflow-x-auto rounded-lg border">
@@ -444,12 +464,7 @@ export function AiMarketingAdvisorDialog({
                         prod.metaAdsLink?.enabled && prod.metaAdsLink.computedCpaDzd > 0
                           ? prod.metaAdsLink.computedCpaDzd
                           : prod.marketingCostPerOrder || 850;
-                      const netOrderProfit = computeEstimatedOrderProfit(
-                        prod.sellingPrice,
-                        prod.purchaseCost,
-                        cpa,
-                        1,
-                      );
+                      const netOrderProfit = computeEstimatedOrderProfit(prod.sellingPrice, prod.purchaseCost, cpa, 1);
                       const breakEvenCpa = Math.max(0, unitMargin - 200);
                       const isHealthy = cpa <= breakEvenCpa && netOrderProfit > 0;
 
@@ -464,7 +479,9 @@ export function AiMarketingAdvisorDialog({
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-xs">{formatDzd(prod.sellingPrice)}</TableCell>
-                          <TableCell className="font-mono text-xs text-amber-600">{formatDzd(prod.purchaseCost)}</TableCell>
+                          <TableCell className="font-mono text-xs text-amber-600">
+                            {formatDzd(prod.purchaseCost)}
+                          </TableCell>
                           <TableCell className="font-mono font-semibold text-xs">{formatDzd(unitMargin)}</TableCell>
                           <TableCell className="font-mono font-bold text-blue-600 text-xs">{formatDzd(cpa)}</TableCell>
                           <TableCell className="font-mono text-xs">{formatDzd(breakEvenCpa)}</TableCell>
@@ -531,15 +548,24 @@ export function AiMarketingAdvisorDialog({
                           <TableCell className="text-center font-mono text-xs">{w.deliveryRatePct}%</TableCell>
                           <TableCell className="text-center">
                             {w.recommendation === "SCALE" ? (
-                              <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-700">
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-500/40 bg-emerald-500/10 text-[10px] text-emerald-700"
+                              >
                                 ركّز الاستهداف (تسليم ممتاز)
                               </Badge>
                             ) : w.recommendation === "HOLD" ? (
-                              <Badge variant="outline" className="border-blue-500/40 bg-blue-500/10 text-[10px] text-blue-700">
+                              <Badge
+                                variant="outline"
+                                className="border-blue-500/40 bg-blue-500/10 text-[10px] text-blue-700"
+                              >
                                 استهداف مستقر (Hold)
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700">
+                              <Badge
+                                variant="outline"
+                                className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700"
+                              >
                                 شدّد التأكيد الهاتفي قبل الشحن
                               </Badge>
                             )}

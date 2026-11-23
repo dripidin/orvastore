@@ -1,41 +1,41 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
 import Image from "next/image";
 import Link from "next/link";
+
 import {
-  Package,
-  Plus,
-  Search,
-  Filter,
   AlertTriangle,
   Archive,
-  Trash2,
-  Edit,
-  DollarSign,
-  TrendingUp,
-  Image as ImageIcon,
-  CheckCircle2,
-  RefreshCw,
   ArrowUpDown,
-  MoveUp,
-  MoveDown,
-  Star,
+  CheckCircle2,
+  DollarSign,
+  Edit,
+  Filter,
+  FolderTree,
+  Image as ImageIcon,
   Layers,
   LayoutTemplate,
-  MapPin,
-  FolderTree,
-  Megaphone,
   Link2,
+  MapPin,
+  Megaphone,
+  MoveDown,
+  MoveUp,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Star,
+  Trash2,
+  TrendingUp,
 } from "lucide-react";
 
 import { PublishToStoreButton } from "@/app/(main)/dashboard/_components/publish-to-store-dialog";
-import { ProductMetaAdLinkDialog } from "./_components/product-meta-ad-link-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -45,34 +45,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import type { CategoryRecord } from "@/lib/categories/types";
+import { prepareImageForUpload } from "@/lib/media/client-image-compress";
+import { orvaFetch } from "@/lib/orva-api";
+import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import type {
-  Product,
   InventoryRecord,
-  ProductStatus,
+  Product,
   ProductAnalytics,
   ProductMetaAdLink,
+  ProductStatus,
 } from "@/lib/repository/product-types";
-import {
-  matchOrderToProduct,
-  computeUnitMargin,
-  computeEstimatedOrderProfit,
-} from "@/lib/repository/product-types";
-import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
-import { prepareImageForUpload } from "@/lib/media/client-image-compress";
-import { MediaPickerDialog } from "@/components/media/media-picker-dialog";
-import type { CategoryRecord } from "@/lib/categories/types";
-import { orvaFetch } from "@/lib/orva-api";
+import { computeEstimatedOrderProfit, computeUnitMargin, matchOrderToProduct } from "@/lib/repository/product-types";
 import { useOrvaOrders } from "@/lib/use-orva-orders";
+
+import { ProductMetaAdLinkDialog } from "./_components/product-meta-ad-link-dialog";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
 
@@ -85,7 +76,9 @@ export default function ProductsManagementPage() {
   const [inventory, setInventory] = useState<InventoryRecord[]>([]);
   const [analytics, setAnalytics] = useState<Map<string, ProductAnalytics>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
-  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(
+    null,
+  );
 
   // ── State: Form ───────────────────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -100,6 +93,7 @@ export default function ProductsManagementPage() {
   const [formPurchaseCost, setFormPurchaseCost] = useState<number | "">("");
   const [formMarketingCost, setFormMarketingCost] = useState<number | "">("");
   const [formMetaAdsLink, setFormMetaAdsLink] = useState<ProductMetaAdLink | null>(null);
+  const [formMetaAdsLinks, setFormMetaAdsLinks] = useState<ProductMetaAdLink[]>([]);
   const [isFormAdLinkDialogOpen, setIsFormAdLinkDialogOpen] = useState(false);
   const [quickAdLinkProduct, setQuickAdLinkProduct] = useState<Product | null>(null);
   const [formStockQuantity, setFormStockQuantity] = useState<number | "">("");
@@ -111,7 +105,11 @@ export default function ProductsManagementPage() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
-  const [mediaSettings, setMediaSettings] = useState<{ maxUploadSizeMb: number; webpCompressionEnabled: boolean; webpQuality: number }>({
+  const [mediaSettings, setMediaSettings] = useState<{
+    maxUploadSizeMb: number;
+    webpCompressionEnabled: boolean;
+    webpQuality: number;
+  }>({
     maxUploadSizeMb: 10,
     webpCompressionEnabled: true,
     webpQuality: 0.85,
@@ -260,6 +258,7 @@ export default function ProductsManagementPage() {
     setFormPurchaseCost("");
     setFormMarketingCost("");
     setFormMetaAdsLink(null);
+    setFormMetaAdsLinks([]);
     setFormStockQuantity("");
     setFormLowStockThreshold(5);
     setFormStatus("active");
@@ -281,6 +280,7 @@ export default function ProductsManagementPage() {
     setFormPurchaseCost(prod.purchaseCost);
     setFormMarketingCost(prod.marketingCostPerOrder);
     setFormMetaAdsLink(prod.metaAdsLink ?? null);
+    setFormMetaAdsLinks(prod.metaAdsLinks ?? (prod.metaAdsLink ? [prod.metaAdsLink] : []));
     setFormStockQuantity(prod.stockQuantity);
     setFormLowStockThreshold(prod.lowStockThreshold);
     setFormStatus(prod.status);
@@ -385,7 +385,11 @@ export default function ProductsManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ brief: aiBrief, images: formImages }),
       });
-      const result = await response.json() as { success?: boolean; error?: string; data?: { title: string; subtitle: string; description: string; highlights: string[] } };
+      const result = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        data?: { title: string; subtitle: string; description: string; highlights: string[] };
+      };
       if (!response.ok || !result.success || !result.data) throw new Error(result.error || "تعذر توليد بيانات المنتج.");
       setFormTitle(result.data.title);
       setFormSubtitle(result.data.subtitle);
@@ -394,7 +398,9 @@ export default function ProductsManagementPage() {
       setFeedbackMessage({ type: "success", text: "جهّز الوكيل الاسم والوصف والمميزات. راجعها وعدّلها قبل الحفظ." });
     } catch (error) {
       setFeedbackMessage({ type: "error", text: error instanceof Error ? error.message : "تعذر توليد بيانات المنتج." });
-    } finally { setIsGeneratingCopy(false); }
+    } finally {
+      setIsGeneratingCopy(false);
+    }
   };
 
   const moveImage = (index: number, direction: "up" | "down") => {
@@ -453,6 +459,7 @@ export default function ProductsManagementPage() {
           purchaseCost,
           marketingCostPerOrder: marketingCost,
           metaAdsLink: formMetaAdsLink,
+          metaAdsLinks: formMetaAdsLinks,
           stockQuantity,
           lowStockThreshold,
           status,
@@ -476,6 +483,7 @@ export default function ProductsManagementPage() {
           purchaseCost,
           marketingCostPerOrder: marketingCost,
           metaAdsLink: formMetaAdsLink,
+          metaAdsLinks: formMetaAdsLinks,
           stockQuantity,
           lowStockThreshold,
           status,
@@ -552,11 +560,7 @@ export default function ProductsManagementPage() {
     if (isNaN(change)) return;
 
     try {
-      await repo.adjustInventory(
-        stockDialogProduct.id,
-        change,
-        stockAdjustmentReason || "تعديل يدوي من الداشبورد"
-      );
+      await repo.adjustInventory(stockDialogProduct.id, change, stockAdjustmentReason || "تعديل يدوي من الداشبورد");
       setFeedbackMessage({
         type: "success",
         text: `تم تعديل مخزون "${stockDialogProduct.title}" بمقدار (${change > 0 ? `+${change}` : change}).`,
@@ -714,15 +718,29 @@ export default function ProductsManagementPage() {
       {feedbackMessage && (
         <Alert
           variant={feedbackMessage.type === "error" ? "destructive" : "default"}
-          className={feedbackMessage.type === "success" ? "border-emerald-500 text-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}
+          className={
+            feedbackMessage.type === "success"
+              ? "border-emerald-500 text-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20"
+              : ""
+          }
         >
-          {feedbackMessage.type === "success" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertTriangle className="h-4 w-4" />}
+          {feedbackMessage.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <AlertTriangle className="h-4 w-4" />
+          )}
           <AlertTitle>
-            {feedbackMessage.type === "success" ? "نجحت العملية" : feedbackMessage.type === "error" ? "تنبيه" : "معلومة"}
+            {feedbackMessage.type === "success"
+              ? "نجحت العملية"
+              : feedbackMessage.type === "error"
+                ? "تنبيه"
+                : "معلومة"}
           </AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{feedbackMessage.text}</span>
-            <Button variant="ghost" size="sm" onClick={() => setFeedbackMessage(null)}>إغلاق</Button>
+            <Button variant="ghost" size="sm" onClick={() => setFeedbackMessage(null)}>
+              إغلاق
+            </Button>
           </AlertDescription>
         </Alert>
       )}
@@ -741,7 +759,9 @@ export default function ProductsManagementPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
-            <span>{inventoryKpis.activeCount} نشط • {inventoryKpis.draftCount} مسودة • {inventoryKpis.archivedCount} مؤرشف</span>
+            <span>
+              {inventoryKpis.activeCount} نشط • {inventoryKpis.draftCount} مسودة • {inventoryKpis.archivedCount} مؤرشف
+            </span>
           </CardContent>
         </Card>
 
@@ -753,11 +773,14 @@ export default function ProductsManagementPage() {
               <Layers className="h-4 w-4 text-emerald-500" />
             </CardDescription>
             <CardTitle className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 dark:text-emerald-400">
-              {inventoryKpis.totalPhysicalUnits} <span className="text-xs font-normal text-muted-foreground">وحدة مادية</span>
+              {inventoryKpis.totalPhysicalUnits}{" "}
+              <span className="text-xs font-normal text-muted-foreground">وحدة مادية</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
-            <span>{inventoryKpis.totalAvailableUnits} متوفرة • {inventoryKpis.totalReservedUnits} محجوزة للطلبات</span>
+            <span>
+              {inventoryKpis.totalAvailableUnits} متوفرة • {inventoryKpis.totalReservedUnits} محجوزة للطلبات
+            </span>
           </CardContent>
         </Card>
 
@@ -768,7 +791,9 @@ export default function ProductsManagementPage() {
               <span>تنبيهات نقص المخزون</span>
               <AlertTriangle className="h-4 w-4 text-amber-500" />
             </CardDescription>
-            <CardTitle className={`text-2xl font-black tabular-nums tracking-tight ${inventoryKpis.lowStockCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+            <CardTitle
+              className={`text-2xl font-black tabular-nums tracking-tight ${inventoryKpis.lowStockCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
+            >
               {inventoryKpis.lowStockCount} <span className="text-xs font-normal text-muted-foreground">تنبيه</span>
             </CardTitle>
           </CardHeader>
@@ -785,7 +810,8 @@ export default function ProductsManagementPage() {
               <TrendingUp className="h-4 w-4 text-blue-500" />
             </CardDescription>
             <CardTitle className="text-2xl font-black tabular-nums tracking-tight text-blue-600 dark:text-blue-400">
-              {new Intl.NumberFormat("fr-DZ").format(inventoryKpis.avgMargin)} <span className="text-xs font-normal text-muted-foreground">د.ج / وحدة</span>
+              {new Intl.NumberFormat("fr-DZ").format(inventoryKpis.avgMargin)}{" "}
+              <span className="text-xs font-normal text-muted-foreground">د.ج / وحدة</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
@@ -804,7 +830,8 @@ export default function ProductsManagementPage() {
             <div>
               <div className="text-sm font-bold">إدارة التصنيفات ومخطط الذكاء الاصطناعي</div>
               <div className="text-xs text-muted-foreground">
-                أصبح للتصنيفات صفحة مخصصة متكاملة ({categories.length} تصنيف) لاختيار الأيقونات والربط الجماعي وتنظيم المتجر عبر الذكاء الاصطناعي.
+                أصبح للتصنيفات صفحة مخصصة متكاملة ({categories.length} تصنيف) لاختيار الأيقونات والربط الجماعي وتنظيم
+                المتجر عبر الذكاء الاصطناعي.
               </div>
             </div>
           </div>
@@ -827,7 +854,8 @@ export default function ProductsManagementPage() {
                 {editingId ? `تعديل المنتج: ${formTitle || editingId}` : "إضافة منتج جديد للكتالوج"}
               </CardTitle>
               <CardDescription>
-                تحديث صور المنتج، والتسعير، والتكاليف السرية الداخلية، وحالة الإتاحة في المخزن — بنفس حقول صفحة الباقة الحية.
+                تحديث صور المنتج، والتسعير، والتكاليف السرية الداخلية، وحالة الإتاحة في المخزن — بنفس حقول صفحة الباقة
+                الحية.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -836,12 +864,7 @@ export default function ProductsManagementPage() {
                   وضع التعديل النشط
                 </Badge>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsFormOpen((prev) => !prev)}
-                className="text-xs"
-              >
+              <Button variant="outline" size="sm" onClick={() => setIsFormOpen((prev) => !prev)} className="text-xs">
                 {isFormOpen ? "إخفاء النموذج" : "إظهار النموذج"}
               </Button>
             </div>
@@ -850,482 +873,555 @@ export default function ProductsManagementPage() {
 
         {isFormOpen && (
           <CardContent className="pt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ── Column 1: Product Images ─────────────────────────────────────── */}
-            <div className="lg:col-span-5 space-y-4 border-l pl-0 lg:pl-6">
-              <div>
-                <Label className="text-sm font-semibold flex items-center gap-2">
-                  <ImageIcon className="h-4 w-4 text-primary" />
-                  صور المنتج (Hostinger Media)
-                </Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  مقاسات غير مقيدة · الحد الأقصى {mediaSettings.maxUploadSizeMb} MB · {mediaSettings.webpCompressionEnabled ? "ضغط WebP مفعّل" : "الصيغة الأصلية"}. الصورة الأولى تُعتمد كغلاف رئيسي.
-                </p>
-              </div>
-
-              {/* Drag & Drop Area */}
-              <div
-                className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition hover:bg-muted/30 focus-within:ring-2 focus-within:ring-primary"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleImageFiles(e.dataTransfer.files);
-                }}
-              >
-                <input
-                  type="file"
-                  id="imageUploadInput"
-                  multiple
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                  className="hidden"
-                  onChange={(e) => handleImageFiles(e.target.files)}
-                />
-                <label htmlFor="imageUploadInput" className="cursor-pointer space-y-2 block">
-                  <div className="mx-auto size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    {isUploadingImage ? <RefreshCw className="h-6 w-6 animate-spin" /> : <ImageIcon className="h-6 w-6" />}
-                  </div>
-                  <div className="text-sm font-medium">
-                    {isUploadingImage ? "جارٍ الرفع إلى media.orva-store.com..." : "اسحب الصور وأفلتها هنا، أو اضغط للاختيار"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    رفع مباشر إلى Hostinger (باندويث غير محدود · 0 استهلاك من Supabase)
-                  </div>
-                </label>
-              </div>
-
-              {/* Library Picker + Direct URL Paste */}
-              <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setIsMediaPickerOpen(true)}
-                    className="gap-1.5 text-xs"
-                  >
-                    <Layers className="h-3.5 w-3.5 text-primary" />
-                    اختيار من مكتبة الوسائط
-                  </Button>
-                  <Link href="/dashboard/media" className="text-[11px] text-primary hover:underline">
-                    إدارة المكتبة وتخصيص الحجم ←
-                  </Link>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <Input
-                    type="url"
-                    dir="ltr"
-                    value={imageUrlInput}
-                    onChange={(e) => setImageUrlInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddImageUrl();
-                      }
-                    }}
-                    placeholder="https://media.orva-store.com/products/image.webp"
-                    className="h-8 flex-1 font-mono text-xs"
-                  />
-                  <Button type="button" size="sm" variant="secondary" onClick={handleAddImageUrl} className="shrink-0 text-xs h-8">
-                    إضافة رابط
-                  </Button>
-                </div>
-              </div>
-
-              <MediaPickerDialog
-                open={isMediaPickerOpen}
-                onOpenChange={setIsMediaPickerOpen}
-                multiple
-                defaultFolder="products"
-                onSelect={(urls) => {
-                  setFormImages((prev) => {
-                    const set = new Set(prev);
-                    for (const u of urls) set.add(u);
-                    return Array.from(set);
-                  });
-                }}
-              />
-
-              {/* Uploaded Images Preview & Reordering */}
-              {formImages.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    الصور المختارة ({formImages.length}) — الغلاف في البداية:
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {formImages.map((imgSrc, idx) => (
-                      <div
-                        key={idx}
-                        className={`relative group rounded-lg border overflow-hidden bg-background p-1 flex flex-col gap-1 ${
-                          idx === 0 ? "ring-2 ring-primary" : ""
-                        }`}
-                      >
-                        <div className="relative aspect-square w-full rounded overflow-hidden bg-muted/50">
-                          <Image
-                            src={imgSrc}
-                            alt={`Preview ${idx + 1}`}
-                            fill
-                            className="object-cover"
-                            unoptimized={imgSrc.startsWith("data:")}
-                          />
-                          {idx === 0 && (
-                            <Badge className="absolute top-1 right-1 text-[10px] px-1.5 py-0 bg-primary font-bold shadow">
-                              الغلاف
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex items-center justify-between text-xs pt-1 px-1">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => moveImage(idx, "up")}
-                              disabled={idx === 0}
-                              className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
-                              title="تحريك للخلف"
-                            >
-                              <MoveUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveImage(idx, "down")}
-                              disabled={idx === formImages.length - 1}
-                              className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
-                              title="تحريك للأمام"
-                            >
-                              <MoveDown className="h-3 w-3" />
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            {idx !== 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setCoverImage(idx)}
-                                className="p-1 rounded hover:bg-muted text-amber-600"
-                                title="تعيين كصورة غلاف"
-                              >
-                                <Star className="h-3 w-3" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeImage(idx)}
-                              className="p-1 rounded hover:bg-destructive/10 text-destructive"
-                              title="حذف الصورة"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Column 2: Product Information ────────────────────────────────── */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="aiBrief" className="text-sm font-semibold">وصف مختصر لتوليد بيانات المنتج</Label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input id="aiBrief" value={aiBrief} onChange={(event) => setAiBrief(event.target.value)} placeholder="مثال: منفاخ هواء للسيارة يعمل على 12V مع طقم مفاتيح..." />
-                    <Button type="button" variant="outline" onClick={generateProductCopy} disabled={isGeneratingCopy || isUploadingImage} className="shrink-0 gap-2"><RefreshCw className={`size-4 ${isGeneratingCopy ? "animate-spin" : ""}`} />{isGeneratingCopy ? "الوكيل يكتب..." : "توليد بالوكيل"}</Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">يحلل الوكيل الصور المختارة مع الوصف المقترح. راجع النتيجة قبل حفظ المنتج.</p>
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="formTitle" className="text-sm font-semibold">اسم المنتج *</Label>
-                  <Input
-                    id="formTitle"
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    placeholder="مثال: Pack 1 Pro 4-in-1"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="formSubtitle" className="text-sm font-semibold">العنوان الفرعي / الوصف الموجز</Label>
-                  <Input
-                    id="formSubtitle"
-                    value={formSubtitle}
-                    onChange={(e) => setFormSubtitle(e.target.value)}
-                    placeholder="مثال: باك الخدمة والصيانة للسيارة والمنزل"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="formDescription" className="text-sm font-semibold">الوصف التفصيلي</Label>
-                  <Textarea
-                    id="formDescription"
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="مواصفات القطع والمحتويات والضمان..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="formSku" className="text-sm font-semibold">رمز المخزون (SKU) *</Label>
-                  <Input
-                    id="formSku"
-                    value={formSku}
-                    onChange={(e) => setFormSku(e.target.value)}
-                    placeholder="ORVA-P1-PRO"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="formStatus" className="text-sm font-semibold">حالة المنتج</Label>
-                  <select
-                    id="formStatus"
-                    value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as ProductStatus)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <option value="active">نشط (معروض للبيع)</option>
-                    <option value="draft">مسودة (غير معروض)</option>
-                    <option value="archived">مؤرشف</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="formCategory" className="text-sm font-semibold flex items-center justify-between">
-                    <span>التصنيف في المتجر (Category)</span>
-                    <Link href="/dashboard/categories" className="text-xs font-normal text-primary hover:underline">
-                      إدارة التصنيفات ←
-                    </Link>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* ── Column 1: Product Images ─────────────────────────────────────── */}
+              <div className="lg:col-span-5 space-y-4 border-l pl-0 lg:pl-6">
+                <div>
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4 text-primary" />
+                    صور المنتج (Hostinger Media)
                   </Label>
-                  <select
-                    id="formCategory"
-                    value={formCategoryId}
-                    onChange={(e) => setFormCategoryId(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <option value="">بدون تصنيف</option>
-                    {categories.map((cat) => {
-                      const parentName = cat.parent_id
-                        ? categories.find((p) => p.id === cat.parent_id)?.name
-                        : null;
-                      return (
-                        <option key={cat.id} value={cat.id}>
-                          {parentName ? `${parentName} / ` : ""}
-                          {cat.name}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    مقاسات غير مقيدة · الحد الأقصى {mediaSettings.maxUploadSizeMb} MB ·{" "}
+                    {mediaSettings.webpCompressionEnabled ? "ضغط WebP مفعّل" : "الصيغة الأصلية"}. الصورة الأولى تُعتمد
+                    كغلاف رئيسي.
+                  </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="formSellingPrice" className="text-sm font-semibold flex items-center justify-between">
-                    <span>سعر البيع للزبون (د.ج) *</span>
-                    <span className="text-xs text-muted-foreground">DZD</span>
-                  </Label>
-                  <Input
-                    id="formSellingPrice"
-                    type="number"
-                    min="0"
-                    value={formSellingPrice}
-                    onChange={(e) => setFormSellingPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="4950"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="formOriginalPrice" className="text-sm font-semibold flex items-center justify-between">
-                    <span>السعر قبل التخفيض (اختياري)</span>
-                    <span className="text-xs text-muted-foreground">يظهر مشطوباً في المتجر</span>
-                  </Label>
-                  <Input
-                    id="formOriginalPrice"
-                    type="number"
-                    min="0"
-                    value={formOriginalPrice}
-                    onChange={(e) => setFormOriginalPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="9750"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="formHighlights" className="text-sm font-semibold">
-                    مميزات المنتج في صفحة الهبوط (ميزة في كل سطر)
-                  </Label>
-                  <Textarea
-                    id="formHighlights"
-                    value={formHighlights}
-                    onChange={(e) => setFormHighlights(e.target.value)}
-                    placeholder={"منفاخ عجلات بعداد ضغط مدمج\nطقم مفاتيح 46 قطعة"}
-                    rows={4}
-                  />
-                </div>
-
-                <label
-                  htmlFor="formShowOutOfStock"
-                  className="md:col-span-2 flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3"
+                {/* Drag & Drop Area */}
+                <div
+                  className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition hover:bg-muted/30 focus-within:ring-2 focus-within:ring-primary"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleImageFiles(e.dataTransfer.files);
+                  }}
                 >
                   <input
-                    id="formShowOutOfStock"
-                    type="checkbox"
-                    checked={formShowOutOfStock}
-                    onChange={(e) => setFormShowOutOfStock(e.target.checked)}
-                    className="mt-0.5 size-4 accent-primary"
+                    type="file"
+                    id="imageUploadInput"
+                    multiple
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                    className="hidden"
+                    onChange={(e) => handleImageFiles(e.target.files)}
                   />
-                  <span>
-                    <span className="block text-sm font-semibold">إظهار رسالة "نفدت الكمية مؤقتاً" في المتجر</span>
-                    <span className="block text-xs text-muted-foreground">
-                      تظهر على بطاقة المنتج في كل صفحات المتجر وفي صفحة الهبوط. أنت من يقرر إظهارها أو إخفاءها.
-                    </span>
-                  </span>
-                </label>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="formPurchaseCost" className="text-sm font-semibold flex items-center justify-between">
-                    <span className="text-amber-600 dark:text-amber-400">سعر الشراء / التكلفة (د.ج) *</span>
-                    <span className="text-[11px] text-muted-foreground font-mono">سري - داخلي</span>
-                  </Label>
-                  <Input
-                    id="formPurchaseCost"
-                    type="number"
-                    min="0"
-                    value={formPurchaseCost}
-                    onChange={(e) => setFormPurchaseCost(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="2400"
-                  />
+                  <label htmlFor="imageUploadInput" className="cursor-pointer space-y-2 block">
+                    <div className="mx-auto size-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                      {isUploadingImage ? (
+                        <RefreshCw className="h-6 w-6 animate-spin" />
+                      ) : (
+                        <ImageIcon className="h-6 w-6" />
+                      )}
+                    </div>
+                    <div className="text-sm font-medium">
+                      {isUploadingImage
+                        ? "جارٍ الرفع إلى media.orva-store.com..."
+                        : "اسحب الصور وأفلتها هنا، أو اضغط للاختيار"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      رفع مباشر إلى Hostinger (باندويث غير محدود · 0 استهلاك من Supabase)
+                    </div>
+                  </label>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="formMarketingCost" className="text-sm font-semibold flex items-center justify-between gap-2">
-                    <span className="text-amber-600 dark:text-amber-400">تكلفة التسويق للطلب (د.ج) *</span>
-                    <button
+                {/* Library Picker + Direct URL Paste */}
+                <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Button
                       type="button"
-                      onClick={() => setIsFormAdLinkDialogOpen(true)}
-                      className="inline-flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-500/20 dark:text-blue-300 cursor-pointer"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsMediaPickerOpen(true)}
+                      className="gap-1.5 text-xs"
                     >
-                      <Megaphone className="size-3" />
-                      <span>{formMetaAdsLink?.enabled ? "تعديل ربط إعلان Meta" : "ربط بإعلان Meta (حساب تلقائي)"}</span>
-                    </button>
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="formMarketingCost"
-                      type="number"
-                      min="0"
-                      value={formMarketingCost}
-                      onChange={(e) => setFormMarketingCost(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="850"
-                      className="flex-1"
-                    />
+                      <Layers className="h-3.5 w-3.5 text-primary" />
+                      اختيار من مكتبة الوسائط
+                    </Button>
+                    <Link href="/dashboard/media" className="text-[11px] text-primary hover:underline">
+                      إدارة المكتبة وتخصيص الحجم ←
+                    </Link>
                   </div>
-                  {formMetaAdsLink?.enabled && (
-                    <div className="flex flex-wrap items-center justify-between gap-1 rounded-md border border-blue-500/25 bg-blue-500/5 px-2.5 py-1 text-[11px]">
-                      <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-medium">
-                        <Link2 className="size-3" />
-                        مربوط تلقائياً بـ: <strong>{formMetaAdsLink.campaignName || formMetaAdsLink.adName || "Meta Ad"}</strong>
-                      </span>
-                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                        CPA: {formMetaAdsLink.computedCpaDzd} د.ج
-                      </span>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Input
+                      type="url"
+                      dir="ltr"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddImageUrl();
+                        }
+                      }}
+                      placeholder="https://media.orva-store.com/products/image.webp"
+                      className="h-8 flex-1 font-mono text-xs"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleAddImageUrl}
+                      className="shrink-0 text-xs h-8"
+                    >
+                      إضافة رابط
+                    </Button>
+                  </div>
+                </div>
+
+                <MediaPickerDialog
+                  open={isMediaPickerOpen}
+                  onOpenChange={setIsMediaPickerOpen}
+                  multiple
+                  defaultFolder="products"
+                  onSelect={(urls) => {
+                    setFormImages((prev) => {
+                      const set = new Set(prev);
+                      for (const u of urls) set.add(u);
+                      return Array.from(set);
+                    });
+                  }}
+                />
+
+                {/* Uploaded Images Preview & Reordering */}
+                {formImages.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground">
+                      الصور المختارة ({formImages.length}) — الغلاف في البداية:
                     </div>
-                  )}
-                </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {formImages.map((imgSrc, idx) => (
+                        <div
+                          key={idx}
+                          className={`relative group rounded-lg border overflow-hidden bg-background p-1 flex flex-col gap-1 ${
+                            idx === 0 ? "ring-2 ring-primary" : ""
+                          }`}
+                        >
+                          <div className="relative aspect-square w-full rounded overflow-hidden bg-muted/50">
+                            <Image
+                              src={imgSrc}
+                              alt={`Preview ${idx + 1}`}
+                              fill
+                              className="object-cover"
+                              unoptimized={imgSrc.startsWith("data:")}
+                            />
+                            {idx === 0 && (
+                              <Badge className="absolute top-1 right-1 text-[10px] px-1.5 py-0 bg-primary font-bold shadow">
+                                الغلاف
+                              </Badge>
+                            )}
+                          </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="formStockQuantity" className="text-sm font-semibold">المخزون المتاح الأولي *</Label>
-                  <Input
-                    id="formStockQuantity"
-                    type="number"
-                    min="0"
-                    value={formStockQuantity}
-                    onChange={(e) => setFormStockQuantity(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="45"
-                  />
-                </div>
+                          {/* Controls */}
+                          <div className="flex items-center justify-between text-xs pt-1 px-1">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveImage(idx, "up")}
+                                disabled={idx === 0}
+                                className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
+                                title="تحريك للخلف"
+                              >
+                                <MoveUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveImage(idx, "down")}
+                                disabled={idx === formImages.length - 1}
+                                className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30"
+                                title="تحريك للأمام"
+                              >
+                                <MoveDown className="h-3 w-3" />
+                              </button>
+                            </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="formLowStockThreshold" className="text-sm font-semibold">حد تنبيه نقص المخزون</Label>
-                  <Input
-                    id="formLowStockThreshold"
-                    type="number"
-                    min="1"
-                    value={formLowStockThreshold}
-                    onChange={(e) => setFormLowStockThreshold(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="5"
-                  />
-                </div>
-
-                {/* Live Economics Preview Box */}
-                {formSellingPrice !== "" && formPurchaseCost !== "" && (
-                  <div className="md:col-span-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div>
-                      <div className="font-bold text-emerald-800 dark:text-emerald-300">
-                        التحليل المالي المباشر للمنتج:
-                      </div>
-                      <div className="text-muted-foreground text-[11px] mt-0.5 space-y-0.5">
-                        <div>
-                          • هامش القطعة الواحدة = سعر البيع ({Number(formSellingPrice)} د.ج) - سعر الشراء ({Number(formPurchaseCost)} د.ج) ={" "}
-                          <span className="font-bold text-foreground">
-                            {new Intl.NumberFormat("fr-DZ").format(computeUnitMargin(Number(formSellingPrice), Number(formPurchaseCost)))} د.ج
-                          </span>
+                            <div className="flex items-center gap-1">
+                              {idx !== 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCoverImage(idx)}
+                                  className="p-1 rounded hover:bg-muted text-amber-600"
+                                  title="تعيين كصورة غلاف"
+                                >
+                                  <Star className="h-3 w-3" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeImage(idx)}
+                                className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                                title="حذف الصورة"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          • ربح الطلب التقديري (لقطعة واحدة) = هامش القطعة - تكلفة التسويق للطلب ({Number(formMarketingCost) || 0} د.ج) ={" "}
-                          <span className="font-bold text-foreground">
-                            {new Intl.NumberFormat("fr-DZ").format(
-                              computeEstimatedOrderProfit(Number(formSellingPrice), Number(formPurchaseCost), Number(formMarketingCost) || 0, 1)
-                            )} د.ج
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[10px] text-muted-foreground">هامش القطعة (Unit Margin)</div>
-                      <div className="text-base font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400 font-mono">
-                        +{new Intl.NumberFormat("fr-DZ").format(computeUnitMargin(Number(formSellingPrice), Number(formPurchaseCost)))} د.ج
-                      </div>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
 
+              {/* ── Column 2: Product Information ────────────────────────────────── */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="aiBrief" className="text-sm font-semibold">
+                      وصف مختصر لتوليد بيانات المنتج
+                    </Label>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        id="aiBrief"
+                        value={aiBrief}
+                        onChange={(event) => setAiBrief(event.target.value)}
+                        placeholder="مثال: منفاخ هواء للسيارة يعمل على 12V مع طقم مفاتيح..."
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={generateProductCopy}
+                        disabled={isGeneratingCopy || isUploadingImage}
+                        className="shrink-0 gap-2"
+                      >
+                        <RefreshCw className={`size-4 ${isGeneratingCopy ? "animate-spin" : ""}`} />
+                        {isGeneratingCopy ? "الوكيل يكتب..." : "توليد بالوكيل"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      يحلل الوكيل الصور المختارة مع الوصف المقترح. راجع النتيجة قبل حفظ المنتج.
+                    </p>
+                  </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    resetForm();
-                    setIsFormOpen(false);
-                  }}
-                >
-                  إلغاء وإعادة تعيين
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => handleSaveProduct("draft")}
-                  disabled={isUploadingImage}
-                >
-                  حفظ كمسودة
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleSaveProduct()}
-                  disabled={isUploadingImage}
-                  className="gap-2"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {editingId ? "تحديث المنتج" : "حفظ ونشر المنتج"}
-                </Button>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="formTitle" className="text-sm font-semibold">
+                      اسم المنتج *
+                    </Label>
+                    <Input
+                      id="formTitle"
+                      value={formTitle}
+                      onChange={(e) => setFormTitle(e.target.value)}
+                      placeholder="مثال: Pack 1 Pro 4-in-1"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="formSubtitle" className="text-sm font-semibold">
+                      العنوان الفرعي / الوصف الموجز
+                    </Label>
+                    <Input
+                      id="formSubtitle"
+                      value={formSubtitle}
+                      onChange={(e) => setFormSubtitle(e.target.value)}
+                      placeholder="مثال: باك الخدمة والصيانة للسيارة والمنزل"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="formDescription" className="text-sm font-semibold">
+                      الوصف التفصيلي
+                    </Label>
+                    <Textarea
+                      id="formDescription"
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      placeholder="مواصفات القطع والمحتويات والضمان..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="formSku" className="text-sm font-semibold">
+                      رمز المخزون (SKU) *
+                    </Label>
+                    <Input
+                      id="formSku"
+                      value={formSku}
+                      onChange={(e) => setFormSku(e.target.value)}
+                      placeholder="ORVA-P1-PRO"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="formStatus" className="text-sm font-semibold">
+                      حالة المنتج
+                    </Label>
+                    <select
+                      id="formStatus"
+                      value={formStatus}
+                      onChange={(e) => setFormStatus(e.target.value as ProductStatus)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="active">نشط (معروض للبيع)</option>
+                      <option value="draft">مسودة (غير معروض)</option>
+                      <option value="archived">مؤرشف</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="formCategory" className="text-sm font-semibold flex items-center justify-between">
+                      <span>التصنيف في المتجر (Category)</span>
+                      <Link href="/dashboard/categories" className="text-xs font-normal text-primary hover:underline">
+                        إدارة التصنيفات ←
+                      </Link>
+                    </Label>
+                    <select
+                      id="formCategory"
+                      value={formCategoryId}
+                      onChange={(e) => setFormCategoryId(e.target.value)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">بدون تصنيف</option>
+                      {categories.map((cat) => {
+                        const parentName = cat.parent_id ? categories.find((p) => p.id === cat.parent_id)?.name : null;
+                        return (
+                          <option key={cat.id} value={cat.id}>
+                            {parentName ? `${parentName} / ` : ""}
+                            {cat.name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="formSellingPrice"
+                      className="text-sm font-semibold flex items-center justify-between"
+                    >
+                      <span>سعر البيع للزبون (د.ج) *</span>
+                      <span className="text-xs text-muted-foreground">DZD</span>
+                    </Label>
+                    <Input
+                      id="formSellingPrice"
+                      type="number"
+                      min="0"
+                      value={formSellingPrice}
+                      onChange={(e) => setFormSellingPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="4950"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="formOriginalPrice"
+                      className="text-sm font-semibold flex items-center justify-between"
+                    >
+                      <span>السعر قبل التخفيض (اختياري)</span>
+                      <span className="text-xs text-muted-foreground">يظهر مشطوباً في المتجر</span>
+                    </Label>
+                    <Input
+                      id="formOriginalPrice"
+                      type="number"
+                      min="0"
+                      value={formOriginalPrice}
+                      onChange={(e) => setFormOriginalPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="9750"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="formHighlights" className="text-sm font-semibold">
+                      مميزات المنتج في صفحة الهبوط (ميزة في كل سطر)
+                    </Label>
+                    <Textarea
+                      id="formHighlights"
+                      value={formHighlights}
+                      onChange={(e) => setFormHighlights(e.target.value)}
+                      placeholder={"منفاخ عجلات بعداد ضغط مدمج\nطقم مفاتيح 46 قطعة"}
+                      rows={4}
+                    />
+                  </div>
+
+                  <label
+                    htmlFor="formShowOutOfStock"
+                    className="md:col-span-2 flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3"
+                  >
+                    <input
+                      id="formShowOutOfStock"
+                      type="checkbox"
+                      checked={formShowOutOfStock}
+                      onChange={(e) => setFormShowOutOfStock(e.target.checked)}
+                      className="mt-0.5 size-4 accent-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold">إظهار رسالة "نفدت الكمية مؤقتاً" في المتجر</span>
+                      <span className="block text-xs text-muted-foreground">
+                        تظهر على بطاقة المنتج في كل صفحات المتجر وفي صفحة الهبوط. أنت من يقرر إظهارها أو إخفاءها.
+                      </span>
+                    </span>
+                  </label>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="formPurchaseCost"
+                      className="text-sm font-semibold flex items-center justify-between"
+                    >
+                      <span className="text-amber-600 dark:text-amber-400">سعر الشراء / التكلفة (د.ج) *</span>
+                      <span className="text-[11px] text-muted-foreground font-mono">سري - داخلي</span>
+                    </Label>
+                    <Input
+                      id="formPurchaseCost"
+                      type="number"
+                      min="0"
+                      value={formPurchaseCost}
+                      onChange={(e) => setFormPurchaseCost(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="2400"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="formMarketingCost"
+                      className="text-sm font-semibold flex items-center justify-between gap-2"
+                    >
+                      <span className="text-amber-600 dark:text-amber-400">تكلفة التسويق للطلب (د.ج) *</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsFormAdLinkDialogOpen(true)}
+                        className="inline-flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-500/20 dark:text-blue-300 cursor-pointer"
+                      >
+                        <Megaphone className="size-3" />
+                        <span>
+                          {formMetaAdsLink?.enabled ? "تعديل ربط إعلان Meta" : "ربط بإعلان Meta (حساب تلقائي)"}
+                        </span>
+                      </button>
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="formMarketingCost"
+                        type="number"
+                        min="0"
+                        value={formMarketingCost}
+                        onChange={(e) => setFormMarketingCost(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="850"
+                        className="flex-1"
+                      />
+                    </div>
+                    {formMetaAdsLink?.enabled && (
+                      <div className="flex flex-wrap items-center justify-between gap-1 rounded-md border border-blue-500/25 bg-blue-500/5 px-2.5 py-1 text-[11px]">
+                        <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-medium">
+                          <Link2 className="size-3" />
+                          مربوط تلقائياً بـ:{" "}
+                          <strong>{formMetaAdsLink.campaignName || formMetaAdsLink.adName || "Meta Ad"}</strong>
+                        </span>
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          CPA: {formMetaAdsLink.computedCpaDzd} د.ج
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="formStockQuantity" className="text-sm font-semibold">
+                      المخزون المتاح الأولي *
+                    </Label>
+                    <Input
+                      id="formStockQuantity"
+                      type="number"
+                      min="0"
+                      value={formStockQuantity}
+                      onChange={(e) => setFormStockQuantity(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="45"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="formLowStockThreshold" className="text-sm font-semibold">
+                      حد تنبيه نقص المخزون
+                    </Label>
+                    <Input
+                      id="formLowStockThreshold"
+                      type="number"
+                      min="1"
+                      value={formLowStockThreshold}
+                      onChange={(e) => setFormLowStockThreshold(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="5"
+                    />
+                  </div>
+
+                  {/* Live Economics Preview Box */}
+                  {formSellingPrice !== "" && formPurchaseCost !== "" && (
+                    <div className="md:col-span-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="font-bold text-emerald-800 dark:text-emerald-300">
+                          التحليل المالي المباشر للمنتج:
+                        </div>
+                        <div className="text-muted-foreground text-[11px] mt-0.5 space-y-0.5">
+                          <div>
+                            • هامش القطعة الواحدة = سعر البيع ({Number(formSellingPrice)} د.ج) - سعر الشراء (
+                            {Number(formPurchaseCost)} د.ج) ={" "}
+                            <span className="font-bold text-foreground">
+                              {new Intl.NumberFormat("fr-DZ").format(
+                                computeUnitMargin(Number(formSellingPrice), Number(formPurchaseCost)),
+                              )}{" "}
+                              د.ج
+                            </span>
+                          </div>
+                          <div>
+                            • ربح الطلب التقديري (لقطعة واحدة) = هامش القطعة - تكلفة التسويق للطلب (
+                            {Number(formMarketingCost) || 0} د.ج) ={" "}
+                            <span className="font-bold text-foreground">
+                              {new Intl.NumberFormat("fr-DZ").format(
+                                computeEstimatedOrderProfit(
+                                  Number(formSellingPrice),
+                                  Number(formPurchaseCost),
+                                  Number(formMarketingCost) || 0,
+                                  1,
+                                ),
+                              )}{" "}
+                              د.ج
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-muted-foreground">هامش القطعة (Unit Margin)</div>
+                        <div className="text-base font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400 font-mono">
+                          +
+                          {new Intl.NumberFormat("fr-DZ").format(
+                            computeUnitMargin(Number(formSellingPrice), Number(formPurchaseCost)),
+                          )}{" "}
+                          د.ج
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      resetForm();
+                      setIsFormOpen(false);
+                    }}
+                  >
+                    إلغاء وإعادة تعيين
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => handleSaveProduct("draft")}
+                    disabled={isUploadingImage}
+                  >
+                    حفظ كمسودة
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleSaveProduct()}
+                    disabled={isUploadingImage}
+                    className="gap-2"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {editingId ? "تحديث المنتج" : "حفظ ونشر المنتج"}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
         )}
       </Card>
 
@@ -1391,20 +1487,86 @@ export default function ProductsManagementPage() {
         <CardContent className="p-0">
           <div className="space-y-3 p-3 md:hidden">
             {paginatedProducts.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">لا توجد منتجات مطابقة لخيارات البحث أو الفلترة.</p>
-            ) : paginatedProducts.map((prod) => {
-              const inv = getInventoryForProduct(prod.id);
-              const reserved = inv?.reservedQuantity || 0;
-              const isLow = prod.stockQuantity <= prod.lowStockThreshold;
-              const coverImg = prod.images[0] || "/placeholder.svg";
-              return (
-                <article key={prod.id} className={`rounded-xl border p-3 ${isLow ? "border-amber-300 bg-amber-50/40" : "bg-card"}`}>
-                  <div className="flex gap-3"><div className="relative size-14 shrink-0 overflow-hidden rounded-lg border bg-muted"><Image src={coverImg} alt={prod.title} fill className="object-cover" unoptimized={coverImg.startsWith("data:")} /></div><div className="min-w-0 flex-1"><h3 className="truncate font-bold text-sm">{prod.title}</h3><p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{prod.sku}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="font-bold text-primary">{new Intl.NumberFormat("fr-DZ").format(prod.sellingPrice)} د.ج</span><Badge variant={prod.status === "active" ? "default" : "secondary"}>{prod.status === "active" ? "نشط" : prod.status === "draft" ? "مسودة" : "مؤرشف"}</Badge></div></div></div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">المتاح</span><b className={isLow ? "text-destructive" : ""}>{prod.stockQuantity}</b></div><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">المحجوز</span><b>{reserved}</b></div><div className="rounded-md bg-muted/50 p-2"><span className="block text-muted-foreground">الحالة</span><b>{isLow ? "نقص مخزون" : "مستقر"}</b></div></div>
-                  <div className="mt-3 grid grid-cols-3 gap-2"><Button size="sm" variant="outline" onClick={() => startEditProduct(prod)}>تعديل</Button><Button size="sm" variant="outline" onClick={() => { setPriceDialogProduct(prod); setNewPriceValue(prod.sellingPrice); }}>السعر</Button><Button size="sm" variant="outline" onClick={() => { setStockDialogProduct(prod); setStockAdjustmentChange(""); }}>المخزون</Button></div>
-                </article>
-              );
-            })}
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                لا توجد منتجات مطابقة لخيارات البحث أو الفلترة.
+              </p>
+            ) : (
+              paginatedProducts.map((prod) => {
+                const inv = getInventoryForProduct(prod.id);
+                const reserved = inv?.reservedQuantity || 0;
+                const isLow = prod.stockQuantity <= prod.lowStockThreshold;
+                const coverImg = prod.images[0] || "/placeholder.svg";
+                return (
+                  <article
+                    key={prod.id}
+                    className={`rounded-xl border p-3 ${isLow ? "border-amber-300 bg-amber-50/40" : "bg-card"}`}
+                  >
+                    <div className="flex gap-3">
+                      <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                        <Image
+                          src={coverImg}
+                          alt={prod.title}
+                          fill
+                          className="object-cover"
+                          unoptimized={coverImg.startsWith("data:")}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate font-bold text-sm">{prod.title}</h3>
+                        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{prod.sku}</p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="font-bold text-primary">
+                            {new Intl.NumberFormat("fr-DZ").format(prod.sellingPrice)} د.ج
+                          </span>
+                          <Badge variant={prod.status === "active" ? "default" : "secondary"}>
+                            {prod.status === "active" ? "نشط" : prod.status === "draft" ? "مسودة" : "مؤرشف"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <span className="block text-muted-foreground">المتاح</span>
+                        <b className={isLow ? "text-destructive" : ""}>{prod.stockQuantity}</b>
+                      </div>
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <span className="block text-muted-foreground">المحجوز</span>
+                        <b>{reserved}</b>
+                      </div>
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <span className="block text-muted-foreground">الحالة</span>
+                        <b>{isLow ? "نقص مخزون" : "مستقر"}</b>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <Button size="sm" variant="outline" onClick={() => startEditProduct(prod)}>
+                        تعديل
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPriceDialogProduct(prod);
+                          setNewPriceValue(prod.sellingPrice);
+                        }}
+                      >
+                        السعر
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setStockDialogProduct(prod);
+                          setStockAdjustmentChange("");
+                        }}
+                      >
+                        المخزون
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })
+            )}
           </div>
           <div className="hidden overflow-x-auto md:block">
             <Table>
@@ -1442,7 +1604,12 @@ export default function ProductsManagementPage() {
                     const totalPhysical = prod.stockQuantity + reserved;
                     const isLow = prod.stockQuantity <= prod.lowStockThreshold;
                     const unitMargin = computeUnitMargin(prod.sellingPrice, prod.purchaseCost);
-                    const orderProfit1x = computeEstimatedOrderProfit(prod.sellingPrice, prod.purchaseCost, prod.marketingCostPerOrder, 1);
+                    const orderProfit1x = computeEstimatedOrderProfit(
+                      prod.sellingPrice,
+                      prod.purchaseCost,
+                      prod.marketingCostPerOrder,
+                      1,
+                    );
                     const coverImg = prod.images[0] || "/placeholder.svg";
 
                     return (
@@ -1509,17 +1676,19 @@ export default function ProductsManagementPage() {
                               type="button"
                               onClick={() => setQuickAdLinkProduct(prod)}
                               className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans transition-colors cursor-pointer ${
-                                prod.metaAdsLink?.enabled
+                                (prod.metaAdsLinks?.length ?? 0) > 0 || prod.metaAdsLink?.enabled
                                   ? "border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-semibold"
                                   : "border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary"
                               }`}
-                              title="ربط المنتج بإعلان Meta Ads لحساب تكلفة التسويق تلقائياً"
+                              title="ربط المنتج بحملة أو عدة حملات Meta Ads لحساب تكلفة التسويق تلقائياً"
                             >
                               <Megaphone className="size-2.5" />
-                              <span className="truncate max-w-[115px]">
-                                {prod.metaAdsLink?.enabled
-                                  ? prod.metaAdsLink.campaignName || prod.metaAdsLink.adName || "مربوط بـ Meta"
-                                  : "ربط بإعلان Meta"}
+                              <span className="truncate max-w-[125px]">
+                                {(prod.metaAdsLinks?.filter((l) => l.enabled).length ?? 0) > 1
+                                  ? `${prod.metaAdsLinks!.filter((l) => l.enabled).length} حملات Meta`
+                                  : prod.metaAdsLink?.enabled
+                                    ? prod.metaAdsLink.campaignName || prod.metaAdsLink.adName || "مربوط بـ Meta"
+                                    : "ربط بإعلان Meta"}
                               </span>
                             </button>
                           </div>
@@ -1537,9 +1706,7 @@ export default function ProductsManagementPage() {
 
                         {/* Available Quantity */}
                         <TableCell className="text-center font-bold tabular-nums">
-                          <span className={isLow ? "text-destructive" : "text-foreground"}>
-                            {prod.stockQuantity}
-                          </span>
+                          <span className={isLow ? "text-destructive" : "text-foreground"}>{prod.stockQuantity}</span>
                         </TableCell>
 
                         {/* Reserved Quantity */}
@@ -1576,9 +1743,13 @@ export default function ProductsManagementPage() {
                           {prod.status === "active" ? (
                             <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px]">نشط</Badge>
                           ) : prod.status === "draft" ? (
-                            <Badge variant="secondary" className="text-[11px]">مسودة</Badge>
+                            <Badge variant="secondary" className="text-[11px]">
+                              مسودة
+                            </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-muted-foreground text-[11px]">مؤرشف</Badge>
+                            <Badge variant="outline" className="text-muted-foreground text-[11px]">
+                              مؤرشف
+                            </Badge>
                           )}
                         </TableCell>
 
@@ -1680,9 +1851,7 @@ export default function ProductsManagementPage() {
         <DialogContent dir="ltr">
           <DialogHeader>
             <DialogTitle>تعديل سعر البيع السريع</DialogTitle>
-            <DialogDescription>
-              تغيير سعر بيع المنتج {priceDialogProduct?.title} مباشرة في المتجر.
-            </DialogDescription>
+            <DialogDescription>تغيير سعر بيع المنتج {priceDialogProduct?.title} مباشرة في المتجر.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
@@ -1698,7 +1867,9 @@ export default function ProductsManagementPage() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPriceDialogProduct(null)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setPriceDialogProduct(null)}>
+              إلغاء
+            </Button>
             <Button onClick={handleQuickPriceChange}>حفظ السعر الجديد</Button>
           </DialogFooter>
         </DialogContent>
@@ -1716,14 +1887,19 @@ export default function ProductsManagementPage() {
 
           <div className="space-y-4 py-2 text-sm">
             <div className="p-3 rounded-lg bg-muted flex items-center justify-between text-xs">
-              <div>المخزون المتاح الحالي: <span className="font-bold">{stockDialogProduct?.stockQuantity}</span></div>
-              <div>المحجوز في طلبات: <span className="font-bold">{getInventoryForProduct(stockDialogProduct?.id || "")?.reservedQuantity || 0}</span></div>
+              <div>
+                المخزون المتاح الحالي: <span className="font-bold">{stockDialogProduct?.stockQuantity}</span>
+              </div>
+              <div>
+                المحجوز في طلبات:{" "}
+                <span className="font-bold">
+                  {getInventoryForProduct(stockDialogProduct?.id || "")?.reservedQuantity || 0}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="dialogStockChange">
-                مقدار التعديل (أدخل رقماً موجباً للزيادة أو سالباً للخصم)
-              </Label>
+              <Label htmlFor="dialogStockChange">مقدار التعديل (أدخل رقماً موجباً للزيادة أو سالباً للخصم)</Label>
               <Input
                 id="dialogStockChange"
                 type="number"
@@ -1751,7 +1927,9 @@ export default function ProductsManagementPage() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setStockDialogProduct(null)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setStockDialogProduct(null)}>
+              إلغاء
+            </Button>
             <Button onClick={handleStockAdjustment}>تأكيد تسوية المخزون</Button>
           </DialogFooter>
         </DialogContent>
@@ -1774,9 +1952,11 @@ export default function ProductsManagementPage() {
         }
         currentMarketingCostDzd={Number(formMarketingCost) || 850}
         currentLink={formMetaAdsLink}
+        currentLinks={formMetaAdsLinks}
         saveImmediately={false}
-        onApply={(link, computedCpaDzd) => {
+        onApply={(link, computedCpaDzd, _updatedProduct, allLinks) => {
           setFormMetaAdsLink(link);
+          if (allLinks) setFormMetaAdsLinks(allLinks);
           setFormMarketingCost(computedCpaDzd);
         }}
       />
@@ -1792,19 +1972,26 @@ export default function ProductsManagementPage() {
         defaultOrdersCount={quickAdLinkProduct ? Math.max(1, getProductOrderCount(quickAdLinkProduct)) : 10}
         currentMarketingCostDzd={quickAdLinkProduct?.marketingCostPerOrder || 850}
         currentLink={quickAdLinkProduct?.metaAdsLink ?? null}
+        currentLinks={quickAdLinkProduct?.metaAdsLinks}
         saveImmediately={true}
-        onApply={(link, computedCpaDzd, updatedProduct) => {
+        onApply={(link, computedCpaDzd, updatedProduct, allLinks) => {
           if (quickAdLinkProduct) {
             setProducts((prev) =>
               prev.map((p) =>
                 p.id === quickAdLinkProduct.id
-                  ? updatedProduct ?? { ...p, marketingCostPerOrder: computedCpaDzd, metaAdsLink: link }
+                  ? (updatedProduct ?? {
+                      ...p,
+                      marketingCostPerOrder: computedCpaDzd,
+                      metaAdsLink: link,
+                      metaAdsLinks: allLinks ?? p.metaAdsLinks,
+                    })
                   : p,
               ),
             );
             if (editingId === quickAdLinkProduct.id) {
               setFormMarketingCost(computedCpaDzd);
               setFormMetaAdsLink(link);
+              if (allLinks) setFormMetaAdsLinks(allLinks);
             }
           }
           window.dispatchEvent(new CustomEvent("orva:catalog-updated"));

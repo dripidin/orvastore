@@ -1,7 +1,7 @@
-"use strict";
 "use client";
 
 import * as React from "react";
+
 import { geoMercator, geoPath } from "d3-geo";
 import {
   ArrowLeftRight,
@@ -34,7 +34,7 @@ import {
   extractSwitchedOrderDetails,
   extractWilayaCode,
   getCommunesByWilayaCode,
-  SwitchedOrderRouteInfo,
+  type SwitchedOrderRouteInfo,
   WILAYA_POINTS_MAP,
   wilayaBoundariesData,
 } from "@/data/geoalgeria/geo-helper";
@@ -179,7 +179,7 @@ export function AlgeriaMap({
         [30, 30],
         [w - 30, h - 30],
       ],
-      wilayaBoundariesData as any
+      wilayaBoundariesData as any,
     );
     const pathGen = geoPath().projection(proj);
     return { pathGenerator: pathGen, projection: proj };
@@ -479,7 +479,10 @@ export function AlgeriaMap({
       deskTariff: tariff?.stopdesk ? `${tariff.stopdesk} د.ج` : "غير متاح",
       deliveryTime: tariff?.time ?? "24 - 48 H",
       communesCount: communes.length,
-      sampleCommunes: communes.slice(0, 3).map((c) => c.commune_name_ar).join("، "),
+      sampleCommunes: communes
+        .slice(0, 3)
+        .map((c) => c.commune_name_ar)
+        .join("، "),
     };
   }, [hoveredWilaya, wilayaStats]);
 
@@ -506,14 +509,18 @@ export function AlgeriaMap({
                 <span>Algeria Delivery &amp; Shipment Map</span>
               </CardTitle>
               {switchedRoute && (
-                <Badge variant="outline" className="border-purple-500/50 bg-purple-500/10 text-purple-700 text-[11px] font-semibold animate-pulse flex items-center gap-1">
+                <Badge
+                  variant="outline"
+                  className="border-purple-500/50 bg-purple-500/10 text-purple-700 text-[11px] font-semibold animate-pulse flex items-center gap-1"
+                >
                   <ArrowLeftRight className="size-3" />
                   <span>تتبع طلبية محوّلة</span>
                 </Badge>
               )}
             </div>
             <CardDescription className="text-xs">
-              خريطة تفاعلية متجاوبة تدعم التكبير والتصغير والتحريك، مع تتبع مسارات التحويل للطلبيات المحوّلة عبر 58 ولاية.
+              خريطة تفاعلية متجاوبة تدعم التكبير والتصغير والتحريك، مع تتبع مسارات التحويل للطلبيات المحوّلة عبر 69
+              ولاية.
             </CardDescription>
           </div>
 
@@ -614,7 +621,8 @@ export function AlgeriaMap({
                       <span>2. الوجهة السابقة (قبل التحويل):</span>
                     </span>
                     <p className="text-[10px] text-muted-foreground truncate max-w-[190px]">
-                      {switchedRoute.previousDestination.recipientName ?? "مستلم سابق"} — {switchedRoute.previousDestination.wilayaName}
+                      {switchedRoute.previousDestination.recipientName ?? "مستلم سابق"} —{" "}
+                      {switchedRoute.previousDestination.wilayaName}
                     </p>
                   </div>
                   <span className="font-mono text-[10px] text-orange-700 dark:text-orange-400 shrink-0 font-bold">
@@ -631,7 +639,8 @@ export function AlgeriaMap({
                     <span>3. الوجهة الجديدة (الحالية):</span>
                   </span>
                   <p className="text-[10px] text-muted-foreground truncate max-w-[190px]">
-                    {switchedRoute.currentDestination.recipientName} — {switchedRoute.currentDestination.wilayaName} ({switchedRoute.currentDestination.communeName})
+                    {switchedRoute.currentDestination.recipientName} — {switchedRoute.currentDestination.wilayaName} (
+                    {switchedRoute.currentDestination.communeName})
                   </p>
                 </div>
                 <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400 shrink-0 font-bold">
@@ -677,7 +686,8 @@ export function AlgeriaMap({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">وجهة التوصيل:</span>
                 <span className="font-semibold text-foreground font-mono">
-                  {standardRoute.targetPointInfo.name_ar} ({String(standardRoute.targetPointInfo.code).padStart(2, "0")})
+                  {standardRoute.targetPointInfo.name_ar} ({String(standardRoute.targetPointInfo.code).padStart(2, "0")}
+                  )
                 </span>
               </div>
               <div className="flex justify-between border-t pt-1">
@@ -690,7 +700,10 @@ export function AlgeriaMap({
 
         {/* Hover Tooltip Overlay for Demand Mode */}
         {hoveredInfo && demandMetrics && (
-          <div className="absolute top-3 right-3 z-20 rounded-xl border bg-background/95 backdrop-blur-md p-3 shadow-md max-w-xs text-xs space-y-1.5 animate-in fade-in" dir="ltr">
+          <div
+            className="absolute top-3 right-3 z-20 rounded-xl border bg-background/95 backdrop-blur-md p-3 shadow-md max-w-xs text-xs space-y-1.5 animate-in fade-in"
+            dir="ltr"
+          >
             <div className="flex items-center justify-between border-b pb-1">
               <span className="font-bold text-foreground">
                 {String(hoveredInfo.code).padStart(2, "0")} — {hoveredInfo.name_ar}
@@ -701,7 +714,9 @@ export function AlgeriaMap({
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between bg-primary/10 rounded px-2 py-1 font-semibold">
                   <span className="text-primary">{activeMetricTitle || "المؤشر"}:</span>
-                  <span className="font-mono text-primary font-bold">{demandMetrics.get(hoveredInfo.code)?.formattedValue}</span>
+                  <span className="font-mono text-primary font-bold">
+                    {demandMetrics.get(hoveredInfo.code)?.formattedValue}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">إجمالي الطلبات:</span>
@@ -711,12 +726,15 @@ export function AlgeriaMap({
                   <span>مسلّمة: {demandMetrics.get(hoveredInfo.code)?.deliveredOrders}</span>
                   <span>مرتجعة: {demandMetrics.get(hoveredInfo.code)?.returnedOrders}</span>
                 </div>
-                {demandMetrics.get(hoveredInfo.code)?.regionalConversionRate !== null && demandMetrics.get(hoveredInfo.code)?.regionalConversionRate !== undefined && (
-                  <div className="flex justify-between border-t pt-1 text-[10px]">
-                    <span className="text-muted-foreground">التحويل الإقليمي:</span>
-                    <span className="font-mono font-bold text-emerald-600">{demandMetrics.get(hoveredInfo.code)?.regionalConversionRate}%</span>
-                  </div>
-                )}
+                {demandMetrics.get(hoveredInfo.code)?.regionalConversionRate !== null &&
+                  demandMetrics.get(hoveredInfo.code)?.regionalConversionRate !== undefined && (
+                    <div className="flex justify-between border-t pt-1 text-[10px]">
+                      <span className="text-muted-foreground">التحويل الإقليمي:</span>
+                      <span className="font-mono font-bold text-emerald-600">
+                        {demandMetrics.get(hoveredInfo.code)?.regionalConversionRate}%
+                      </span>
+                    </div>
+                  )}
               </div>
             ) : (
               <div className="text-[11px] text-muted-foreground py-1">
@@ -770,8 +788,14 @@ export function AlgeriaMap({
           <div
             className="absolute z-40 bg-background/95 backdrop-blur-md border border-primary/40 rounded-xl p-3 shadow-xl max-w-xs text-xs space-y-1.5 animate-in fade-in zoom-in-95"
             style={{
-              top: Math.max(10, Math.min(dimensions.height - 180, activePinPopup.screenPos[1] * transform.k + transform.y - 120)),
-              left: Math.max(10, Math.min(dimensions.width - 250, activePinPopup.screenPos[0] * transform.k + transform.x - 120)),
+              top: Math.max(
+                10,
+                Math.min(dimensions.height - 180, activePinPopup.screenPos[1] * transform.k + transform.y - 120),
+              ),
+              left: Math.max(
+                10,
+                Math.min(dimensions.width - 250, activePinPopup.screenPos[0] * transform.k + transform.x - 120),
+              ),
             }}
           >
             <div className="flex items-center justify-between border-b pb-1">
@@ -911,7 +935,8 @@ export function AlgeriaMap({
                   let defaultFill = "#f1f5f9";
                   let defaultStroke = "#cbd5e1";
                   let strokeWidth = 0.8;
-                  let fillClass = "fill-slate-100 hover:fill-sky-100/70 dark:fill-slate-800/80 dark:hover:fill-slate-700/80";
+                  let fillClass =
+                    "fill-slate-100 hover:fill-sky-100/70 dark:fill-slate-800/80 dark:hover:fill-slate-700/80";
                   let strokeClass = "stroke-slate-300 dark:stroke-slate-700";
 
                   if (demandMetrics) {
@@ -924,7 +949,9 @@ export function AlgeriaMap({
                       defaultFill = isSelected ? "#fcd34d" : "#fef3c7";
                       defaultStroke = "#d97706";
                       strokeWidth = isSelected ? 2.4 : 1.8;
-                      fillClass = isSelected ? "fill-amber-300 dark:fill-amber-900" : "fill-amber-100 dark:fill-amber-950/70";
+                      fillClass = isSelected
+                        ? "fill-amber-300 dark:fill-amber-900"
+                        : "fill-amber-100 dark:fill-amber-950/70";
                       strokeClass = "stroke-amber-600 dark:stroke-amber-500";
                     } else if (isSelected) {
                       defaultFill = "#fed7aa";
@@ -969,7 +996,8 @@ export function AlgeriaMap({
                       defaultFill = "#f1f5f9";
                       defaultStroke = "#cbd5e1";
                       strokeWidth = 0.8;
-                      fillClass = "fill-slate-100 hover:fill-slate-200 dark:fill-slate-800/80 dark:hover:fill-slate-700/80";
+                      fillClass =
+                        "fill-slate-100 hover:fill-slate-200 dark:fill-slate-800/80 dark:hover:fill-slate-700/80";
                       strokeClass = "stroke-slate-300 dark:stroke-slate-700";
                     }
                   } else if (isBiskraHub) {
@@ -1182,54 +1210,58 @@ export function AlgeriaMap({
                 <>
                   {/* biome-ignore lint/a11y/useSemanticElements: This interactive map marker must remain in the SVG layer. */}
                   <g
-                  className="prev-dest-marker cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  aria-label="View previous shipment destination"
-                  transform={`translate(${switchedScreenData.prevScreen[0]}, ${switchedScreenData.prevScreen[1]}) scale(${1 / transform.k})`}
-                  onKeyDown={activateSvgElementOnKeyboard}
-                  onClick={(e) => {
-                    if (dragDistRef.current > 6) return;
-                    e.stopPropagation();
-                    setActivePinPopup({
-                      type: "previous",
-                      title: "الوجهة السابقة (قبل التحويل)",
-                      badge: "مستلم سابق",
-                      wilaya: switchedRoute.previousDestination?.wilayaName ?? "",
-                      commune: switchedRoute.previousDestination?.communeName ?? "",
-                      customer: switchedRoute.previousDestination?.recipientName ?? "مستلم سابق",
-                      phone: switchedRoute.previousDestination?.phone ?? "",
-                      reason: switchedRoute.reason,
-                      conversionSeq: switchedRoute.conversionSequence,
-                      distanceKm: switchedRoute.distanceHubToPrevKm,
-                      coordinates: switchedRoute.previousDestination?.coordinates ?? [0, 0],
-                      screenPos: switchedScreenData.prevScreen!,
-                    });
-                  }}
-                >
-                  <circle r="18" fill="url(#prevDestGlow)" className="animate-ping" opacity="0.4" />
-                  <circle r="7" fill="#ea580c" stroke="#ffffff" strokeWidth="2" />
-                  <rect
-                    x="-48"
-                    y="-25"
-                    width="96"
-                    height="16"
-                    rx="8"
-                    fill="#431407"
-                    opacity="0.92"
-                    className="pointer-events-none"
-                  />
-                  <text
-                    x="0"
-                    y="-13.5"
-                    textAnchor="middle"
-                    fontSize="8.5"
-                    fontWeight="bold"
-                    fill="#fed7aa"
-                    className="pointer-events-none select-none"
+                    className="prev-dest-marker cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="View previous shipment destination"
+                    transform={`translate(${switchedScreenData.prevScreen[0]}, ${switchedScreenData.prevScreen[1]}) scale(${1 / transform.k})`}
+                    onKeyDown={activateSvgElementOnKeyboard}
+                    onClick={(e) => {
+                      if (dragDistRef.current > 6) return;
+                      e.stopPropagation();
+                      setActivePinPopup({
+                        type: "previous",
+                        title: "الوجهة السابقة (قبل التحويل)",
+                        badge: "مستلم سابق",
+                        wilaya: switchedRoute.previousDestination?.wilayaName ?? "",
+                        commune: switchedRoute.previousDestination?.communeName ?? "",
+                        customer: switchedRoute.previousDestination?.recipientName ?? "مستلم سابق",
+                        phone: switchedRoute.previousDestination?.phone ?? "",
+                        reason: switchedRoute.reason,
+                        conversionSeq: switchedRoute.conversionSequence,
+                        distanceKm: switchedRoute.distanceHubToPrevKm,
+                        coordinates: switchedRoute.previousDestination?.coordinates ?? [0, 0],
+                        screenPos: switchedScreenData.prevScreen!,
+                      });
+                    }}
                   >
-                    الوجهة السابقة ({String(switchedRoute.previousDestination.wilayaName ?? "").split("-")[0]?.trim() ?? "سابق"})
-                  </text>
+                    <circle r="18" fill="url(#prevDestGlow)" className="animate-ping" opacity="0.4" />
+                    <circle r="7" fill="#ea580c" stroke="#ffffff" strokeWidth="2" />
+                    <rect
+                      x="-48"
+                      y="-25"
+                      width="96"
+                      height="16"
+                      rx="8"
+                      fill="#431407"
+                      opacity="0.92"
+                      className="pointer-events-none"
+                    />
+                    <text
+                      x="0"
+                      y="-13.5"
+                      textAnchor="middle"
+                      fontSize="8.5"
+                      fontWeight="bold"
+                      fill="#fed7aa"
+                      className="pointer-events-none select-none"
+                    >
+                      الوجهة السابقة (
+                      {String(switchedRoute.previousDestination.wilayaName ?? "")
+                        .split("-")[0]
+                        ?.trim() ?? "سابق"}
+                      )
+                    </text>
                   </g>
                 </>
               )}
@@ -1239,54 +1271,58 @@ export function AlgeriaMap({
                 <>
                   {/* biome-ignore lint/a11y/useSemanticElements: This interactive map marker must remain in the SVG layer. */}
                   <g
-                  className="new-dest-marker cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  aria-label="View current shipment destination"
-                  transform={`translate(${switchedScreenData.newScreen[0]}, ${switchedScreenData.newScreen[1]}) scale(${1 / transform.k})`}
-                  onKeyDown={activateSvgElementOnKeyboard}
-                  onClick={(e) => {
-                    if (dragDistRef.current > 6) return;
-                    e.stopPropagation();
-                    setActivePinPopup({
-                      type: "current",
-                      title: "الوجهة الجديدة (المستلم الحالي)",
-                      badge: "محوّلة ومؤكدة",
-                      wilaya: switchedRoute.currentDestination.wilayaName,
-                      commune: switchedRoute.currentDestination.communeName,
-                      customer: switchedRoute.currentDestination.recipientName,
-                      phone: switchedRoute.currentDestination.phone,
-                      reason: switchedRoute.reason,
-                      conversionSeq: switchedRoute.conversionSequence,
-                      distanceKm: switchedRoute.distanceHubToNewKm,
-                      coordinates: switchedRoute.currentDestination.coordinates ?? [0, 0],
-                      screenPos: switchedScreenData.newScreen!,
-                    });
-                  }}
-                >
-                  <circle r="20" fill="url(#newDestGlow)" className="animate-pulse" />
-                  <circle r="8" fill="#10b981" stroke="#ffffff" strokeWidth="2.2" />
-                  <rect
-                    x="-50"
-                    y="-26"
-                    width="100"
-                    height="17"
-                    rx="8.5"
-                    fill="#064e3b"
-                    opacity="0.92"
-                    className="pointer-events-none"
-                  />
-                  <text
-                    x="0"
-                    y="-14"
-                    textAnchor="middle"
-                    fontSize="9"
-                    fontWeight="bold"
-                    fill="#a7f3d0"
-                    className="pointer-events-none select-none"
+                    className="new-dest-marker cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="View current shipment destination"
+                    transform={`translate(${switchedScreenData.newScreen[0]}, ${switchedScreenData.newScreen[1]}) scale(${1 / transform.k})`}
+                    onKeyDown={activateSvgElementOnKeyboard}
+                    onClick={(e) => {
+                      if (dragDistRef.current > 6) return;
+                      e.stopPropagation();
+                      setActivePinPopup({
+                        type: "current",
+                        title: "الوجهة الجديدة (المستلم الحالي)",
+                        badge: "محوّلة ومؤكدة",
+                        wilaya: switchedRoute.currentDestination.wilayaName,
+                        commune: switchedRoute.currentDestination.communeName,
+                        customer: switchedRoute.currentDestination.recipientName,
+                        phone: switchedRoute.currentDestination.phone,
+                        reason: switchedRoute.reason,
+                        conversionSeq: switchedRoute.conversionSequence,
+                        distanceKm: switchedRoute.distanceHubToNewKm,
+                        coordinates: switchedRoute.currentDestination.coordinates ?? [0, 0],
+                        screenPos: switchedScreenData.newScreen!,
+                      });
+                    }}
                   >
-                    الوجهة الجديدة ({String(switchedRoute.currentDestination.wilayaName ?? "").split("-")[0]?.trim() ?? "جديد"})
-                  </text>
+                    <circle r="20" fill="url(#newDestGlow)" className="animate-pulse" />
+                    <circle r="8" fill="#10b981" stroke="#ffffff" strokeWidth="2.2" />
+                    <rect
+                      x="-50"
+                      y="-26"
+                      width="100"
+                      height="17"
+                      rx="8.5"
+                      fill="#064e3b"
+                      opacity="0.92"
+                      className="pointer-events-none"
+                    />
+                    <text
+                      x="0"
+                      y="-14"
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fill="#a7f3d0"
+                      className="pointer-events-none select-none"
+                    >
+                      الوجهة الجديدة (
+                      {String(switchedRoute.currentDestination.wilayaName ?? "")
+                        .split("-")[0]
+                        ?.trim() ?? "جديد"}
+                      )
+                    </text>
                   </g>
                 </>
               )}
@@ -1296,51 +1332,51 @@ export function AlgeriaMap({
                 <>
                   {/* biome-ignore lint/a11y/useSemanticElements: This interactive map marker must remain in the SVG layer. */}
                   <g
-                  className="standard-dest-marker cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  aria-label="View selected order destination"
-                  transform={`translate(${standardRoute.destPoint[0]}, ${standardRoute.destPoint[1]}) scale(${1 / transform.k})`}
-                  onKeyDown={activateSvgElementOnKeyboard}
-                  onClick={(e) => {
-                    if (dragDistRef.current > 6) return;
-                    e.stopPropagation();
-                    setActivePinPopup({
-                      type: "current",
-                      title: "وجهة الشحنة المحددة",
-                      badge: "توصيل نشط",
-                      wilaya: standardRoute.targetPointInfo.name_ar,
-                      customer: selectedOrder?.customer ?? "غير مسجل",
-                      phone: selectedOrder?.phone ?? "",
-                      distanceKm: standardRoute.distanceKm,
-                      coordinates: standardRoute.targetPointInfo.coordinates,
-                      screenPos: standardRoute.destPoint,
-                    });
-                  }}
-                >
-                  <circle r="16" fill="#3b82f6" opacity="0.25" className="animate-ping" />
-                  <circle r="7.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
-                  <rect
-                    x="-40"
-                    y="-25"
-                    width="80"
-                    height="16"
-                    rx="8"
-                    fill="#1e3a5f"
-                    opacity="0.9"
-                    className="pointer-events-none"
-                  />
-                  <text
-                    x="0"
-                    y="-13.5"
-                    textAnchor="middle"
-                    fontSize="8.5"
-                    fontWeight="bold"
-                    fill="#93c5fd"
-                    className="pointer-events-none select-none"
+                    className="standard-dest-marker cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="View selected order destination"
+                    transform={`translate(${standardRoute.destPoint[0]}, ${standardRoute.destPoint[1]}) scale(${1 / transform.k})`}
+                    onKeyDown={activateSvgElementOnKeyboard}
+                    onClick={(e) => {
+                      if (dragDistRef.current > 6) return;
+                      e.stopPropagation();
+                      setActivePinPopup({
+                        type: "current",
+                        title: "وجهة الشحنة المحددة",
+                        badge: "توصيل نشط",
+                        wilaya: standardRoute.targetPointInfo.name_ar,
+                        customer: selectedOrder?.customer ?? "غير مسجل",
+                        phone: selectedOrder?.phone ?? "",
+                        distanceKm: standardRoute.distanceKm,
+                        coordinates: standardRoute.targetPointInfo.coordinates,
+                        screenPos: standardRoute.destPoint,
+                      });
+                    }}
                   >
-                    {standardRoute.targetPointInfo.name_ar}
-                  </text>
+                    <circle r="16" fill="#3b82f6" opacity="0.25" className="animate-ping" />
+                    <circle r="7.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
+                    <rect
+                      x="-40"
+                      y="-25"
+                      width="80"
+                      height="16"
+                      rx="8"
+                      fill="#1e3a5f"
+                      opacity="0.9"
+                      className="pointer-events-none"
+                    />
+                    <text
+                      x="0"
+                      y="-13.5"
+                      textAnchor="middle"
+                      fontSize="8.5"
+                      fontWeight="bold"
+                      fill="#93c5fd"
+                      className="pointer-events-none select-none"
+                    >
+                      {standardRoute.targetPointInfo.name_ar}
+                    </text>
                   </g>
                 </>
               )}

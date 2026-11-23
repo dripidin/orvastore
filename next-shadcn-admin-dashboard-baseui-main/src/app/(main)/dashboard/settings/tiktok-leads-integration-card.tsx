@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import {
   AlertCircle,
   AlertTriangle,
@@ -36,13 +37,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -55,24 +50,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import {
-  ALGERIA_58_WILAYAS,
+  ALGERIA_69_WILAYAS,
+  buildProductMappingPayload,
+  canToggleFormSync,
+  clampReconcileLookbackDays,
   DEFAULT_FORMS_PAGE_SIZE,
-  RECONCILE_LOOKBACK_OPTIONS,
-  TIKTOK_API_ENDPOINTS,
+  deriveTikTokConnectionUiState,
+  filterTikTokForms,
+  formatAlgiersDateTime,
+  formatDzd,
+  formatTikTokApiError,
+  getLeadFailureExplanation,
+  getWilayaDeliveryNotice,
+  getWilayaLabelAr,
   type MappableCatalogProduct,
   type PublicTikTokAdAccount,
   type PublicTikTokConnection,
   type PublicTikTokForm,
+  paginateItems,
+  parseTikTokOAuthCallbackNotice,
+  RECONCILE_LOOKBACK_OPTIONS,
+  TIKTOK_API_ENDPOINTS,
   type TikTokConfigurationReadiness,
   type TikTokConnectionBadgeSummary,
   type TikTokDashboardSnapshot,
@@ -84,19 +85,6 @@ import {
   type TikTokSyncLogItem,
   type TikTokSyncMetricsSummary,
   type TikTokTelegramOptInState,
-  buildProductMappingPayload,
-  canToggleFormSync,
-  clampReconcileLookbackDays,
-  deriveTikTokConnectionUiState,
-  filterTikTokForms,
-  formatAlgiersDateTime,
-  formatDzd,
-  formatTikTokApiError,
-  getLeadFailureExplanation,
-  getWilayaDeliveryNotice,
-  getWilayaLabelAr,
-  paginateItems,
-  parseTikTokOAuthCallbackNotice,
 } from "./tiktok-leads-types";
 
 export interface TikTokLeadsIntegrationCardProps {
@@ -159,9 +147,7 @@ async function requestTikTokApi<T = Record<string, unknown>>(
     method,
     headers: buildAdminHeaders(),
     credentials: "same-origin",
-    ...(method === "POST" && options.body !== undefined
-      ? { body: JSON.stringify(options.body) }
-      : {}),
+    ...(method === "POST" && options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
   });
 
   const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -305,13 +291,7 @@ function SyncRunStatusBadge({ status }: { status: TikTokSyncLogItem["status"] })
   );
 }
 
-function FeedbackAlert({
-  feedback,
-  onDismiss,
-}: {
-  feedback: InlineFeedback | null;
-  onDismiss?: () => void;
-}) {
+function FeedbackAlert({ feedback, onDismiss }: { feedback: InlineFeedback | null; onDismiss?: () => void }) {
   if (!feedback) return null;
 
   const styles =
@@ -367,26 +347,18 @@ export function TikTokLeadsIntegrationCard({
   const [loading, setLoading] = React.useState<boolean>(!initialData);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
-  const [readiness, setReadiness] = React.useState<TikTokConfigurationReadiness | null>(
-    initialData?.readiness ?? null,
-  );
-  const [connection, setConnection] = React.useState<PublicTikTokConnection | null>(
-    initialData?.connection ?? null,
-  );
+  const [readiness, setReadiness] = React.useState<TikTokConfigurationReadiness | null>(initialData?.readiness ?? null);
+  const [connection, setConnection] = React.useState<PublicTikTokConnection | null>(initialData?.connection ?? null);
   const [telegramOptIn, setTelegramOptIn] = React.useState<TikTokTelegramOptInState>(
     initialData?.telegramOptIn ?? DEFAULT_TELEGRAM_OPT_IN,
   );
-  const [accounts, setAccounts] = React.useState<PublicTikTokAdAccount[]>(
-    initialData?.accounts ?? [],
-  );
+  const [accounts, setAccounts] = React.useState<PublicTikTokAdAccount[]>(initialData?.accounts ?? []);
   const [forms, setForms] = React.useState<PublicTikTokForm[]>(initialData?.forms ?? []);
   const [catalogProducts, setCatalogProducts] = React.useState<MappableCatalogProduct[]>(
     initialData?.catalogProducts ?? [],
   );
   const [logs, setLogs] = React.useState<TikTokSyncLogItem[]>(initialData?.logs ?? []);
-  const [leadStats, setLeadStats] = React.useState<TikTokLeadStats>(
-    initialData?.leadStats ?? DEFAULT_LEAD_STATS,
-  );
+  const [leadStats, setLeadStats] = React.useState<TikTokLeadStats>(initialData?.leadStats ?? DEFAULT_LEAD_STATS);
   const [recoverableLeads, setRecoverableLeads] = React.useState<TikTokRecoverableLead[]>(
     initialData?.recoverableLeads ?? [],
   );
@@ -410,17 +382,13 @@ export function TikTokLeadsIntegrationCard({
   );
   const [dismissedCallbackCode, setDismissedCallbackCode] = React.useState<string | null>(null);
   const activeCallbackNotice =
-    parsedCallbackNotice && dismissedCallbackCode !== parsedCallbackNotice.code
-      ? parsedCallbackNotice
-      : null;
+    parsedCallbackNotice && dismissedCallbackCode !== parsedCallbackNotice.code ? parsedCallbackNotice : null;
 
   // ── Disconnect Dialog State ───────────────────────────────────────────────
   const [disconnectOpen, setDisconnectOpen] = React.useState<boolean>(false);
 
   // ── Webhook URL Display & Copy ────────────────────────────────────────────
-  const [webhookUrlDisplay, setWebhookUrlDisplay] = React.useState<string>(
-    TIKTOK_API_ENDPOINTS.webhookPath,
-  );
+  const [webhookUrlDisplay, setWebhookUrlDisplay] = React.useState<string>(TIKTOK_API_ENDPOINTS.webhookPath);
   const [copiedWebhook, setCopiedWebhook] = React.useState<boolean>(false);
   const [copiedRedirect, setCopiedRedirect] = React.useState<boolean>(false);
 
@@ -440,8 +408,7 @@ export function TikTokLeadsIntegrationCard({
   const [mappingForm, setMappingForm] = React.useState<PublicTikTokForm | null>(null);
   const [selectedProductId, setSelectedProductId] = React.useState<string>("");
   const [defaultWilayaCode, setDefaultWilayaCode] = React.useState<number>(16);
-  const [defaultDeliveryType, setDefaultDeliveryType] =
-    React.useState<TikTokDeliveryType>("DOMICILE");
+  const [defaultDeliveryType, setDefaultDeliveryType] = React.useState<TikTokDeliveryType>("DOMICILE");
   const [autoCreateOrder, setAutoCreateOrder] = React.useState<boolean>(true);
   const [mappingSyncEnabled, setMappingSyncEnabled] = React.useState<boolean>(true);
   const [mappingError, setMappingError] = React.useState<string | null>(null);
@@ -545,13 +512,10 @@ export function TikTokLeadsIntegrationCard({
       if (syncRes.status === "fulfilled") {
         setLogs(Array.isArray(syncRes.value.logs) ? syncRes.value.logs : []);
         if (syncRes.value.leadStats) setLeadStats(syncRes.value.leadStats);
-        setRecoverableLeads(
-          Array.isArray(syncRes.value.recoverableLeads) ? syncRes.value.recoverableLeads : [],
-        );
+        setRecoverableLeads(Array.isArray(syncRes.value.recoverableLeads) ? syncRes.value.recoverableLeads : []);
       }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "تعذر تحميل حالة تكامل TikTok Ads من الخادم.";
+      const message = err instanceof Error ? err.message : "تعذر تحميل حالة تكامل TikTok Ads من الخادم.";
       setLoadError(message);
     } finally {
       setLoading(false);
@@ -572,9 +536,7 @@ export function TikTokLeadsIntegrationCard({
     }>(`${TIKTOK_API_ENDPOINTS.sync}?limit=25`);
     setLogs(Array.isArray(syncRes.logs) ? syncRes.logs : []);
     if (syncRes.leadStats) setLeadStats(syncRes.leadStats);
-    setRecoverableLeads(
-      Array.isArray(syncRes.recoverableLeads) ? syncRes.recoverableLeads : [],
-    );
+    setRecoverableLeads(Array.isArray(syncRes.recoverableLeads) ? syncRes.recoverableLeads : []);
   }, []);
 
   // ── Section A Handlers: Connect & Disconnect ──────────────────────────────
@@ -583,10 +545,10 @@ export function TikTokLeadsIntegrationCard({
     setBusyAction("connect_start");
     setConnectionFeedback(null);
     try {
-      const res = await requestTikTokApi<{ authorizationUrl: string }>(
-        TIKTOK_API_ENDPOINTS.connect,
-        { method: "POST", body: { action: "start" } },
-      );
+      const res = await requestTikTokApi<{ authorizationUrl: string }>(TIKTOK_API_ENDPOINTS.connect, {
+        method: "POST",
+        body: { action: "start" },
+      });
       if (!res.authorizationUrl) {
         throw new Error("لم يرجع الخادم رابط تفويض TikTok صالحاً.");
       }
@@ -698,9 +660,7 @@ export function TikTokLeadsIntegrationCard({
       setAccountsFeedback({
         type: "error",
         message:
-          err instanceof Error
-            ? err.message
-            : "تعذر اختيار الحساب الإعلاني. تحقق من صلاحية جلب العملاء المحتملين.",
+          err instanceof Error ? err.message : "تعذر اختيار الحساب الإعلاني. تحقق من صلاحية جلب العملاء المحتملين.",
       });
     } finally {
       setBusyAction(null);
@@ -854,9 +814,7 @@ export function TikTokLeadsIntegrationCard({
         body: payload,
       });
 
-      setForms((prev) =>
-        prev.map((item) => (item.formId === mappingForm.formId ? res.form : item)),
-      );
+      setForms((prev) => prev.map((item) => (item.formId === mappingForm.formId ? res.form : item)));
       setFormsFeedback({
         type: "success",
         message: `تم ربط النموذج «${res.form.formName}» بالمنتج «${res.form.mapping?.productName || ""}» بسعر الخادم المعتمد (${formatDzd(res.form.mapping?.productPrice)}).`,
@@ -914,17 +872,14 @@ export function TikTokLeadsIntegrationCard({
     setBusyAction(`sync_form_${form.formId}`);
     setSyncFeedback(null);
     try {
-      const res = await requestTikTokApi<{ summary: TikTokSyncMetricsSummary }>(
-        TIKTOK_API_ENDPOINTS.sync,
-        {
-          method: "POST",
-          body: {
-            action: "sync_form",
-            formId: form.formId,
-            advertiserId: form.advertiserId,
-          },
+      const res = await requestTikTokApi<{ summary: TikTokSyncMetricsSummary }>(TIKTOK_API_ENDPOINTS.sync, {
+        method: "POST",
+        body: {
+          action: "sync_form",
+          formId: form.formId,
+          advertiserId: form.advertiserId,
         },
-      );
+      });
       setLastSyncResult({ label: `مزامنة النموذج: ${form.formName}`, summary: res.summary });
       setSyncFeedback({
         type: res.summary.leadsFailed > 0 ? "warning" : "success",
@@ -982,16 +937,13 @@ export function TikTokLeadsIntegrationCard({
     setBusyAction(actionKey);
     setSyncFeedback(null);
     try {
-      const res = await requestTikTokApi<{ summary: TikTokSyncMetricsSummary }>(
-        TIKTOK_API_ENDPOINTS.sync,
-        {
-          method: "POST",
-          body: {
-            action: "retry_failed",
-            ...(leadIds && leadIds.length > 0 ? { leadIds } : {}),
-          },
+      const res = await requestTikTokApi<{ summary: TikTokSyncMetricsSummary }>(TIKTOK_API_ENDPOINTS.sync, {
+        method: "POST",
+        body: {
+          action: "retry_failed",
+          ...(leadIds && leadIds.length > 0 ? { leadIds } : {}),
         },
-      );
+      });
       setLastSyncResult({
         label: leadIds?.length === 1 ? "إعادة محاولة عميل محدد" : "إعادة محاولة العملاء الفاشلين",
         summary: res.summary,
@@ -1054,13 +1006,10 @@ export function TikTokLeadsIntegrationCard({
     setBusyAction("telegram_opt_in");
     setTelegramFeedback(null);
     try {
-      const res = await requestTikTokApi<{ telegramOptIn: TikTokTelegramOptInState }>(
-        TIKTOK_API_ENDPOINTS.connect,
-        {
-          method: "POST",
-          body: { action: "set_telegram_opt_in", enabled: nextEnabled },
-        },
-      );
+      const res = await requestTikTokApi<{ telegramOptIn: TikTokTelegramOptInState }>(TIKTOK_API_ENDPOINTS.connect, {
+        method: "POST",
+        body: { action: "set_telegram_opt_in", enabled: nextEnabled },
+      });
       setTelegramOptIn(res.telegramOptIn);
       setTelegramFeedback({
         type: "success",
@@ -1116,9 +1065,7 @@ export function TikTokLeadsIntegrationCard({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-base font-bold">
-                  إدارة اتصال TikTok Ads
-                </CardTitle>
+                <CardTitle className="text-base font-bold">إدارة اتصال TikTok Ads</CardTitle>
                 <ConnectionStatusBadge summary={connectionSummary} />
                 {readiness?.sandboxMode && (
                   <Badge
@@ -1155,10 +1102,7 @@ export function TikTokLeadsIntegrationCard({
             </div>
           ) : (
             <>
-              <FeedbackAlert
-                feedback={connectionFeedback}
-                onDismiss={() => setConnectionFeedback(null)}
-              />
+              <FeedbackAlert feedback={connectionFeedback} onDismiss={() => setConnectionFeedback(null)} />
 
               {/* Missing or Invalid Server Environment Configuration Warning (Names/Codes Only, Zero Secrets) */}
               {readiness && (!readiness.configured || (readiness.configurationErrors?.length ?? 0) > 0) && (
@@ -1171,9 +1115,7 @@ export function TikTokLeadsIntegrationCard({
                 >
                   <AlertTriangle
                     className={`size-4 ${
-                      readiness.configurationStatus === "MISCONFIGURED"
-                        ? "text-destructive"
-                        : "text-amber-600"
+                      readiness.configurationStatus === "MISCONFIGURED" ? "text-destructive" : "text-amber-600"
                     }`}
                   />
                   <AlertTitle
@@ -1195,7 +1137,8 @@ export function TikTokLeadsIntegrationCard({
                     }`}
                   >
                     <p>
-                      يرجى ضبط أو تصحيح المتغيرات التالية في لوحة تحكم الاستضافة (Hostinger / Server Env) قبل ربط الحساب:
+                      يرجى ضبط أو تصحيح المتغيرات التالية في لوحة تحكم الاستضافة (Hostinger / Server Env) قبل ربط
+                      الحساب:
                     </p>
                     <div className="flex flex-wrap gap-1.5" dir="ltr">
                       {readiness.missingKeys.map((envKey) => (
@@ -1217,23 +1160,24 @@ export function TikTokLeadsIntegrationCard({
                         </Badge>
                       ))}
                       {!readiness.redirectUriValid && readiness.redirectUriHttps === false && (
-                        <Badge
-                          variant="destructive"
-                          className="font-mono text-[10px]"
-                        >
+                        <Badge variant="destructive" className="font-mono text-[10px]">
                           TIKTOK_REDIRECT_URI (HTTPS required)
                         </Badge>
                       )}
                     </div>
 
-                    {readiness.configurationErrors?.some(
-                      (e) => e.key === "TIKTOK_REDIRECT_URI"
-                    ) && (
-                      <div className="rounded border bg-background/90 p-2.5 space-y-1.5 text-xs text-foreground mt-2" dir="rtl">
+                    {readiness.configurationErrors?.some((e) => e.key === "TIKTOK_REDIRECT_URI") && (
+                      <div
+                        className="rounded border bg-background/90 p-2.5 space-y-1.5 text-xs text-foreground mt-2"
+                        dir="rtl"
+                      >
                         <div className="font-semibold text-primary">
                           الرابط المعتمد المطلوب في منصة مطوري TikTok وبيئة الخادم:
                         </div>
-                        <div className="flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-1.5 rounded font-mono text-[11px] break-all" dir="ltr">
+                        <div
+                          className="flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-1.5 rounded font-mono text-[11px] break-all"
+                          dir="ltr"
+                        >
                           <span>https://orva-store.com/api/integrations/tiktok/callback/</span>
                           <Button
                             type="button"
@@ -1242,7 +1186,11 @@ export function TikTokLeadsIntegrationCard({
                             className="h-6 px-2 text-[10px] gap-1 shrink-0"
                             onClick={handleCopyRedirectUrl}
                           >
-                            {copiedRedirect ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                            {copiedRedirect ? (
+                              <Check className="size-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="size-3" />
+                            )}
                             <span>{copiedRedirect ? "تم النسخ" : "نسخ الرابط"}</span>
                           </Button>
                         </div>
@@ -1374,9 +1322,7 @@ export function TikTokLeadsIntegrationCard({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <CardTitle className="text-base font-bold">
-                الحسابات الإعلانية (TikTok Ad Accounts)
-              </CardTitle>
+              <CardTitle className="text-base font-bold">الحسابات الإعلانية (TikTok Ad Accounts)</CardTitle>
               <CardDescription className="text-xs">
                 اختر الحساب الإعلاني النشط الذي تطلق منه الإعلانات لاستقبال الطلبيات منه.
               </CardDescription>
@@ -1386,11 +1332,7 @@ export function TikTokLeadsIntegrationCard({
               variant="outline"
               size="sm"
               onClick={handleRefreshAccounts}
-              disabled={
-                !connection ||
-                connection.status !== "connected" ||
-                isAnyActionBusy
-              }
+              disabled={!connection || connection.status !== "connected" || isAnyActionBusy}
               className="text-xs gap-1.5 h-8"
             >
               {busyAction === "accounts_refresh" ? (
@@ -1404,10 +1346,7 @@ export function TikTokLeadsIntegrationCard({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <FeedbackAlert
-            feedback={accountsFeedback}
-            onDismiss={() => setAccountsFeedback(null)}
-          />
+          <FeedbackAlert feedback={accountsFeedback} onDismiss={() => setAccountsFeedback(null)} />
 
           {/* Canonical Webhook Endpoint Bar */}
           <div className="rounded-lg border bg-muted/30 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1434,9 +1373,7 @@ export function TikTokLeadsIntegrationCard({
 
           {accounts.length === 0 ? (
             <div className="rounded-xl border border-dashed py-8 px-4 text-center space-y-2">
-              <p className="text-xs font-medium text-foreground">
-                لا توجد حسابات إعلانية مخزنة حالياً
-              </p>
+              <p className="text-xs font-medium text-foreground">لا توجد حسابات إعلانية مخزنة حالياً</p>
               <p className="text-[11px] text-muted-foreground">
                 {connection?.status === "connected"
                   ? "اضغط على «تحديث الحسابات» لجلب الحسابات الإعلانية المصرح بها من TikTok Business."
@@ -1471,9 +1408,7 @@ export function TikTokLeadsIntegrationCard({
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>{acc.advertiserName}</span>
                             {acc.isSelected && (
-                              <Badge className="bg-emerald-600 text-white text-[10px]">
-                                الحساب النشط
-                              </Badge>
+                              <Badge className="bg-emerald-600 text-white text-[10px]">الحساب النشط</Badge>
                             )}
                           </div>
                         </TableCell>
@@ -1481,10 +1416,7 @@ export function TikTokLeadsIntegrationCard({
                           {acc.advertiserId}
                         </TableCell>
                         <TableCell className="text-xs">
-                          <Badge
-                            variant={isRevoked ? "destructive" : "outline"}
-                            className="font-mono text-[10px]"
-                          >
+                          <Badge variant={isRevoked ? "destructive" : "outline"} className="font-mono text-[10px]">
                             {acc.accountStatus}
                           </Badge>
                         </TableCell>
@@ -1511,10 +1443,7 @@ export function TikTokLeadsIntegrationCard({
                               size="sm"
                               variant={acc.isSelected ? "secondary" : "default"}
                               disabled={
-                                isRevoked ||
-                                acc.isSelected ||
-                                connection?.status !== "connected" ||
-                                isAnyActionBusy
+                                isRevoked || acc.isSelected || connection?.status !== "connected" || isAnyActionBusy
                               }
                               onClick={() => void handleSelectAdvertiser(acc.advertiserId)}
                               className="text-[11px] h-7 px-2.5 gap-1"
@@ -1527,11 +1456,7 @@ export function TikTokLeadsIntegrationCard({
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={
-                                isRevoked ||
-                                connection?.status !== "connected" ||
-                                isAnyActionBusy
-                              }
+                              disabled={isRevoked || connection?.status !== "connected" || isAnyActionBusy}
                               onClick={() => void handleToggleWebhook(acc)}
                               className="text-[11px] h-7 px-2.5 gap-1"
                             >
@@ -1561,7 +1486,8 @@ export function TikTokLeadsIntegrationCard({
                 النماذج الفورية وربط منتجات كتالوج ORVA (Instant Forms)
               </CardTitle>
               <CardDescription className="text-xs">
-                اربط كل نموذج فوري بمنتج حقيقي من كتالوج ORVA. يتم اعتماد اسم المنتج والسعر بالدينار الجزائري من الخادم حصراً.
+                اربط كل نموذج فوري بمنتج حقيقي من كتالوج ORVA. يتم اعتماد اسم المنتج والسعر بالدينار الجزائري من الخادم
+                حصراً.
               </CardDescription>
             </div>
             <Button
@@ -1569,12 +1495,7 @@ export function TikTokLeadsIntegrationCard({
               variant="outline"
               size="sm"
               onClick={handleRefreshForms}
-              disabled={
-                !connection ||
-                connection.status !== "connected" ||
-                !activeAccount ||
-                isAnyActionBusy
-              }
+              disabled={!connection || connection.status !== "connected" || !activeAccount || isAnyActionBusy}
               className="text-xs gap-1.5 h-8"
             >
               {busyAction === "forms_refresh" ? (
@@ -1681,9 +1602,7 @@ export function TikTokLeadsIntegrationCard({
                     <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-bold text-foreground break-words">
-                            {form.formName}
-                          </span>
+                          <span className="text-sm font-bold text-foreground break-words">{form.formName}</span>
                           <FormStatusBadge status={form.status} />
                           {!form.mapping && !isDeleted && (
                             <Badge
@@ -1695,9 +1614,7 @@ export function TikTokLeadsIntegrationCard({
                             </Badge>
                           )}
                           {form.syncEnabled && !isDeleted && form.mapping && (
-                            <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
-                              المزامنة مفعّلة
-                            </Badge>
+                            <Badge className="bg-emerald-600 text-white text-[10px] font-bold">المزامنة مفعّلة</Badge>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -1722,14 +1639,8 @@ export function TikTokLeadsIntegrationCard({
                             id={`sync-switch-${form.formId}`}
                             dir="ltr"
                             checked={form.syncEnabled}
-                            disabled={
-                              isAnyActionBusy ||
-                              (!form.syncEnabled && !syncGuard.canEnable) ||
-                              isDeleted
-                            }
-                            onCheckedChange={(checked) =>
-                              void handleToggleFormSync(form, Boolean(checked))
-                            }
+                            disabled={isAnyActionBusy || (!form.syncEnabled && !syncGuard.canEnable) || isDeleted}
+                            onCheckedChange={(checked) => void handleToggleFormSync(form, Boolean(checked))}
                           />
                         </div>
 
@@ -1749,12 +1660,7 @@ export function TikTokLeadsIntegrationCard({
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={
-                            isDeleted ||
-                            !connection ||
-                            connection.status !== "connected" ||
-                            isAnyActionBusy
-                          }
+                          disabled={isDeleted || !connection || connection.status !== "connected" || isAnyActionBusy}
                           onClick={() => void handleSyncSingleForm(form)}
                           className="text-xs h-8 gap-1.5"
                         >
@@ -1773,7 +1679,8 @@ export function TikTokLeadsIntegrationCard({
                       <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive flex items-center gap-2">
                         <XCircle className="size-3.5 shrink-0" />
                         <span>
-                          هذا النموذج لم يعد موجوداً على TikTok (محذوف). تم تعطيل المزامنة تلقائياً مع الحفاظ على سجل العملاء والطلبيات السابقة.
+                          هذا النموذج لم يعد موجوداً على TikTok (محذوف). تم تعطيل المزامنة تلقائياً مع الحفاظ على سجل
+                          العملاء والطلبيات السابقة.
                         </span>
                       </div>
                     ) : form.mapping ? (
@@ -1827,11 +1734,7 @@ export function TikTokLeadsIntegrationCard({
                           onClick={() => toggleExpandFields(form.formId)}
                           className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 cursor-pointer"
                         >
-                          {isExpanded ? (
-                            <ChevronUp className="size-3.5" />
-                          ) : (
-                            <ChevronDown className="size-3.5" />
-                          )}
+                          {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                           <span>حقول النموذج الفوري ({form.fields.length} حقل)</span>
                         </button>
                         {isExpanded && (
@@ -1866,8 +1769,8 @@ export function TikTokLeadsIntegrationCard({
               {paginatedForms.totalPages > 1 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-xs">
                   <div className="text-muted-foreground text-[11px]">
-                    عرض {paginatedForms.startIndex + 1}–{paginatedForms.endIndex} من أصل{" "}
-                    {paginatedForms.totalItems} نموذج
+                    عرض {paginatedForms.startIndex + 1}–{paginatedForms.endIndex} من أصل {paginatedForms.totalItems}{" "}
+                    نموذج
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Button
@@ -1889,9 +1792,7 @@ export function TikTokLeadsIntegrationCard({
                       variant="outline"
                       size="sm"
                       disabled={paginatedForms.page >= paginatedForms.totalPages}
-                      onClick={() =>
-                        setFormsPage((p) => Math.min(paginatedForms.totalPages, p + 1))
-                      }
+                      onClick={() => setFormsPage((p) => Math.min(paginatedForms.totalPages, p + 1))}
                       className="h-7 px-2 text-xs gap-1"
                     >
                       <span>التالي</span>
@@ -1914,7 +1815,8 @@ export function TikTokLeadsIntegrationCard({
             التحكم في المزامنة والاسترداد التاريخي (Synchronization)
           </CardTitle>
           <CardDescription className="text-xs">
-            تشغيل مزامنة يدوية لجميع النماذج المفعّلة، إعادة معالجة العملاء الفاشلين، أو إجراء مزامنة تاريخية ضمن الحد الرسمي (حتى 90 يوماً).
+            تشغيل مزامنة يدوية لجميع النماذج المفعّلة، إعادة معالجة العملاء الفاشلين، أو إجراء مزامنة تاريخية ضمن الحد
+            الرسمي (حتى 90 يوماً).
           </CardDescription>
         </CardHeader>
 
@@ -1930,7 +1832,8 @@ export function TikTokLeadsIntegrationCard({
                   <span>مزامنة جميع النماذج المفعّلة</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  يجلب العملاء الجدد من كافة النماذج المربوطة والمفعّلة ({enabledFormsCount} نموذج) مع منع التكرار تلقائياً.
+                  يجلب العملاء الجدد من كافة النماذج المربوطة والمفعّلة ({enabledFormsCount} نموذج) مع منع التكرار
+                  تلقائياً.
                 </p>
               </div>
               <Button
@@ -1963,7 +1866,8 @@ export function TikTokLeadsIntegrationCard({
                   <span>إعادة محاولة العملاء الفاشلين</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  يعيد محاولة إنشاء الطلبيات للعملاء القابلين للاسترداد ({retryableLeadsCount} عميل بحالة unmapped_form أو order_creation_failed).
+                  يعيد محاولة إنشاء الطلبيات للعملاء القابلين للاسترداد ({retryableLeadsCount} عميل بحالة unmapped_form
+                  أو order_creation_failed).
                 </p>
               </div>
               <Button
@@ -1997,9 +1901,7 @@ export function TikTokLeadsIntegrationCard({
               <div className="flex items-center gap-2">
                 <NativeSelect
                   value={String(reconcileDays)}
-                  onChange={(e) =>
-                    setReconcileDays(clampReconcileLookbackDays(Number(e.target.value)))
-                  }
+                  onChange={(e) => setReconcileDays(clampReconcileLookbackDays(Number(e.target.value)))}
                   disabled={isAnyActionBusy}
                   className="w-28 text-xs"
                   aria-label="فترة المزامنة التاريخية بالأيام"
@@ -2015,12 +1917,7 @@ export function TikTokLeadsIntegrationCard({
                   variant="outline"
                   size="sm"
                   onClick={handleHistoricalReconcile}
-                  disabled={
-                    !connection ||
-                    connection.status !== "connected" ||
-                    !activeAccount ||
-                    isAnyActionBusy
-                  }
+                  disabled={!connection || connection.status !== "connected" || !activeAccount || isAnyActionBusy}
                   className="flex-1 text-xs h-8 gap-1.5"
                 >
                   {busyAction === "reconcile" ? (
@@ -2038,9 +1935,7 @@ export function TikTokLeadsIntegrationCard({
           {lastSyncResult && (
             <div className="rounded-xl border bg-muted/35 p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="font-bold text-foreground">
-                  نتيجة آخر تشغيل: {lastSyncResult.label}
-                </span>
+                <span className="font-bold text-foreground">نتيجة آخر تشغيل: {lastSyncResult.label}</span>
                 <span className="text-[11px] text-muted-foreground font-mono">
                   {lastSyncResult.summary.durationMs} ms
                 </span>
@@ -2056,9 +1951,7 @@ export function TikTokLeadsIntegrationCard({
                 </div>
                 <div className="rounded-lg border bg-background p-2">
                   <div className="text-[10px] text-muted-foreground">طلبيات Pending جديدة</div>
-                  <div className="text-sm font-bold text-emerald-600">
-                    {lastSyncResult.summary.ordersCreated}
-                  </div>
+                  <div className="text-sm font-bold text-emerald-600">{lastSyncResult.summary.ordersCreated}</div>
                 </div>
                 <div className="rounded-lg border bg-background p-2">
                   <div className="text-[10px] text-muted-foreground">مكررة (تم تجاهلها)</div>
@@ -2068,9 +1961,7 @@ export function TikTokLeadsIntegrationCard({
                 </div>
                 <div className="rounded-lg border bg-background p-2">
                   <div className="text-[10px] text-muted-foreground">فشلت / تحتاج مراجعة</div>
-                  <div className="text-sm font-bold text-destructive">
-                    {lastSyncResult.summary.leadsFailed}
-                  </div>
+                  <div className="text-sm font-bold text-destructive">{lastSyncResult.summary.leadsFailed}</div>
                 </div>
               </div>
             </div>
@@ -2089,7 +1980,8 @@ export function TikTokLeadsIntegrationCard({
                 سجل المزامنة واسترداد العملاء (Logs & Lead Recovery)
               </CardTitle>
               <CardDescription className="text-xs">
-                ملخص حالات العملاء المحتملين (بأرقام هواتف مقنّعة لحماية الخصوصية)، شرح أسباب التعثر، وسجل عمليات المزامنة.
+                ملخص حالات العملاء المحتملين (بأرقام هواتف مقنّعة لحماية الخصوصية)، شرح أسباب التعثر، وسجل عمليات
+                المزامنة.
               </CardDescription>
             </div>
             <a
@@ -2113,9 +2005,7 @@ export function TikTokLeadsIntegrationCard({
             </div>
             <div className="rounded-xl border p-3 bg-muted/25">
               <div className="text-[11px] text-muted-foreground">مكررة (تم منعها)</div>
-              <div className="text-lg font-bold text-foreground">
-                {leadStats.byStatus.duplicate_skipped ?? 0}
-              </div>
+              <div className="text-lg font-bold text-foreground">{leadStats.byStatus.duplicate_skipped ?? 0}</div>
             </div>
             <div className="rounded-xl border p-3 bg-amber-50/40 dark:bg-amber-950/15">
               <div className="text-[11px] text-muted-foreground">هاتف غير صالح</div>
@@ -2131,9 +2021,7 @@ export function TikTokLeadsIntegrationCard({
             </div>
             <div className="rounded-xl border p-3 bg-destructive/5">
               <div className="text-[11px] text-muted-foreground">فشل إنشاء الطلب</div>
-              <div className="text-lg font-bold text-destructive">
-                {leadStats.byStatus.order_creation_failed ?? 0}
-              </div>
+              <div className="text-lg font-bold text-destructive">{leadStats.byStatus.order_creation_failed ?? 0}</div>
             </div>
           </div>
 
@@ -2172,9 +2060,7 @@ export function TikTokLeadsIntegrationCard({
                       return (
                         <TableRow key={lead.id || lead.externalLeadId}>
                           <TableCell className="text-xs align-top">
-                            <div className="font-semibold text-foreground">
-                              {lead.customerName || "عميل بدون اسم"}
-                            </div>
+                            <div className="font-semibold text-foreground">{lead.customerName || "عميل بدون اسم"}</div>
                             <div className="font-mono text-[11px] text-muted-foreground" dir="ltr">
                               {lead.maskedPhone || "رقم غير صالح / غير متوفر"}
                             </div>
@@ -2200,12 +2086,8 @@ export function TikTokLeadsIntegrationCard({
                               >
                                 {meta.labelAr}
                               </Badge>
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                {meta.explanationAr}
-                              </p>
-                              <p className="text-[10px] text-foreground/80">
-                                {meta.actionHintAr}
-                              </p>
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">{meta.explanationAr}</p>
+                              <p className="text-[10px] text-foreground/80">{meta.actionHintAr}</p>
                               {lead.errorMessage && (
                                 <p className="text-[10px] font-mono text-destructive/90 break-words" dir="ltr">
                                   {lead.errorMessage}
@@ -2215,9 +2097,7 @@ export function TikTokLeadsIntegrationCard({
                           </TableCell>
                           <TableCell className="text-xs align-top text-muted-foreground">
                             <div>محاولات: {lead.retryCount}</div>
-                            <div className="text-[10px]">
-                              {formatAlgiersDateTime(lead.importedAt)}
-                            </div>
+                            <div className="text-[10px]">{formatAlgiersDateTime(lead.importedAt)}</div>
                           </TableCell>
                           <TableCell className="text-left align-top">
                             <div className="flex flex-col items-end gap-1.5">
@@ -2227,9 +2107,7 @@ export function TikTokLeadsIntegrationCard({
                                   size="sm"
                                   variant="outline"
                                   disabled={isAnyActionBusy}
-                                  onClick={() =>
-                                    void handleRetryFailedLeads([lead.externalLeadId])
-                                  }
+                                  onClick={() => void handleRetryFailedLeads([lead.externalLeadId])}
                                   className="text-[11px] h-7 px-2.5 gap-1"
                                 >
                                   {isRetryingOne ? (
@@ -2302,9 +2180,7 @@ export function TikTokLeadsIntegrationCard({
                         </TableCell>
                         <TableCell className="text-xs font-mono" dir="ltr">
                           {log.leadsFetched} /{" "}
-                          <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                            {log.ordersCreated}
-                          </span>{" "}
+                          <span className="text-emerald-700 dark:text-emerald-400 font-bold">{log.ordersCreated}</span>{" "}
                           / {log.duplicatesSkipped} /{" "}
                           <span className={log.leadsFailed > 0 ? "text-destructive font-bold" : ""}>
                             {log.leadsFailed}
@@ -2314,11 +2190,7 @@ export function TikTokLeadsIntegrationCard({
                           {log.durationMs} ms
                         </TableCell>
                         <TableCell className="text-[11px] text-muted-foreground max-w-xs whitespace-normal">
-                          {log.errorMessage ? (
-                            <span className="text-destructive">{log.errorMessage}</span>
-                          ) : (
-                            "—"
-                          )}
+                          {log.errorMessage ? <span className="text-destructive">{log.errorMessage}</span> : "—"}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -2342,10 +2214,7 @@ export function TikTokLeadsIntegrationCard({
                   <Bell className="size-4 text-primary" />
                   <span>تنبيهات Telegram الاختيارية لعملاء TikTok</span>
                 </CardTitle>
-                <Badge
-                  variant={telegramOptIn.enabled ? "default" : "outline"}
-                  className="text-[10px] font-bold"
-                >
+                <Badge variant={telegramOptIn.enabled ? "default" : "outline"} className="text-[10px] font-bold">
                   {telegramOptIn.enabled ? "مفعّل (اختيارياً)" : "معطّل افتراضياً"}
                 </Badge>
                 {telegramOptIn.envLocked && (
@@ -2355,15 +2224,13 @@ export function TikTokLeadsIntegrationCard({
                 )}
               </div>
               <CardDescription className="text-xs">
-                خيار مستقل تماماً عن تنبيهات طلبيات المتجر العادية، ويعيد استخدام بوت تيليجرام المعتمد مسبقاً دون تعديل سلوك الدفع.
+                خيار مستقل تماماً عن تنبيهات طلبيات المتجر العادية، ويعيد استخدام بوت تيليجرام المعتمد مسبقاً دون تعديل
+                سلوك الدفع.
               </CardDescription>
             </div>
 
             <div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 px-3 py-2">
-              <Label
-                htmlFor="tiktok-telegram-opt-in-switch"
-                className="text-xs font-bold cursor-pointer"
-              >
+              <Label htmlFor="tiktok-telegram-opt-in-switch" className="text-xs font-bold cursor-pointer">
                 {telegramOptIn.enabled ? "تنبيهات TikTok مفعّلة" : "تنبيهات TikTok معطّلة"}
               </Label>
               <Switch
@@ -2378,10 +2245,7 @@ export function TikTokLeadsIntegrationCard({
         </CardHeader>
 
         <CardContent className="space-y-3">
-          <FeedbackAlert
-            feedback={telegramFeedback}
-            onDismiss={() => setTelegramFeedback(null)}
-          />
+          <FeedbackAlert feedback={telegramFeedback} onDismiss={() => setTelegramFeedback(null)} />
 
           <div className="rounded-xl border bg-muted/30 p-3.5 text-xs space-y-2 leading-relaxed">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2389,9 +2253,7 @@ export function TikTokLeadsIntegrationCard({
               <Badge
                 variant={telegramOptIn.existingTelegramConfigured ? "default" : "outline"}
                 className={
-                  telegramOptIn.existingTelegramConfigured
-                    ? "bg-emerald-600 text-white text-[10px]"
-                    : "text-[10px]"
+                  telegramOptIn.existingTelegramConfigured ? "bg-emerald-600 text-white text-[10px]" : "text-[10px]"
                 }
               >
                 {telegramOptIn.existingTelegramConfigured
@@ -2408,7 +2270,8 @@ export function TikTokLeadsIntegrationCard({
             )}
 
             <p className="text-[11px] text-muted-foreground">
-              <strong>تنبيه تشغيلي مهم:</strong> إرسال تنبيهات Telegram لطلبيات TikTok هو إشعار إعلامي غير معطّل (بمهلة قصوى 2500ms ولا يُرسل للعملاء المكررين أو غير الصالحين).{" "}
+              <strong>تنبيه تشغيلي مهم:</strong> إرسال تنبيهات Telegram لطلبيات TikTok هو إشعار إعلامي غير معطّل (بمهلة
+              قصوى 2500ms ولا يُرسل للعملاء المكررين أو غير الصالحين).{" "}
               <strong className="text-foreground">
                 تفعيل هذا الخيار لا يقوم أبداً بتأكيد الطلب ولا بإرساله إلى شركة التوصيل Redex.
               </strong>
@@ -2425,7 +2288,8 @@ export function TikTokLeadsIntegrationCard({
           <DialogHeader className="pr-7">
             <DialogTitle className="text-right">تأكيد فصل حساب TikTok Business</DialogTitle>
             <DialogDescription className="text-right text-xs leading-relaxed">
-              سيتم إلغاء التفويض لدى TikTok وحذف رموز الوصول المشفرة من خادم ORVA فوراً. ستبقى جميع الطلبيات السابقة وسجلات العملاء محفوظة بالكامل دون حذف.
+              سيتم إلغاء التفويض لدى TikTok وحذف رموز الوصول المشفرة من خادم ORVA فوراً. ستبقى جميع الطلبيات السابقة
+              وسجلات العملاء محفوظة بالكامل دون حذف.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:justify-start">
@@ -2465,9 +2329,7 @@ export function TikTokLeadsIntegrationCard({
       >
         <DialogContent className="sm:max-w-xl" dir="rtl">
           <DialogHeader className="pr-7">
-            <DialogTitle className="text-right">
-              ربط النموذج الفوري بمنتج من كتالوج ORVA
-            </DialogTitle>
+            <DialogTitle className="text-right">ربط النموذج الفوري بمنتج من كتالوج ORVA</DialogTitle>
             <DialogDescription className="text-right text-xs">
               {mappingForm ? (
                 <>
@@ -2510,8 +2372,7 @@ export function TikTokLeadsIntegrationCard({
                   <NativeSelectOption value="">— اختر منتجاً من كتالوج ORVA —</NativeSelectOption>
                   {catalogProducts.map((product) => (
                     <NativeSelectOption key={product.id} value={product.id}>
-                      {product.title} — {formatDzd(product.sellingPrice)} (المخزون:{" "}
-                      {product.stockQuantity})
+                      {product.title} — {formatDzd(product.sellingPrice)} (المخزون: {product.stockQuantity})
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
@@ -2535,7 +2396,8 @@ export function TikTokLeadsIntegrationCard({
                   <span>الحالة: {selectedCatalogProduct.status}</span>
                 </div>
                 <p className="text-[10px] text-emerald-800 dark:text-emerald-300">
-                  يتم قراءة اسم المنتج وسعر البيع المعتمد مباشرة من قاعدة بيانات ORVA على الخادم عند حفظ الربط وعند إنشاء كل طلب — لا يرسل المتصفح أي سعر.
+                  يتم قراءة اسم المنتج وسعر البيع المعتمد مباشرة من قاعدة بيانات ORVA على الخادم عند حفظ الربط وعند
+                  إنشاء كل طلب — لا يرسل المتصفح أي سعر.
                 </p>
               </div>
             )}
@@ -2552,7 +2414,7 @@ export function TikTokLeadsIntegrationCard({
                   onChange={(e) => setDefaultWilayaCode(Number(e.target.value))}
                   className="w-full text-xs"
                 >
-                  {ALGERIA_58_WILAYAS.map((w) => (
+                  {ALGERIA_69_WILAYAS.map((w) => (
                     <NativeSelectOption key={w.code} value={String(w.code)}>
                       {String(w.code).padStart(2, "0")} — {w.nameAr} ({w.nameFr})
                     </NativeSelectOption>
@@ -2567,11 +2429,7 @@ export function TikTokLeadsIntegrationCard({
                 <NativeSelect
                   id="tiktok-map-delivery"
                   value={defaultDeliveryType}
-                  onChange={(e) =>
-                    setDefaultDeliveryType(
-                      e.target.value === "STOP_DESK" ? "STOP_DESK" : "DOMICILE",
-                    )
-                  }
+                  onChange={(e) => setDefaultDeliveryType(e.target.value === "STOP_DESK" ? "STOP_DESK" : "DOMICILE")}
                   className="w-full text-xs"
                 >
                   <NativeSelectOption value="DOMICILE">توصيل للمنزل (DOMICILE)</NativeSelectOption>
@@ -2597,9 +2455,7 @@ export function TikTokLeadsIntegrationCard({
                   <Label htmlFor="tiktok-map-autocreate" className="text-xs font-semibold cursor-pointer">
                     إنشاء طلب Pending تلقائياً
                   </Label>
-                  <p className="text-[10px] text-muted-foreground">
-                    يحفظ الطلب بحالة pending فقط دون شحن لـ Redex
-                  </p>
+                  <p className="text-[10px] text-muted-foreground">يحفظ الطلب بحالة pending فقط دون شحن لـ Redex</p>
                 </div>
                 <Switch
                   id="tiktok-map-autocreate"
@@ -2614,9 +2470,7 @@ export function TikTokLeadsIntegrationCard({
                   <Label htmlFor="tiktok-map-enable-sync" className="text-xs font-semibold cursor-pointer">
                     تفعيل مزامنة النموذج
                   </Label>
-                  <p className="text-[10px] text-muted-foreground">
-                    تضمين هذا النموذج في المزامنة الفورية والمجدولة
-                  </p>
+                  <p className="text-[10px] text-muted-foreground">تضمين هذا النموذج في المزامنة الفورية والمجدولة</p>
                 </div>
                 <Switch
                   id="tiktok-map-enable-sync"

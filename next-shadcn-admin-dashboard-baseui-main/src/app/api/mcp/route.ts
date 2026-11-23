@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { listPublishedProducts } from "@/lib/catalog/server";
 import { getDeliveryFees } from "@/lib/delivery-fees";
@@ -8,7 +8,7 @@ import {
   ORVA_CONTACT_PHONE,
   ORVA_WHATSAPP_URL,
 } from "@/lib/seo/storefront-schema";
-import { ALGERIA_58_WILAYAS } from "@/lib/types/checkout";
+import { ALGERIA_69_WILAYAS } from "@/lib/types/checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -37,15 +37,15 @@ const MCP_TOOLS = [
   {
     name: "get_wilaya_delivery_fees",
     description:
-      "Look up Cash-on-Delivery (COD) home delivery (Domicile) and office pickup (Stop Desk) shipping fees in DZD for Algerian wilayas (01 to 58).",
+      "Look up Cash-on-Delivery (COD) home delivery (Domicile) and office pickup (Stop Desk) shipping fees in DZD for Algerian wilayas (01 to 69).",
     inputSchema: {
       type: "object",
       properties: {
         wilayaCode: {
           type: "integer",
           minimum: 1,
-          maximum: 58,
-          description: "Algerian wilaya number (1-58), e.g., 16 for Algiers.",
+          maximum: 69,
+          description: "Algerian wilaya number (1-69), e.g., 16 for Algiers.",
         },
       },
       required: ["wilayaCode"],
@@ -54,7 +54,8 @@ const MCP_TOOLS = [
   },
   {
     name: "get_store_contact_info",
-    description: "Retrieve official business contact details, customer support hours, and policy URLs for ORVA Store Algeria.",
+    description:
+      "Retrieve official business contact details, customer support hours, and policy URLs for ORVA Store Algeria.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -165,18 +166,18 @@ export async function POST(request: NextRequest) {
 
     if (toolName === "get_wilaya_delivery_fees") {
       const codeNum = Number(args.wilayaCode);
-      if (!Number.isInteger(codeNum) || codeNum < 1 || codeNum > 58) {
+      if (!Number.isInteger(codeNum) || codeNum < 1 || codeNum > 69) {
         return NextResponse.json({
           jsonrpc: "2.0",
           id,
           result: {
             isError: true,
-            content: [{ type: "text", text: "Invalid wilayaCode. Provide an integer from 1 to 58." }],
+            content: [{ type: "text", text: "Invalid wilayaCode. Provide an integer from 1 to 69." }],
           },
         });
       }
       const feesResult = await getDeliveryFees(false);
-      const wilayaInfo = ALGERIA_58_WILAYAS.find((w) => w.code === codeNum);
+      const wilayaInfo = ALGERIA_69_WILAYAS.find((w) => w.code === codeNum);
       const feeEntry = feesResult.fees?.[codeNum];
       const payload = {
         wilayaCode: codeNum,

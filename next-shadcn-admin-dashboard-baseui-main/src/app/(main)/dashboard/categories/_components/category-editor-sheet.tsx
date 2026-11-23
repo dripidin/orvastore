@@ -1,20 +1,14 @@
 "use client";
 
 import * as React from "react";
+
 import { Loader2, Save } from "lucide-react";
 
 import { CategoryIconPicker } from "@/components/categories/category-icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_CATEGORY_ICON } from "@/lib/categories/icon-registry";
@@ -78,13 +72,11 @@ export function CategoryEditorSheet({
     }
   }, [open, editingCategory, initialParentId, categories.length]);
 
-  const editingHasChildren = Boolean(
-    editingCategory && categories.some((c) => c.parent_id === editingCategory.id)
-  );
+  const editingHasChildren = Boolean(editingCategory && categories.some((c) => c.parent_id === editingCategory.id));
 
   const rootOptions = React.useMemo(
     () => categories.filter((c) => !c.parent_id && c.id !== editingCategory?.id),
-    [categories, editingCategory?.id]
+    [categories, editingCategory?.id],
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,7 +97,7 @@ export function CategoryEditorSheet({
           displayOrder: Number.isFinite(displayOrder) ? displayOrder : 0,
           active,
         },
-        editingCategory?.id
+        editingCategory?.id,
       );
       onOpenChange(false);
     } catch (err) {
@@ -125,7 +117,8 @@ export function CategoryEditorSheet({
                 : "إضافة تصنيف رئيسي جديد"}
           </SheetTitle>
           <SheetDescription className="text-xs">
-            إعدادات كاملة للتصنيف تشمل الأيقونة من مكتبة shadcn/Lucide، التسلسل الهرمي، الرابط الدائم SEO، وحالة الظهور في المتجر.
+            إعدادات كاملة للتصنيف تشمل الأيقونة من مكتبة shadcn/Lucide، التسلسل الهرمي، الرابط الدائم SEO، وحالة الظهور
+            في المتجر.
           </SheetDescription>
         </SheetHeader>
 
@@ -223,7 +216,7 @@ export function CategoryEditorSheet({
               id="cat-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="مثال: مثاقب ومناشير كراون الأصلية ببطاريات 20V مع التوصيل لـ 58 ولاية..."
+              placeholder="مثال: مثاقب ومناشير كراون الأصلية ببطاريات 20V مع التوصيل لـ 69 ولاية..."
               rows={3}
               disabled={saving}
             />

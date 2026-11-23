@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Clock, Mail, MapPin, MessageCircle, PhoneCall } from "lucide-react";
+import type { Metadata } from "next";
 
 import {
   ORVA_CANONICAL_ORIGIN,
@@ -14,7 +14,7 @@ import {
 export const metadata: Metadata = {
   title: "اتصل بنا (Contact Us) | متجر أورفا ORVA Store Algeria",
   description:
-    "تواصل مع خدمة زبائن متجر أورفا عبر الهاتف، البريد الإلكتروني، أو واتساب لتأكيد الطلبيات والاستفسار عن التوصيل لـ 58 ولاية.",
+    "تواصل مع خدمة زبائن متجر أورفا عبر الهاتف، البريد الإلكتروني، أو واتساب لتأكيد الطلبيات والاستفسار عن التوصيل لـ 69 ولاية.",
   alternates: {
     canonical: `${ORVA_CANONICAL_ORIGIN}/contact/`,
   },
@@ -86,7 +86,7 @@ export default function ContactPage() {
             السبت – الخميس: 08:30 – 20:00 (UTC+1)
             <br />
             <span className="inline-flex items-center gap-1 text-slate-500">
-              <MapPin className="size-3" /> بسكرة، الجزائر (تغطية 58 ولاية)
+              <MapPin className="size-3" /> بسكرة، الجزائر (تغطية 69 ولاية)
             </span>
           </div>
         </div>

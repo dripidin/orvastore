@@ -4,9 +4,10 @@ import { getAdminSettingsAction } from "@/app/actions/settings";
 import { computeCampaignProfitability } from "@/lib/analytics/campaign-profitability";
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
 import { adminGetProduct, adminListProducts, adminUpdateProduct } from "@/lib/catalog/server";
-import { normalizeOrvaOrder, type OrvaOrder } from "@/lib/orva-api";
+import { getReturnFeesByWilayaMap } from "@/lib/geo/coverage";
 import { getStoredFallbackOrders } from "@/lib/orders-store";
-import type { ProductMetaAdLink } from "@/lib/repository/product-types";
+import { normalizeOrvaOrder, type OrvaOrder } from "@/lib/orva-api";
+import { computeWeightedProductCpa, type ProductMetaAdLink } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -92,9 +93,7 @@ async function fetchLiveMetaGraphCampaigns(options: {
     cpcUsd: number;
   }>
 > {
-  const cleanAccount = options.adAccountId.startsWith("act_")
-    ? options.adAccountId
-    : `act_${options.adAccountId}`;
+  const cleanAccount = options.adAccountId.startsWith("act_") ? options.adAccountId : `act_${options.adAccountId}`;
   const preset = ["today", "yesterday", "last_7d", "last_14d", "last_30d", "this_month", "lifetime"].includes(
     options.timeRange,
   )
@@ -156,16 +155,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const timeRange = request.nextUrl.searchParams.get("timeRange") || "last_30d";
+    const timeRange = request.nextUrl.searchParams.get("timeRange") || "last_7d";
+    const limitParam = Math.max(1, Math.min(100, Number(request.nextUrl.searchParams.get("limit") || 10) || 10));
     const exchangeRateDzd = Math.max(
       1,
       Number(request.nextUrl.searchParams.get("exchangeRateDzd") || process.env.META_USD_TO_DZD_RATE || 245) || 245,
     );
 
-    const [settings, products, orders] = await Promise.all([
+    const [settings, products, orders, returnFeesByWilaya] = await Promise.all([
       getAdminSettingsAction(),
       adminListProducts().catch(() => []),
       loadOrdersForMetaAnalytics(),
+      getReturnFeesByWilayaMap().catch(() => ({}) as Record<number, number>),
     ]);
 
     const accessToken = (
@@ -196,15 +197,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const profitabilityRows = computeCampaignProfitability(orders, costConfigs, {}, products);
+    const profitabilityRows = computeCampaignProfitability(orders, costConfigs, {}, products, returnFeesByWilaya);
 
     const campaigns: MetaAdCampaignSummary[] = profitabilityRows.map((row) => {
       const liveMatch = liveGraphCampaigns.find(
         (c) => c.campaignId === row.fbCampaignId || c.campaignName === row.utmCampaign,
       );
-      const cpa =
-        row.costPerOrderDzd ??
-        (row.linkedProducts[0]?.marketingCostPerOrderDzd || 850);
+      const cpa = row.costPerOrderDzd ?? (row.linkedProducts[0]?.marketingCostPerOrderDzd || 850);
 
       return {
         campaignKey: row.campaignKey,
@@ -233,15 +232,25 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Also include any product-linked campaigns that don't have orders yet
+    // Include product-linked campaigns across Many-to-Many metaAdsLinks that have no orders yet
     for (const prod of products) {
-      const link = prod.metaAdsLink;
-      if (!link?.enabled) continue;
-      const cid = link.campaignId || link.adId || link.campaignName || `prod-ad-${prod.id}`;
-      const exists = campaigns.some(
-        (c) => c.campaignId === cid || c.campaignName === link.campaignName,
-      );
-      if (!exists) {
+      const links =
+        prod.metaAdsLinks && prod.metaAdsLinks.length > 0
+          ? prod.metaAdsLinks
+          : prod.metaAdsLink
+            ? [prod.metaAdsLink]
+            : [];
+      for (const link of links) {
+        if (!link?.enabled) continue;
+        const cid = link.campaignId || link.adId || link.campaignName || `prod-ad-${prod.id}`;
+        const existing = campaigns.find((c) => c.campaignId === cid || c.campaignName === link.campaignName);
+        if (existing) {
+          if (!existing.linkedProductIds.includes(prod.id)) {
+            existing.linkedProductIds.push(prod.id);
+            existing.linkedProductTitles.push(prod.title);
+          }
+          continue;
+        }
         const spendDzd = Number(link.campaignSpendDzd) || prod.marketingCostPerOrder;
         campaigns.push({
           campaignKey: `link:${cid}`,
@@ -267,6 +276,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const totalCampaignsCount = campaigns.length;
+    const pagedCampaigns = campaigns.slice(0, limitParam);
+
     return NextResponse.json({
       success: true,
       metaMcpCompatible: true,
@@ -274,7 +286,13 @@ export async function GET(request: NextRequest) {
       liveGraphConnected: liveGraphCampaigns.length > 0,
       exchangeRateDzd,
       timeRange,
-      campaigns,
+      limit: limitParam,
+      totalCampaignsCount,
+      hasMore: totalCampaignsCount > pagedCampaigns.length,
+      returnFeesByWilaya,
+      returnFeeWilayasSynced: Object.keys(returnFeesByWilaya).length,
+      campaigns: pagedCampaigns,
+      allCampaignsCount: totalCampaignsCount,
       products: products.map((p) => ({
         id: p.id,
         sku: p.sku,
@@ -283,6 +301,7 @@ export async function GET(request: NextRequest) {
         purchaseCost: p.purchaseCost,
         marketingCostPerOrder: p.marketingCostPerOrder,
         metaAdsLink: p.metaAdsLink ?? null,
+        metaAdsLinks: p.metaAdsLinks ?? (p.metaAdsLink ? [p.metaAdsLink] : []),
       })),
     });
   } catch (err) {
@@ -306,6 +325,8 @@ export async function POST(request: NextRequest) {
       action?: string;
       productId?: string;
       metaAdsLink?: Partial<ProductMetaAdLink> | null;
+      metaAdsLinks?: Array<Partial<ProductMetaAdLink>>;
+      linkId?: string;
       unlink?: boolean;
     };
 
@@ -319,63 +340,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "المنتج غير موجود." }, { status: 404 });
     }
 
-    if (body.unlink || body.metaAdsLink === null) {
+    const normalizeSingleLink = (linkInput: Partial<ProductMetaAdLink>, idx: number): ProductMetaAdLink => {
+      const costMode = linkInput.costMode ?? "campaign_budget_cpa";
+      const exchangeRateDzd = Math.max(1, Number(linkInput.exchangeRateDzd ?? 245) || 245);
+      const campaignSpendUsd = Math.max(0, Number(linkInput.campaignSpendUsd ?? 0) || 0);
+      const rawSpendDzd = Math.max(0, Number(linkInput.campaignSpendDzd ?? 0) || 0);
+      const campaignSpendDzd =
+        rawSpendDzd > 0 ? Math.round(rawSpendDzd) : Math.round(campaignSpendUsd * exchangeRateDzd);
+      const attributedOrdersCount = Math.max(1, Math.round(Number(linkInput.attributedOrdersCount ?? 1) || 1));
+
+      let computedCpaDzd = Math.max(0, Math.round(Number(linkInput.computedCpaDzd ?? 0) || 0));
+      if (costMode === "campaign_budget_cpa" && campaignSpendDzd > 0) {
+        computedCpaDzd = Math.max(1, Math.round(campaignSpendDzd / attributedOrdersCount));
+      } else if (computedCpaDzd <= 0 && campaignSpendDzd > 0) {
+        computedCpaDzd = Math.max(1, Math.round(campaignSpendDzd / attributedOrdersCount));
+      } else if (computedCpaDzd <= 0) {
+        computedCpaDzd = existingProduct.marketingCostPerOrder || 850;
+      }
+
+      return {
+        id: linkInput.id || `lnk-${Date.now()}-${idx}`,
+        enabled: linkInput.enabled !== false,
+        campaignId: linkInput.campaignId?.trim() || null,
+        campaignName: linkInput.campaignName?.trim() || null,
+        adsetId: linkInput.adsetId?.trim() || null,
+        adsetName: linkInput.adsetName?.trim() || null,
+        adId: linkInput.adId?.trim() || null,
+        adName: linkInput.adName?.trim() || null,
+        costMode,
+        campaignSpendUsd:
+          campaignSpendUsd > 0 ? campaignSpendUsd : Number((campaignSpendDzd / exchangeRateDzd).toFixed(2)),
+        campaignSpendDzd,
+        exchangeRateDzd,
+        attributedOrdersCount,
+        allocationWeight: Math.max(0.01, Number(linkInput.allocationWeight ?? 1) || 1),
+        isPrimary: linkInput.isPrimary ?? idx === 0,
+        computedCpaDzd,
+        lastSyncedAt: new Date().toISOString(),
+      };
+    };
+
+    if (body.unlink || (body.metaAdsLink === null && !Array.isArray(body.metaAdsLinks))) {
       const updated = await adminUpdateProduct(productId, {
         metaAdsLink: null,
+        metaAdsLinks: [],
       });
       return NextResponse.json({
         success: true,
         product: updated,
-        message: "تم فك ربط الإعلان عن المنتج.",
+        message: "تم فك ربط الإعلانات عن المنتج.",
       });
     }
 
-    const linkInput = body.metaAdsLink ?? {};
-    const costMode = linkInput.costMode || "campaign_budget_cpa";
-    const exchangeRateDzd = Math.max(1, Number(linkInput.exchangeRateDzd ?? 245) || 245);
-    const campaignSpendUsd = Math.max(0, Number(linkInput.campaignSpendUsd ?? 0) || 0);
-    const rawSpendDzd = Math.max(0, Number(linkInput.campaignSpendDzd ?? 0) || 0);
-    const campaignSpendDzd =
-      rawSpendDzd > 0 ? Math.round(rawSpendDzd) : Math.round(campaignSpendUsd * exchangeRateDzd);
-    const attributedOrdersCount = Math.max(1, Math.round(Number(linkInput.attributedOrdersCount ?? 1) || 1));
-
-    let computedCpaDzd = Math.max(0, Math.round(Number(linkInput.computedCpaDzd ?? 0) || 0));
-    if (costMode === "campaign_budget_cpa" && campaignSpendDzd > 0) {
-      computedCpaDzd = Math.max(1, Math.round(campaignSpendDzd / attributedOrdersCount));
-    } else if (computedCpaDzd <= 0 && campaignSpendDzd > 0) {
-      computedCpaDzd = Math.max(1, Math.round(campaignSpendDzd / attributedOrdersCount));
-    } else if (computedCpaDzd <= 0) {
-      computedCpaDzd = existingProduct.marketingCostPerOrder || 850;
+    if (Array.isArray(body.metaAdsLinks)) {
+      const normalizedList = body.metaAdsLinks.map((l, i) => normalizeSingleLink(l, i));
+      const primary =
+        normalizedList.find((l) => l.isPrimary && l.enabled) ?? normalizedList.find((l) => l.enabled) ?? null;
+      const weightedCpa = computeWeightedProductCpa(normalizedList, existingProduct.marketingCostPerOrder);
+      const updated = await adminUpdateProduct(productId, {
+        marketingCostPerOrder: weightedCpa,
+        metaAdsLink: primary,
+        metaAdsLinks: normalizedList,
+      });
+      return NextResponse.json({
+        success: true,
+        product: updated,
+        computedCpaDzd: weightedCpa,
+        metaAdsLink: primary,
+        metaAdsLinks: normalizedList,
+        message: `تم ربط المنتج بـ ${normalizedList.length} حملات وحساب متوسط CPA المرجّح بـ ${weightedCpa} د.ج.`,
+      });
     }
 
-    const normalizedLink: ProductMetaAdLink = {
-      enabled: linkInput.enabled !== false,
-      campaignId: linkInput.campaignId?.trim() || null,
-      campaignName: linkInput.campaignName?.trim() || null,
-      adsetId: linkInput.adsetId?.trim() || null,
-      adsetName: linkInput.adsetName?.trim() || null,
-      adId: linkInput.adId?.trim() || null,
-      adName: linkInput.adName?.trim() || null,
-      costMode,
-      campaignSpendUsd: campaignSpendUsd > 0 ? campaignSpendUsd : Number((campaignSpendDzd / exchangeRateDzd).toFixed(2)),
-      campaignSpendDzd,
-      exchangeRateDzd,
-      attributedOrdersCount,
-      computedCpaDzd,
-      lastSyncedAt: new Date().toISOString(),
-    };
-
+    const singleLink = normalizeSingleLink(body.metaAdsLink ?? {}, 0);
     const updated = await adminUpdateProduct(productId, {
-      marketingCostPerOrder: computedCpaDzd,
-      metaAdsLink: normalizedLink,
+      marketingCostPerOrder: singleLink.computedCpaDzd,
+      metaAdsLink: singleLink,
+      metaAdsLinks: [singleLink],
     });
 
     return NextResponse.json({
       success: true,
       product: updated,
-      computedCpaDzd,
-      metaAdsLink: normalizedLink,
-      message: `تم ربط المنتج بالحملة الإعلانية وتحديد تكلفة التسويق تلقائياً بـ ${computedCpaDzd} د.ج لكل طلب.`,
+      computedCpaDzd: singleLink.computedCpaDzd,
+      metaAdsLink: singleLink,
+      metaAdsLinks: [singleLink],
+      message: `تم ربط المنتج بالحملة الإعلانية وتحديد تكلفة التسويق تلقائياً بـ ${singleLink.computedCpaDzd} د.ج لكل طلب.`,
     });
   } catch (err) {
     return NextResponse.json(

@@ -1,11 +1,8 @@
 "use client";
 
 import * as React from "react";
-import type {
-  PaginationState,
-  RowSelectionState,
-  SortingState,
-} from "@tanstack/react-table";
+
+import type { PaginationState, RowSelectionState, SortingState } from "@tanstack/react-table";
 import { useTable } from "@tanstack/react-table";
 import {
   AlertCircle,
@@ -21,8 +18,8 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
-  Trash2,
   SlidersHorizontal,
+  Trash2,
   Truck,
   Volume2,
   VolumeX,
@@ -30,32 +27,13 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
 import { ALGERIA_WILAYAS } from "@/data/algeria-locations";
 import { dataTableFeatures } from "@/lib/data-table-features";
@@ -66,19 +44,14 @@ import {
 } from "@/lib/notifications/order-sound-notifier";
 import { fetchOrvaOrders, formatDzd, getOrdersRepository, orvaRequestJson } from "@/lib/orva-api";
 
-import { OrderDetailsDrawer } from "./order-details-drawer";
-import { OrderSwitchDialog } from "./order-switch-dialog";
-import { OrderPushDialog } from "./order-push-dialog";
-import { RiskOverrideDialog } from "./risk-override-dialog";
 import { CustomerNameEditDialog } from "./customer-name-edit-dialog";
+import { OrderDetailsDrawer } from "./order-details-drawer";
+import { OrderPushDialog } from "./order-push-dialog";
+import { OrderSwitchDialog } from "./order-switch-dialog";
 import { createRecentOrdersColumns } from "./recent-orders-table/columns";
-import {
-  matchesOrderFilter,
-  orderFilters,
-  type OrderFilter,
-  type OrderRow,
-} from "./recent-orders-table/schema";
+import { matchesOrderFilter, type OrderFilter, type OrderRow, orderFilters } from "./recent-orders-table/schema";
 import { getAvailableTransitions, STATUS_LABELS_AR } from "./recent-orders-table/status-transitions";
+import { RiskOverrideDialog } from "./risk-override-dialog";
 
 function extractConversionsFromRemarks(remarks: any): {
   conversions: any[];
@@ -122,11 +95,7 @@ function matchesDateFilter(dateStr: string, range: string): boolean {
     const now = new Date();
     if (isNaN(d.getTime())) return true;
     if (range === "TODAY") {
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     }
     const diffDays = (now.getTime() - d.getTime()) / (1000 * 3600 * 24);
     if (range === "LAST_7") return diffDays <= 7;
@@ -144,7 +113,7 @@ function matchesWilayaFilter(orderWilaya: string, selectedCode: string): boolean
   if (match) {
     return parseInt(match[1], 10) === parseInt(selectedCode, 10);
   }
-  const found = ALGERIA_WILAYAS.find(w => w.id === selectedCode);
+  const found = ALGERIA_WILAYAS.find((w) => w.id === selectedCode);
   if (found) {
     return orderWilaya.includes(found.arName) || orderWilaya.includes(found.code);
   }
@@ -300,6 +269,20 @@ export function RecentOrders() {
             attribution_source: order.attributionSource ?? "direct",
             carrier_status: order.carrierStatus || (order.inRedex ? "prete_a_expedier" : null),
             carrier_status_ar: order.carrierStatusAr || (order.inRedex ? "جاهز للإرسال" : null),
+            courierId: order.courierId ?? null,
+            courierName: order.courierName ?? null,
+            courierStatus: order.courierStatus ?? null,
+            courierStatusAr: order.courierStatusAr ?? null,
+            normalizedCourierStatus: order.normalizedCourierStatus ?? null,
+            courierLocationStage: order.courierLocationStage ?? null,
+            driverName: order.driverName ?? null,
+            driverPhone: order.driverPhone ?? null,
+            currentStation: order.currentStation ?? null,
+            financialStatus: order.financialStatus ?? null,
+            returnFeeDzd: order.returnFeeDzd ?? null,
+            deskInfo: order.deskInfo ?? null,
+            courierRemarks: order.courierRemarks ?? [],
+            manualStatusOverride: order.manualStatusOverride ?? false,
             remarks: order.remarks,
             conversions,
             isSwitched,
@@ -345,7 +328,7 @@ export function RecentOrders() {
           }
         };
       }
-    } catch (_) { }
+    } catch (_) {}
 
     // Visibility-aware soft poll (classic panel used 20s; keep quieter)
     const pollId = window.setInterval(() => {
@@ -358,13 +341,12 @@ export function RecentOrders() {
       if (channel) {
         try {
           channel.close();
-        } catch (_) { }
+        } catch (_) {}
       }
       window.removeEventListener("orva:orders-updated", handleSync);
       window.removeEventListener("orva:repository-mode-changed", handleSync);
     };
   }, [fetchOrders]);
-
 
   // Handle URL hash for direct filtering (e.g. #orders, #switched)
   React.useEffect(() => {
@@ -397,7 +379,7 @@ export function RecentOrders() {
           (o) =>
             (o.id && o.id.toLowerCase() === cleanTarget) ||
             (o.rawOrder?.order_id && String(o.rawOrder.order_id).toLowerCase() === cleanTarget) ||
-            (o.rawOrder?.id && String(o.rawOrder.id).toLowerCase() === cleanTarget)
+            (o.rawOrder?.id && String(o.rawOrder.id).toLowerCase() === cleanTarget),
         );
         if (match) {
           setSelectedOrderForDetails(match);
@@ -483,42 +465,45 @@ export function RecentOrders() {
     setNameEditDialogOpen(true);
   }, []);
 
-  const handleCustomerNameUpdated = React.useCallback((orderId: string, newCustomerName: string, previousName: string) => {
-    const patchCustomerName = (order: OrderRow): OrderRow => {
-      const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
-      const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
-      const prevHistory = Array.isArray((oldMetadata as any).customerNameHistory)
-        ? (oldMetadata as any).customerNameHistory
-        : [];
-      const historyEntry = {
-        previousName,
-        newName: newCustomerName,
-        timestamp_utc: new Date().toISOString(),
+  const handleCustomerNameUpdated = React.useCallback(
+    (orderId: string, newCustomerName: string, previousName: string) => {
+      const patchCustomerName = (order: OrderRow): OrderRow => {
+        const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
+        const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
+        const prevHistory = Array.isArray((oldMetadata as any).customerNameHistory)
+          ? (oldMetadata as any).customerNameHistory
+          : [];
+        const historyEntry = {
+          previousName,
+          newName: newCustomerName,
+          timestamp_utc: new Date().toISOString(),
+        };
+        const metadata = {
+          ...oldMetadata,
+          customerNameOverride: historyEntry,
+          customerNameHistory: [...prevHistory, historyEntry],
+        };
+        return {
+          ...order,
+          customer: newCustomerName,
+          rawOrder: {
+            ...raw,
+            customer_name: newCustomerName,
+            full_name: newCustomerName,
+            fullName: newCustomerName,
+            metadata,
+          },
+        };
       };
-      const metadata = {
-        ...oldMetadata,
-        customerNameOverride: historyEntry,
-        customerNameHistory: [...prevHistory, historyEntry],
-      };
-      return {
-        ...order,
-        customer: newCustomerName,
-        rawOrder: {
-          ...raw,
-          customer_name: newCustomerName,
-          full_name: newCustomerName,
-          fullName: newCustomerName,
-          metadata,
-        },
-      };
-    };
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? patchCustomerName(o) : o)));
-    setSelectedOrderForDetails((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
-    setSelectedOrderForNameEdit((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("orva:orders-updated"));
-    }
-  }, []);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? patchCustomerName(o) : o)));
+      setSelectedOrderForDetails((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
+      setSelectedOrderForNameEdit((prev) => (prev?.id === orderId ? patchCustomerName(prev) : prev));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+      }
+    },
+    [],
+  );
 
   const handleRiskUpdated = React.useCallback((orderId: string, patch: Partial<OrderRow>) => {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...patch } : o)));
@@ -537,23 +522,32 @@ export function RecentOrders() {
     toast.add({ title: "تم تحديث الطلبية", description: "تم تأكيد التعديل من خدمة الإدارة.", type: "success" });
   }, []);
 
-  const handleDiscountUpdated = React.useCallback((orderId: string, discountDzd: number, finalTotalDzd: number, originalTotalDzd: number) => {
-    const patchDiscount = (order: OrderRow): OrderRow => {
-      const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
-      const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
-      const metadata = { ...oldMetadata } as Record<string, unknown>;
-      if (discountDzd > 0) metadata.orderDiscount = { amountDzd: discountDzd, originalTotalDzd, finalTotalDzd };
-      else delete metadata.orderDiscount;
-      return {
-        ...order,
-        total: formatDzd(finalTotalDzd),
-        rawOrder: { ...raw, total: finalTotalDzd, total_payable: finalTotalDzd, grand_total: `${finalTotalDzd} د.ج`, metadata },
+  const handleDiscountUpdated = React.useCallback(
+    (orderId: string, discountDzd: number, finalTotalDzd: number, originalTotalDzd: number) => {
+      const patchDiscount = (order: OrderRow): OrderRow => {
+        const raw = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder : {};
+        const oldMetadata = raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {};
+        const metadata = { ...oldMetadata } as Record<string, unknown>;
+        if (discountDzd > 0) metadata.orderDiscount = { amountDzd: discountDzd, originalTotalDzd, finalTotalDzd };
+        else delete metadata.orderDiscount;
+        return {
+          ...order,
+          total: formatDzd(finalTotalDzd),
+          rawOrder: {
+            ...raw,
+            total: finalTotalDzd,
+            total_payable: finalTotalDzd,
+            grand_total: `${finalTotalDzd} د.ج`,
+            metadata,
+          },
+        };
       };
-    };
-    setOrders((previous) => previous.map((order) => order.id === orderId ? patchDiscount(order) : order));
-    setSelectedOrderForDetails((previous) => previous?.id === orderId ? patchDiscount(previous) : previous);
-    window.dispatchEvent(new CustomEvent("orva:orders-updated"));
-  }, []);
+      setOrders((previous) => previous.map((order) => (order.id === orderId ? patchDiscount(order) : order)));
+      setSelectedOrderForDetails((previous) => (previous?.id === orderId ? patchDiscount(previous) : previous));
+      window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+    },
+    [],
+  );
 
   const handleSyncRedexTracking = React.useCallback(async () => {
     setIsSyncingRedex(true);
@@ -586,53 +580,60 @@ export function RecentOrders() {
   }, [fetchOrders]);
 
   // Direct Status Update Handler
-  const handleUpdateStatus = React.useCallback(async (orderId: string, newStatus: string) => {
-    if (pendingStatusIds.current.has(orderId)) return;
-    const currentOrder = orders.find((order) => order.id === orderId);
-    if (!currentOrder || !getAvailableTransitions(currentOrder).includes(newStatus)) {
-      toast.add({
-        title: "الحالة غير متاحة",
-        description: "لا تسمح قواعد الطلبية الحالية بهذا الانتقال.",
-        type: "error",
-      });
-      return;
-    }
-
-    if (newStatus === "cancelled" && !window.confirm(`هل تريد إلغاء الطلبية ${orderId}؟`)) return;
-    if (newStatus === "returned" && !window.confirm(`تأكيد تسجيل الطلبية ${orderId} كمرتجعة أو مرفوضة؟`)) return;
-
-    pendingStatusIds.current.add(orderId);
-    setPendingStatusById((previous) => ({ ...previous, [orderId]: true }));
-    try {
-      const repo = getOrdersRepository();
-      await repo.updateOrderStatus(orderId, newStatus);
-
-      setOrders((previous) => previous.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)));
-      setSelectedOrderForDetails((previous) => (previous?.id === orderId ? { ...previous, status: newStatus } : previous));
-      toast.add({
-        title: "تم تحديث الحالة",
-        description: `الحالة الجديدة: ${STATUS_LABELS_AR[newStatus] ?? newStatus}.`,
-        type: "success",
-      });
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+  const handleUpdateStatus = React.useCallback(
+    async (orderId: string, newStatus: string) => {
+      if (pendingStatusIds.current.has(orderId)) return;
+      const currentOrder = orders.find((order) => order.id === orderId);
+      if (!currentOrder || !getAvailableTransitions(currentOrder).includes(newStatus)) {
+        toast.add({
+          title: "الحالة غير متاحة",
+          description: "لا تسمح قواعد الطلبية الحالية بهذا الانتقال.",
+          type: "error",
+        });
+        return;
       }
-    } catch (reason) {
-      toast.add({
-        title: "تعذر تحديث الحالة",
-        description: reason instanceof Error ? reason.message : "حاول مرة أخرى بعد التحقق من الاتصال.",
-        type: "error",
-      });
-    } finally {
-      pendingStatusIds.current.delete(orderId);
-      setPendingStatusById((previous) => {
-        const next = { ...previous };
-        delete next[orderId];
-        return next;
-      });
-    }
-  }, [orders]);
+
+      if (newStatus === "cancelled" && !window.confirm(`هل تريد إلغاء الطلبية ${orderId}؟`)) return;
+      if (newStatus === "returned" && !window.confirm(`تأكيد تسجيل الطلبية ${orderId} كمرتجعة أو مرفوضة؟`)) return;
+
+      pendingStatusIds.current.add(orderId);
+      setPendingStatusById((previous) => ({ ...previous, [orderId]: true }));
+      try {
+        const repo = getOrdersRepository();
+        await repo.updateOrderStatus(orderId, newStatus);
+
+        setOrders((previous) =>
+          previous.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)),
+        );
+        setSelectedOrderForDetails((previous) =>
+          previous?.id === orderId ? { ...previous, status: newStatus } : previous,
+        );
+        toast.add({
+          title: "تم تحديث الحالة",
+          description: `الحالة الجديدة: ${STATUS_LABELS_AR[newStatus] ?? newStatus}.`,
+          type: "success",
+        });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("orva:orders-updated"));
+        }
+      } catch (reason) {
+        toast.add({
+          title: "تعذر تحديث الحالة",
+          description: reason instanceof Error ? reason.message : "حاول مرة أخرى بعد التحقق من الاتصال.",
+          type: "error",
+        });
+      } finally {
+        pendingStatusIds.current.delete(orderId);
+        setPendingStatusById((previous) => {
+          const next = { ...previous };
+          delete next[orderId];
+          return next;
+        });
+      }
+    },
+    [orders],
+  );
 
   // Bulk Status Update Handler
   const handleBulkStatusChange = async (newStatus: string) => {
@@ -649,7 +650,8 @@ export function RecentOrders() {
     }
 
     if (newStatus === "cancelled" && !window.confirm(`تأكيد إلغاء ${selectedOrders.length} طلبية؟`)) return;
-    if (newStatus === "returned" && !window.confirm(`تأكيد تسجيل ${selectedOrders.length} طلبية كمرتجعة أو مرفوضة؟`)) return;
+    if (newStatus === "returned" && !window.confirm(`تأكيد تسجيل ${selectedOrders.length} طلبية كمرتجعة أو مرفوضة؟`))
+      return;
 
     const selectedIds = selectedOrders.map((order) => order.id);
     setIsBulkUpdating(true);
@@ -660,7 +662,11 @@ export function RecentOrders() {
       if (result.updatedCount > 0) {
         await fetchOrders();
         setRowSelection({});
-        toast.add({ title: "تم تحديث الطلبات", description: `تم تحديث ${result.updatedCount} طلبية بنجاح.`, type: "success" });
+        toast.add({
+          title: "تم تحديث الطلبات",
+          description: `تم تحديث ${result.updatedCount} طلبية بنجاح.`,
+          type: "success",
+        });
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("orva:orders-updated"));
         }
@@ -678,7 +684,6 @@ export function RecentOrders() {
     }
   };
 
-
   // Permanent deletion (single row or bulk selection across every page)
   const deleteOrders = React.useCallback(
     async (ids: string[]) => {
@@ -692,7 +697,9 @@ export function RecentOrders() {
       setIsDeleting(true);
       try {
         const repo = getOrdersRepository() as ReturnType<typeof getOrdersRepository> & {
-          bulkDeleteOrders?: (ids: string[]) => Promise<{ deletedIds: string[]; failed: { orderId: string; error: string }[] }>;
+          bulkDeleteOrders?: (
+            ids: string[],
+          ) => Promise<{ deletedIds: string[]; failed: { orderId: string; error: string }[] }>;
         };
         let deletedIds: string[] = [];
         let failed: { orderId: string; error: string }[] = [];
@@ -749,7 +756,11 @@ export function RecentOrders() {
       await navigator.clipboard.writeText(orderId);
       toast.add({ title: "تم نسخ رقم الطلبية", description: orderId, type: "success" });
     } catch {
-      toast.add({ title: "تعذر النسخ", description: "اسمح للمتصفح بالوصول إلى الحافظة ثم أعد المحاولة.", type: "error" });
+      toast.add({
+        title: "تعذر النسخ",
+        description: "اسمح للمتصفح بالوصول إلى الحافظة ثم أعد المحاولة.",
+        type: "error",
+      });
     }
   }, []);
 
@@ -916,10 +927,11 @@ export function RecentOrders() {
                   setActiveFilter(filter);
                   table.setPageIndex(0);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${isActive
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                  isActive
                     ? "bg-primary text-primary-foreground shadow-xs font-semibold"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
+                }`}
               >
                 <span>
                   {filter === "All"
@@ -943,10 +955,11 @@ export function RecentOrders() {
                                     : "المحوّلة فقط"}
                 </span>
                 <span
-                  className={`text-[10px] tabular-nums px-1.5 py-0.2 rounded-full ${isActive
+                  className={`text-[10px] tabular-nums px-1.5 py-0.2 rounded-full ${
+                    isActive
                       ? "bg-primary-foreground/20 text-primary-foreground"
                       : "bg-background text-muted-foreground"
-                    }`}
+                  }`}
                 >
                   {count}
                 </span>
@@ -990,7 +1003,7 @@ export function RecentOrders() {
               </SelectTrigger>
               <SelectContent className="max-h-56">
                 <SelectItem value="ALL" className="text-xs font-semibold">
-                  جميع الولايات (58 ولاية)
+                  جميع الولايات (69 ولاية)
                 </SelectItem>
                 {ALGERIA_WILAYAS.map((w) => (
                   <SelectItem key={w.id} value={w.id} className="text-xs">
@@ -1061,9 +1074,7 @@ export function RecentOrders() {
               <Badge variant="outline" className="bg-primary text-primary-foreground font-bold">
                 تم تحديد {selectedCount} طلبية
               </Badge>
-              <span className="text-muted-foreground text-[11px]">
-                التحديد يبقى محفوظاً عند الانتقال بين الصفحات.
-              </span>
+              <span className="text-muted-foreground text-[11px]">التحديد يبقى محفوظاً عند الانتقال بين الصفحات.</span>
               {!allFilteredSelected && filteredOrders.length > selectedCount && (
                 <Button
                   size="xs"
@@ -1083,7 +1094,12 @@ export function RecentOrders() {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <Select disabled={isBulkUpdating} onValueChange={(val) => { if (typeof val === "string") void handleBulkStatusChange(val); }}>
+              <Select
+                disabled={isBulkUpdating}
+                onValueChange={(val) => {
+                  if (typeof val === "string") void handleBulkStatusChange(val);
+                }}
+              >
                 <SelectTrigger className="h-7 text-xs bg-background font-semibold w-40">
                   <SelectValue placeholder="تغيير الحالة المجمّعة..." />
                 </SelectTrigger>
@@ -1147,19 +1163,110 @@ export function RecentOrders() {
 
       <CardContent className="px-0 pb-0" dir="ltr">
         <div className="space-y-3 p-3 md:hidden" dir="rtl">
-          {table.getRowModel().rows.length ? table.getRowModel().rows.map((row) => {
-            const order = row.original;
-            const transitions = getAvailableTransitions(order);
-            return <article key={order.id} className={`rounded-xl border p-3 ${row.getIsSelected() ? "border-primary bg-primary/5" : "bg-card"}`}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-start gap-2"><input type="checkbox" aria-label={`تحديد الطلبية ${order.id}`} checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} className="mt-1 size-4 shrink-0 accent-primary" /><div className="min-w-0"><p className="truncate font-mono text-xs font-bold">{order.id}</p><p className="mt-1 truncate font-semibold">{order.customer || "—"}</p><a className="inline-flex items-center gap-1 text-xs text-primary" href={`tel:${order.phone}`}><Phone className="size-3" />{order.phone}</a></div></div>
-                <Badge variant="outline" className="max-w-[44%] shrink-0 whitespace-normal text-center text-[10px] leading-tight">{STATUS_LABELS_AR[order.status] || order.status}</Badge>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="min-w-0 rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">المنتج</span><span className="block truncate font-medium">{order.items || "—"}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">المبلغ</span><span className="font-bold">{order.total || "—"}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">الوجهة</span><span className="block truncate">{order.wilaya}{order.commune ? ` — ${order.commune}` : ""}</span></div><div className="rounded-lg bg-muted/50 p-2"><span className="block text-muted-foreground">تاريخ التسجيل</span><span>{order.date ? new Date(order.date).toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" }) : "غير مسجل"}</span></div></div>
-              <div className="mt-3 grid grid-cols-2 gap-2"><Button size="sm" variant="outline" className="w-full gap-1.5" onClick={() => handleOpenDetails(order)}><Package className="size-3.5" />التفاصيل</Button>{!order.in_redex && !order.redex_tracking_code && <Button size="sm" className="w-full gap-1.5" onClick={() => handleOpenPushDialog(order)}><Truck className="size-3.5" />إرسال للشحن</Button>}</div>
-              {transitions.length > 0 && <div className="mt-2"><Select onValueChange={(value) => { if (value) void handleUpdateStatus(order.id, value); }}><SelectTrigger className="h-9 w-full text-xs"><SelectValue placeholder="تحديث حالة الطلبية" /></SelectTrigger><SelectContent>{transitions.map((status) => <SelectItem key={status} value={status}>{STATUS_LABELS_AR[status] || status}</SelectItem>)}</SelectContent></Select></div>}
-            </article>;
-          }) : <p className="py-8 text-center text-sm text-muted-foreground">{isLoading ? "جارٍ تحميل الطلبات..." : "لا توجد طلبات مطابقة للفلاتر."}</p>}
+          {table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => {
+              const order = row.original;
+              const transitions = getAvailableTransitions(order);
+              return (
+                <article
+                  key={order.id}
+                  className={`rounded-xl border p-3 ${row.getIsSelected() ? "border-primary bg-primary/5" : "bg-card"}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`تحديد الطلبية ${order.id}`}
+                        checked={row.getIsSelected()}
+                        onChange={row.getToggleSelectedHandler()}
+                        className="mt-1 size-4 shrink-0 accent-primary"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-xs font-bold">{order.id}</p>
+                        <p className="mt-1 truncate font-semibold">{order.customer || "—"}</p>
+                        <a className="inline-flex items-center gap-1 text-xs text-primary" href={`tel:${order.phone}`}>
+                          <Phone className="size-3" />
+                          {order.phone}
+                        </a>
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="max-w-[44%] shrink-0 whitespace-normal text-center text-[10px] leading-tight"
+                    >
+                      {STATUS_LABELS_AR[order.status] || order.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="min-w-0 rounded-lg bg-muted/50 p-2">
+                      <span className="block text-muted-foreground">المنتج</span>
+                      <span className="block truncate font-medium">{order.items || "—"}</span>
+                    </div>
+                    <div className="rounded-lg bg-muted/50 p-2">
+                      <span className="block text-muted-foreground">المبلغ</span>
+                      <span className="font-bold">{order.total || "—"}</span>
+                    </div>
+                    <div className="rounded-lg bg-muted/50 p-2">
+                      <span className="block text-muted-foreground">الوجهة</span>
+                      <span className="block truncate">
+                        {order.wilaya}
+                        {order.commune ? ` — ${order.commune}` : ""}
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-muted/50 p-2">
+                      <span className="block text-muted-foreground">تاريخ التسجيل</span>
+                      <span>
+                        {order.date
+                          ? new Date(order.date).toLocaleString("ar-DZ", { dateStyle: "medium", timeStyle: "short" })
+                          : "غير مسجل"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full gap-1.5"
+                      onClick={() => handleOpenDetails(order)}
+                    >
+                      <Package className="size-3.5" />
+                      التفاصيل
+                    </Button>
+                    {!order.in_redex && !order.redex_tracking_code && (
+                      <Button size="sm" className="w-full gap-1.5" onClick={() => handleOpenPushDialog(order)}>
+                        <Truck className="size-3.5" />
+                        إرسال للشحن
+                      </Button>
+                    )}
+                  </div>
+                  {transitions.length > 0 && (
+                    <div className="mt-2">
+                      <Select
+                        onValueChange={(value) => {
+                          if (typeof value === "string" && value) void handleUpdateStatus(order.id, value);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-full text-xs">
+                          <SelectValue placeholder="تحديث حالة الطلبية" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {transitions.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {STATUS_LABELS_AR[status] || status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {isLoading ? "جارٍ تحميل الطلبات..." : "لا توجد طلبات مطابقة للفلاتر."}
+            </p>
+          )}
         </div>
         <div className="hidden overflow-x-auto md:block">
           <Table className="text-right">

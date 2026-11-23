@@ -38,7 +38,7 @@ import {
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import { maskDemoPhone } from "@/lib/phone-utils";
 
-import { matchesOrderFilter, resolveOperationalOrderBucket, type OrderFilter, type OrderRow } from "./schema";
+import { matchesOrderFilter, type OrderFilter, type OrderRow, resolveOperationalOrderBucket } from "./schema";
 import { getAvailableTransitions } from "./status-transitions";
 
 function formatOrderDate(date: string) {
@@ -316,39 +316,49 @@ export function createRecentOrdersColumns(
         const score = row.original.riskScore || 0;
         const decision = row.original.riskDecision || "ALLOW";
         const riskHot =
-          score >= 40 ||
-          row.original.riskLevel === "HIGH" ||
-          decision === "BLOCK" ||
-          decision === "REVIEW";
+          score >= 40 || row.original.riskLevel === "HIGH" || decision === "BLOCK" || decision === "REVIEW";
         return (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <OperationalStatusBadge
-              status={row.original.status}
-              inRedex={row.original.in_redex}
-              carrierStatus={row.original.carrier_status}
-              trackingCode={row.original.redex_tracking_code || row.original.redex_tracking_id}
-            />
-            <SwitchStatusBadge
-              isSwitched={row.original.isSwitched}
-              count={row.original.conversionCount}
-            />
-            <button
-              type="button"
-              className="inline-flex"
-              onClick={() => onViewRisk?.(row.original)}
-              title={(row.original.riskReasons || []).join(" · ") || "Risk score"}
-            >
-              <Badge
-                variant="outline"
-                className={
-                  riskHot
-                    ? "border-rose-300 bg-rose-50 text-rose-700 text-[10px] cursor-pointer"
-                    : "border-emerald-300 bg-emerald-50 text-emerald-700 text-[10px] cursor-pointer"
-                }
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <OperationalStatusBadge
+                status={row.original.status}
+                inRedex={row.original.in_redex}
+                carrierStatus={row.original.carrier_status}
+                trackingCode={row.original.redex_tracking_code || row.original.redex_tracking_id}
+              />
+              <SwitchStatusBadge isSwitched={row.original.isSwitched} count={row.original.conversionCount} />
+              <button
+                type="button"
+                className="inline-flex"
+                onClick={() => onViewRisk?.(row.original)}
+                title={(row.original.riskReasons || []).join(" · ") || "Risk score"}
               >
-                {riskHot ? `⚠ ${score}/100` : `✓ ${score || 0}`}
-              </Badge>
-            </button>
+                <Badge
+                  variant="outline"
+                  className={
+                    riskHot
+                      ? "border-rose-300 bg-rose-50 text-rose-700 text-[10px] cursor-pointer"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-700 text-[10px] cursor-pointer"
+                  }
+                >
+                  {riskHot ? `⚠ ${score}/100` : `✓ ${score || 0}`}
+                </Badge>
+              </button>
+            </div>
+            {(row.original.courierStatusAr || row.original.driverName || row.original.courierName) && (
+              <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                {row.original.courierName && <span className="font-mono uppercase">{row.original.courierName}</span>}
+                {row.original.courierStatusAr && <span>• {row.original.courierStatusAr}</span>}
+                {row.original.driverName && (
+                  <span className="text-emerald-700 dark:text-emerald-300">• 🚚 {row.original.driverName}</span>
+                )}
+                {row.original.courierLocationStage === "suspended_switchable" && (
+                  <Badge variant="outline" className="text-[9px] border-amber-400 text-amber-700 px-1 py-0">
+                    قابلة للتحويل
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         );
       },
@@ -361,9 +371,7 @@ export function createRecentOrdersColumns(
       accessorKey: "total",
       header: () => <div className="text-left w-24">المبلغ (Total)</div>,
       cell: ({ row }) => (
-        <div className="w-24 text-left font-bold text-xs tabular-nums text-foreground">
-          {row.original.total}
-        </div>
+        <div className="w-24 text-left font-bold text-xs tabular-nums text-foreground">{row.original.total}</div>
       ),
     },
     {
@@ -377,9 +385,7 @@ export function createRecentOrdersColumns(
       id: "actions",
       header: () => <div className="flex w-full justify-end">الإجراءات</div>,
       cell: ({ row }) => {
-        const isTerminal = ["delivered", "deleted", "reconciled"].includes(
-          (row.original.status || "").toLowerCase()
-        );
+        const isTerminal = ["delivered", "deleted", "reconciled"].includes((row.original.status || "").toLowerCase());
         const availableStatuses = getAvailableTransitions(row.original);
         const isUpdating = Boolean(pendingStatusById[row.original.id]);
 
@@ -387,7 +393,11 @@ export function createRecentOrdersColumns(
           <div className="flex w-full justify-end items-center gap-1">
             {/* Outcome row: Received / Returned / Cancelled (ORVA status only, no courier call) */}
             {onUpdateStatus && (
-              <div className="flex items-center gap-1 border-l pl-1 ml-0.5" role="group" aria-label="تغيير حالة الطلبية">
+              <div
+                className="flex items-center gap-1 border-l pl-1 ml-0.5"
+                role="group"
+                aria-label="تغيير حالة الطلبية"
+              >
                 {availableStatuses.includes("delivered") && (
                   <Button
                     size="xs"
@@ -468,12 +478,16 @@ export function createRecentOrdersColumns(
                     : "إرسال الطلبية لشركة التوصيل عبر API (Push Order)"
               }
             >
-              <Truck className={`size-3 ${row.original.in_redex || row.original.redex_tracking_code ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500"}`} />
+              <Truck
+                className={`size-3 ${row.original.in_redex || row.original.redex_tracking_code ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500"}`}
+              />
               <span>{row.original.in_redex || row.original.redex_tracking_code ? "مُرسل" : "Push"}</span>
             </Button>
 
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button aria-label="Open order actions" size="icon-xs" variant="ghost" className="h-7 w-7" />}>
+              <DropdownMenuTrigger
+                render={<Button aria-label="Open order actions" size="icon-xs" variant="ghost" className="h-7 w-7" />}
+              >
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 text-right" dir="ltr">
@@ -531,7 +545,12 @@ export function createRecentOrdersColumns(
 
                   {row.original.redex_tracking_code && (
                     <DropdownMenuItem
-                      onClick={() => window.open(`/api/delivery?action=label_pdf&tracking=${encodeURIComponent(row.original.redex_tracking_code!)}`, '_blank')}
+                      onClick={() =>
+                        window.open(
+                          `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(row.original.redex_tracking_code!)}`,
+                          "_blank",
+                        )
+                      }
                       className="cursor-pointer font-semibold text-purple-600 dark:text-purple-400 flex items-center justify-between text-xs"
                     >
                       <div className="flex items-center gap-2">

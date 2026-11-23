@@ -1,5 +1,11 @@
+import { extractWilayaCode69 } from "@/lib/geo/algeria-69";
 import type { OrvaOrder } from "@/lib/orva-api";
-import { matchOrderToProduct, type Product } from "@/lib/repository/product-types";
+import {
+  computeWeightedProductCpa,
+  matchOrderToProduct,
+  type Product,
+  type ProductMetaAdLink,
+} from "@/lib/repository/product-types";
 
 export type AdSpendSourceType = "meta_api" | "product_link" | "meta_estimate" | "manual";
 
@@ -51,6 +57,7 @@ export interface CampaignProfitabilityRow {
   roas: number | null;
   costPerOrderDzd: number | null;
   costPerDeliveredDzd: number | null;
+  returnLossSource?: "courier_synced" | "fallback_estimate" | "manual";
   linkedProducts: LinkedCampaignProductSummary[];
 }
 
@@ -69,7 +76,10 @@ const SOURCE_LABELS_AR: Record<string, string> = {
   direct: "زيارة مباشرة (Direct)",
 };
 
-const DEFAULT_PRODUCT_COSTS_FALLBACK: Record<string, { title: string; sku: string; purchaseCost: number; marketingCost: number }> = {
+const DEFAULT_PRODUCT_COSTS_FALLBACK: Record<
+  string,
+  { title: string; sku: string; purchaseCost: number; marketingCost: number }
+> = {
   prod_pack_1_pro: {
     title: "باك كومبريسار و المفاتيح 4 في 1",
     sku: "ORVA-P1-4950",
@@ -158,57 +168,94 @@ function resolveProductForOrder(
   const lowerName = rawName.toLowerCase();
   const matched = matchOrderToProduct(rawName);
 
-  // 1. Check live catalog products by metaAdsLink, ID, SKU, slug, or title match
+  const getProdLinks = (p: Product): ProductMetaAdLink[] =>
+    p.metaAdsLinks && p.metaAdsLinks.length > 0 ? p.metaAdsLinks : p.metaAdsLink ? [p.metaAdsLink] : [];
+
+  const linkMatches = (link: ProductMetaAdLink): boolean =>
+    Boolean(link.enabled) &&
+    Boolean(
+      (link.campaignId && order.fbCampaignId && link.campaignId.trim() === order.fbCampaignId.trim()) ||
+        (link.adId && order.fbAdId && link.adId.trim() === order.fbAdId.trim()) ||
+        (link.adsetId && order.fbAdsetId && link.adsetId.trim() === order.fbAdsetId.trim()) ||
+        (link.campaignName &&
+          order.utmCampaign &&
+          link.campaignName.trim().toLowerCase() === order.utmCampaign.trim().toLowerCase()),
+    );
+
+  // 1. Score live catalog products: prioritize BOTH name+campaign match (Tier 3) > name match (Tier 2) > campaign link match (Tier 1)
+  let bestCandidate: {
+    score: number;
+    prod: Product;
+    matchingLink: ProductMetaAdLink | null;
+    primaryLink: ProductMetaAdLink | null;
+    links: ProductMetaAdLink[];
+  } | null = null;
+
   for (const prod of products) {
-    const link = prod.metaAdsLink;
-    const linkMatchesOrder =
-      Boolean(link?.enabled) &&
-      Boolean(
-        (link?.campaignId && order.fbCampaignId && link.campaignId.trim() === order.fbCampaignId.trim()) ||
-          (link?.adId && order.fbAdId && link.adId.trim() === order.fbAdId.trim()) ||
-          (link?.adsetId && order.fbAdsetId && link.adsetId.trim() === order.fbAdsetId.trim()) ||
-          (link?.campaignName &&
-            order.utmCampaign &&
-            link.campaignName.trim().toLowerCase() === order.utmCampaign.trim().toLowerCase()),
-      );
+    const links = getProdLinks(prod);
+    const matchingLink = links.find(linkMatches) ?? null;
+    const primaryLink =
+      matchingLink ?? links.find((l) => l.isPrimary && l.enabled) ?? links.find((l) => l.enabled) ?? null;
 
-    const nameMatchesProd =
+    const nameMatchesProd = Boolean(
       (matched.matchedProductId && prod.id === matched.matchedProductId) ||
-      (matched.matchedSku && prod.sku && prod.sku.toLowerCase() === matched.matchedSku.toLowerCase()) ||
-      (prod.title && lowerName && (lowerName.includes(prod.title.toLowerCase()) || prod.title.toLowerCase().includes(lowerName))) ||
-      (prod.slug && lowerName.includes(prod.slug.toLowerCase())) ||
-      (prod.sku && lowerName.includes(prod.sku.toLowerCase())) ||
-      (matched.matchedProductId === "prod_pack_1_pro" && (prod.slug === "pack1" || prod.sku?.includes("P1"))) ||
-      (matched.matchedProductId === "prod_pack_2_elite" && (prod.slug === "pack2" || prod.sku?.includes("P2"))) ||
-      (matched.matchedProductId === "prod_pack_3_ultra" && (prod.slug === "pack3" || prod.sku?.includes("P3")));
+        (matched.matchedSku && prod.sku && prod.sku.toLowerCase() === matched.matchedSku.toLowerCase()) ||
+        (prod.title &&
+          lowerName &&
+          (lowerName.includes(prod.title.toLowerCase()) || prod.title.toLowerCase().includes(lowerName))) ||
+        (prod.slug && lowerName.includes(prod.slug.toLowerCase())) ||
+        (prod.sku && lowerName.includes(prod.sku.toLowerCase())) ||
+        (matched.matchedProductId === "prod_pack_1_pro" && (prod.slug === "pack1" || prod.sku?.includes("P1"))) ||
+        (matched.matchedProductId === "prod_pack_2_elite" && (prod.slug === "pack2" || prod.sku?.includes("P2"))) ||
+        (matched.matchedProductId === "prod_pack_3_ultra" && (prod.slug === "pack3" || prod.sku?.includes("P3"))),
+    );
 
-    if (linkMatchesOrder || nameMatchesProd) {
-      const fallbackDefaults = matched.matchedProductId ? DEFAULT_PRODUCT_COSTS_FALLBACK[matched.matchedProductId] : undefined;
-      const cpaFromLink =
-        link?.enabled && Number(link.computedCpaDzd) > 0 ? Math.round(Number(link.computedCpaDzd)) : 0;
-      const marketingCost =
-        cpaFromLink > 0
-          ? cpaFromLink
-          : prod.marketingCostPerOrder > 0
-            ? prod.marketingCostPerOrder
-            : fallbackDefaults?.marketingCost ?? 850;
-      const purchaseCost =
-        prod.purchaseCost > 0 ? prod.purchaseCost : fallbackDefaults?.purchaseCost ?? 0;
-
-      return {
-        productId: prod.id,
-        title: prod.title,
-        sku: prod.sku || fallbackDefaults?.sku || "ORVA-PROD",
-        purchaseCostDzd: purchaseCost,
-        marketingCostPerOrderDzd: marketingCost,
-        linkedAdName: link?.enabled ? link.adName || link.campaignName || link.campaignId || "Meta Ad" : null,
-        hasExplicitAdLink: Boolean(link?.enabled),
-        campaignBudgetSpendDzd:
-          linkMatchesOrder && link?.costMode === "campaign_budget_cpa" && Number(link.campaignSpendDzd) > 0
-            ? Math.round(Number(link.campaignSpendDzd))
-            : null,
-      };
+    if (!matchingLink && !nameMatchesProd) continue;
+    const score = matchingLink && nameMatchesProd ? 3 : nameMatchesProd ? 2 : 1;
+    if (!bestCandidate || score > bestCandidate.score) {
+      bestCandidate = { score, prod, matchingLink, primaryLink, links };
     }
+    if (score === 3) break;
+  }
+
+  if (bestCandidate) {
+    const { prod, matchingLink, primaryLink, links } = bestCandidate;
+    const fallbackDefaults = matched.matchedProductId
+      ? DEFAULT_PRODUCT_COSTS_FALLBACK[matched.matchedProductId]
+      : undefined;
+    const weightedCpa = computeWeightedProductCpa(links, 0);
+    const cpaFromMatchedLink =
+      matchingLink && Number(matchingLink.computedCpaDzd) > 0
+        ? Math.round(Number(matchingLink.computedCpaDzd))
+        : weightedCpa;
+    const marketingCost =
+      cpaFromMatchedLink > 0
+        ? cpaFromMatchedLink
+        : prod.marketingCostPerOrder > 0
+          ? prod.marketingCostPerOrder
+          : (fallbackDefaults?.marketingCost ?? 850);
+    const purchaseCost = prod.purchaseCost > 0 ? prod.purchaseCost : (fallbackDefaults?.purchaseCost ?? 0);
+
+    // Total campaign budget spend is attributed per unique campaign bucket (not summed twice)
+    const budgetSpend =
+      matchingLink?.costMode === "campaign_budget_cpa" && Number(matchingLink.campaignSpendDzd) > 0
+        ? Math.round(Number(matchingLink.campaignSpendDzd))
+        : primaryLink?.costMode === "campaign_budget_cpa" && matchingLink && Number(primaryLink.campaignSpendDzd) > 0
+          ? Math.round(Number(primaryLink.campaignSpendDzd))
+          : null;
+
+    return {
+      productId: prod.id,
+      title: prod.title,
+      sku: prod.sku || fallbackDefaults?.sku || "ORVA-PROD",
+      purchaseCostDzd: purchaseCost,
+      marketingCostPerOrderDzd: marketingCost,
+      linkedAdName: primaryLink?.enabled
+        ? primaryLink.adName || primaryLink.campaignName || primaryLink.campaignId || "Meta Ad"
+        : null,
+      hasExplicitAdLink: Boolean(primaryLink?.enabled),
+      campaignBudgetSpendDzd: budgetSpend,
+    };
   }
 
   // 2. Fallback to known pack mappings if catalog products aren't loaded yet
@@ -234,6 +281,7 @@ export function computeCampaignProfitability(
   costConfigs: Record<string, Partial<CampaignCostInput>> = {},
   defaultCosts: Partial<CampaignCostInput> = {},
   products: Product[] = [],
+  returnFeesByWilaya: Record<number, number> = {},
 ): CampaignProfitabilityRow[] {
   const defaultUnitCogs = Math.max(0, Number(defaultCosts.unitCogsDzd ?? 0));
   const defaultReturnLoss = Math.max(0, Number(defaultCosts.returnShippingLossDzd ?? 450));
@@ -253,6 +301,8 @@ export function computeCampaignProfitability(
     deliveredProductRevenueDzd: number;
     estimatedOrderMarketingSpendDzd: number;
     productCalculatedCogsDzd: number;
+    syncedReturnLossDzd: number;
+    usedSyncedReturnFee: boolean;
     hasExplicitProductAdLink: boolean;
     explicitCampaignBudgetSpendDzd: number | null;
     productStats: Map<string, LinkedCampaignProductSummary>;
@@ -278,6 +328,8 @@ export function computeCampaignProfitability(
         deliveredProductRevenueDzd: 0,
         estimatedOrderMarketingSpendDzd: 0,
         productCalculatedCogsDzd: 0,
+        syncedReturnLossDzd: 0,
+        usedSyncedReturnFee: false,
         hasExplicitProductAdLink: false,
         explicitCampaignBudgetSpendDzd: null,
         productStats: new Map<string, LinkedCampaignProductSummary>(),
@@ -298,9 +350,7 @@ export function computeCampaignProfitability(
 
     const matchedProd = resolveProductForOrder(order, products);
     const qty = Math.max(1, Number(order.quantity ?? 1) || 1);
-    const orderCpaDzd = matchedProd
-      ? matchedProd.marketingCostPerOrderDzd
-      : defaultEstimatedMetaCpa;
+    const orderCpaDzd = matchedProd ? matchedProd.marketingCostPerOrderDzd : defaultEstimatedMetaCpa;
 
     bucket.estimatedOrderMarketingSpendDzd += orderCpaDzd;
 
@@ -349,6 +399,16 @@ export function computeCampaignProfitability(
     } else if (status === "returned") {
       bucket.confirmedOrders += 1;
       bucket.returnedOrders += 1;
+      const wCode = extractWilayaCode69(order.wilaya);
+      if (order.returnFeeDzd && order.returnFeeDzd > 0) {
+        bucket.syncedReturnLossDzd += order.returnFeeDzd;
+        bucket.usedSyncedReturnFee = true;
+      } else if (wCode && returnFeesByWilaya[wCode] > 0) {
+        bucket.syncedReturnLossDzd += returnFeesByWilaya[wCode];
+        bucket.usedSyncedReturnFee = true;
+      } else {
+        bucket.syncedReturnLossDzd += defaultReturnLoss;
+      }
     } else if (status === "cancelled" || status === "canceled" || status === "deleted") {
       bucket.cancelledOrders += 1;
     }
@@ -399,7 +459,15 @@ export function computeCampaignProfitability(
           ? bucket.deliveredOrders * defaultUnitCogs
           : Math.round(bucket.productCalculatedCogsDzd);
 
-    const totalReturnLossDzd = bucket.returnedOrders * returnShippingLossDzd;
+    const hasManualReturnOverride = cfg.returnShippingLossDzd !== undefined;
+    const totalReturnLossDzd = hasManualReturnOverride
+      ? bucket.returnedOrders * returnShippingLossDzd
+      : bucket.syncedReturnLossDzd;
+    const returnLossSource: CampaignProfitabilityRow["returnLossSource"] = hasManualReturnOverride
+      ? "manual"
+      : bucket.usedSyncedReturnFee
+        ? "courier_synced"
+        : "fallback_estimate";
     const netProfitDzd = bucket.deliveredProductRevenueDzd - totalCogsDzd - totalReturnLossDzd - adSpendDzd;
 
     const roas = adSpendDzd > 0 ? Number((bucket.deliveredProductRevenueDzd / adSpendDzd).toFixed(2)) : null;
@@ -436,6 +504,7 @@ export function computeCampaignProfitability(
       roas,
       costPerOrderDzd,
       costPerDeliveredDzd,
+      returnLossSource,
       linkedProducts: Array.from(bucket.productStats.values()),
     });
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import {
   Check,
   CheckCircle2,
@@ -34,23 +35,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
-
 import {
   COURIER_DZ_PROVIDERS,
-  CourierDefinition,
+  type CourierDefinition,
+  type CourierPreTemplateSettings,
   loadCourierPreTemplate,
   saveCourierPreTemplate,
-  CourierPreTemplateSettings,
 } from "@/lib/couriers/courier-catalog";
 import { getOrdersRepository } from "@/lib/repository/orders-repository-factory";
+
 import type { OrderRow } from "./recent-orders-table/schema";
 
 interface OrderPushDialogProps {
@@ -60,37 +55,22 @@ interface OrderPushDialogProps {
   onOrderPushed?: (updatedOrder: OrderRow, trackingCode: string, courierName: string) => void;
 }
 
-export function OrderPushDialog({
-  order,
-  open,
-  onOpenChange,
-  onOrderPushed,
-}: OrderPushDialogProps) {
+export function OrderPushDialog({ order, open, onOpenChange, onOrderPushed }: OrderPushDialogProps) {
   if (!order) return null;
-  return (
-    <OrderPushDialogForm
-      order={order}
-      open={open}
-      onOpenChange={onOpenChange}
-      onOrderPushed={onOrderPushed}
-    />
-  );
+  return <OrderPushDialogForm order={order} open={open} onOpenChange={onOpenChange} onOrderPushed={onOrderPushed} />;
 }
 
 interface ActiveOrderPushDialogProps extends Omit<OrderPushDialogProps, "order"> {
   order: OrderRow;
 }
 
-function OrderPushDialogForm({
-  order,
-  open,
-  onOpenChange,
-  onOrderPushed,
-}: ActiveOrderPushDialogProps) {
+function OrderPushDialogForm({ order, open, onOpenChange, onOrderPushed }: ActiveOrderPushDialogProps) {
   const [template, setTemplate] = React.useState<CourierPreTemplateSettings>(() => loadCourierPreTemplate());
   const [selectedCourierId, setSelectedCourierId] = React.useState<string>(template.defaultCourierId || "redex");
   const [deliveryType, setDeliveryType] = React.useState<"home" | "desk">(
-    order.deliveryType?.includes("مكتب") || order.deliveryType?.includes("Desk") ? "desk" : template.defaultDeliveryType || "home"
+    order.deliveryType?.includes("مكتب") || order.deliveryType?.includes("Desk")
+      ? "desk"
+      : template.defaultDeliveryType || "home",
   );
   const [freeShipping, setFreeShipping] = React.useState<boolean>(template.freeShipping);
   const [notes, setNotes] = React.useState<string>(template.defaultNotes || "");
@@ -112,11 +92,11 @@ function OrderPushDialogForm({
   } | null>(
     order.in_redex && order.redex_tracking_code
       ? {
-        trackingCode: order.redex_tracking_code,
-        courierName: "Redex Delivery DZ",
-        labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(order.redex_tracking_code)}`,
-      }
-      : null
+          trackingCode: order.redex_tracking_code,
+          courierName: "Redex Delivery DZ",
+          labelUrl: `/api/delivery?action=label_pdf&tracking=${encodeURIComponent(order.redex_tracking_code)}`,
+        }
+      : null,
   );
 
   const selectedCourier: CourierDefinition =
@@ -178,16 +158,27 @@ function OrderPushDialogForm({
       const courierToken = template.credentials[selectedCourier.id]?.token;
 
       const parsedTotal = typeof order.total === "string" ? parseInt(order.total.replace(/[^\d]/g, ""), 10) : undefined;
-      const rawOrder = order.rawOrder && typeof order.rawOrder === "object" ? order.rawOrder as Record<string, unknown> : {};
-      const orderMetadata = rawOrder.metadata && typeof rawOrder.metadata === "object" ? rawOrder.metadata as Record<string, unknown> : {};
-      const discountRecord = orderMetadata.orderDiscount && typeof orderMetadata.orderDiscount === "object" ? orderMetadata.orderDiscount as Record<string, unknown> : {};
+      const rawOrder =
+        order.rawOrder && typeof order.rawOrder === "object" ? (order.rawOrder as Record<string, unknown>) : {};
+      const orderMetadata =
+        rawOrder.metadata && typeof rawOrder.metadata === "object"
+          ? (rawOrder.metadata as Record<string, unknown>)
+          : {};
+      const discountRecord =
+        orderMetadata.orderDiscount && typeof orderMetadata.orderDiscount === "object"
+          ? (orderMetadata.orderDiscount as Record<string, unknown>)
+          : {};
       const hasSavedDiscount = Number(discountRecord.amountDzd) > 0;
       const discountedFinalTotal = Number(discountRecord.finalTotalDzd);
       const calculatedCod = hasSavedDiscount
-        ? (Number.isFinite(discountedFinalTotal) && discountedFinalTotal > 0 ? discountedFinalTotal : parsedTotal)
+        ? Number.isFinite(discountedFinalTotal) && discountedFinalTotal > 0
+          ? discountedFinalTotal
+          : parsedTotal
         : freeShipping
-          ? (typeof order.priceNum === "number" ? order.priceNum : parsedTotal)
-          : (parsedTotal || (typeof order.priceNum === "number" ? order.priceNum + 500 : undefined));
+          ? typeof order.priceNum === "number"
+            ? order.priceNum
+            : parsedTotal
+          : parsedTotal || (typeof order.priceNum === "number" ? order.priceNum + 500 : undefined);
 
       const result = await repo.pushOrder({
         orderId: order.id,
@@ -321,9 +312,7 @@ function OrderPushDialogForm({
             <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 text-sm">د.ج</span>
             <div>
               <span className="text-muted-foreground block text-[10px]">المبلغ المطلوب تحصيله (COD):</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {order.total || "—"}
-              </span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">{order.total || "—"}</span>
             </div>
           </div>
 
@@ -337,7 +326,7 @@ function OrderPushDialogForm({
               نوع التوصيل: {order.deliveryType || "—"} · رسوم الشحن المسجّلة: {order.shippingFee || "—"}
             </p>
             <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1">
-              التسعيرة النهائية تعتمد على جدول الـ 58 ولاية في الخادم (لا تُرسل شحنة حقيقية على localhost — mock).
+              التسعيرة النهائية تعتمد على جدول الـ 69 ولاية المحدّث ومزامنة شركة التوصيل.
             </p>
           </div>
         </div>
@@ -357,8 +346,13 @@ function OrderPushDialogForm({
                   </span>
                 </div>
               </div>
-              <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px]">
-                {order.status === "redex_station" || order.carrier_status === "vers_station" ? "Redex Station" : "Pushed to Redex"}
+              <Badge
+                variant="secondary"
+                className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px]"
+              >
+                {order.status === "redex_station" || order.carrier_status === "vers_station"
+                  ? "Redex Station"
+                  : "Pushed to Redex"}
               </Badge>
             </div>
 
@@ -401,9 +395,7 @@ function OrderPushDialogForm({
               <Settings2 className="size-3.5 text-primary" />
               <span>اختيار شركة التوصيل (قالب CourierDZ المسبق):</span>
             </Label>
-            <span className="text-[11px] text-muted-foreground">
-              {COURIER_DZ_PROVIDERS.length} شركات معتمدة
-            </span>
+            <span className="text-[11px] text-muted-foreground">{COURIER_DZ_PROVIDERS.length} شركات معتمدة</span>
           </div>
 
           {/* Quick Carousel / Grid of Top Algerian Couriers */}
@@ -419,10 +411,11 @@ function OrderPushDialogForm({
                     setSelectedCourierId(c.id);
                     setShowConfig(false);
                   }}
-                  className={`flex flex-col items-start justify-between p-2.5 rounded-lg border text-right transition-all text-xs ${active
+                  className={`flex flex-col items-start justify-between p-2.5 rounded-lg border text-right transition-all text-xs ${
+                    active
                       ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
                       : "border-border hover:border-muted-foreground/30 bg-card"
-                    }`}
+                  }`}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
                     <span className="font-bold text-[11px]">{c.name.split(" ")[0]}</span>
@@ -432,10 +425,7 @@ function OrderPushDialogForm({
                   </div>
                   <span className="text-[10px] text-muted-foreground line-clamp-1">{c.nameAr}</span>
                   <div className="flex items-center gap-1 mt-2 text-[9px]">
-                    <div
-                      className={`size-1.5 rounded-full ${hasConfig ? "bg-emerald-500" : "bg-amber-400"
-                        }`}
-                    />
+                    <div className={`size-1.5 rounded-full ${hasConfig ? "bg-emerald-500" : "bg-amber-400"}`} />
                     <span className={hasConfig ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600"}>
                       {hasConfig ? "مفعل وجاهز" : "يحتاج ضبط"}
                     </span>
@@ -450,12 +440,15 @@ function OrderPushDialogForm({
             <Label htmlFor="courier-select" className="text-[11px] text-muted-foreground mb-1 block">
               أو اختر من القائمة الكاملة للشركات:
             </Label>
-            <Select value={selectedCourierId} onValueChange={(val) => {
-              if (val) {
-                setSelectedCourierId(val);
-                setShowConfig(false);
-              }
-            }}>
+            <Select
+              value={selectedCourierId}
+              onValueChange={(val) => {
+                if (val) {
+                  setSelectedCourierId(val);
+                  setShowConfig(false);
+                }
+              }}
+            >
               <SelectTrigger id="courier-select" className="h-8 text-xs font-arabic w-full">
                 <SelectValue placeholder="اختر شركة التوصيل" />
               </SelectTrigger>
@@ -637,18 +630,28 @@ function OrderPushDialogForm({
       <Dialog open={askStationOpen} onOpenChange={setAskStationOpen}>
         <DialogContent className="sm:max-w-sm text-right" dir="ltr">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold font-arabic">
-              Send this order as "Vers Station"?
-            </DialogTitle>
+            <DialogTitle className="text-sm font-bold font-arabic">Send this order as "Vers Station"?</DialogTitle>
             <DialogDescription className="text-xs font-arabic">
               هل تريد إرسال الطلبية كـ Vers Station؟ — Yes: Redex Station · No: Prêt à expédier (Pushed to Redex)
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-row justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setAskStationOpen(false)} className="text-xs">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setAskStationOpen(false)}
+              className="text-xs"
+            >
               Back
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => void handlePushOrder(false)} className="text-xs">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handlePushOrder(false)}
+              className="text-xs"
+            >
               No — Prêt à expédier
             </Button>
             <Button

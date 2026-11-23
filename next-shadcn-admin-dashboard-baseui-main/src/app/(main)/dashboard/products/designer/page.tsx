@@ -1,6 +1,5 @@
 "use client";
 
-import { orvaFetch } from "@/lib/orva-api";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
@@ -40,6 +39,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { visitorTracker } from "@/lib/analytics/visitor-tracker";
+import { orvaFetch } from "@/lib/orva-api";
+import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
+import { getApiLayoutRepository, getApiStorePagesRepository } from "@/lib/repository/api-store-pages-repository";
 import {
   ALL_LAYOUT_SECTIONS,
   createDefaultLayoutConfig,
@@ -47,8 +49,6 @@ import {
   type ProductPageLayoutConfig,
   type ProductPageSectionId,
 } from "@/lib/repository/layout-types";
-import { getApiLayoutRepository, getApiStorePagesRepository } from "@/lib/repository/api-store-pages-repository";
-import { getApiProductsRepository } from "@/lib/repository/api-products-repository";
 import type { Product } from "@/lib/repository/product-types";
 import type { StorePage } from "@/lib/repository/store-pages-types";
 
@@ -715,7 +715,7 @@ export default function ProductPageDesigner() {
               {/* 1. Top Reassurance Notice Bar */}
               <div className="bg-amber-50 text-amber-900 text-[11px] font-bold py-1.5 px-3 rounded-md text-center mb-3 flex items-center justify-center gap-2 border border-amber-200">
                 <Truck className="h-3.5 w-3.5 text-amber-600" />
-                <span>التوصيل متوفر لجميع الولايات (58 ولاية) والدفع عند الاستلام.</span>
+                <span>التوصيل متوفر لجميع الولايات (69 ولاية) والدفع عند الاستلام.</span>
               </div>
 
               {/* 2. Brand Mini Header */}
@@ -965,7 +965,7 @@ function renderOrderFormSection(
 
         <div>
           <label className="text-[11px] font-semibold text-slate-700 block mb-1">
-            الولاية (58 ولاية) <span className="text-red-500">*</span>
+            الولاية (69 ولاية) <span className="text-red-500">*</span>
           </label>
           <select
             value={wilaya}

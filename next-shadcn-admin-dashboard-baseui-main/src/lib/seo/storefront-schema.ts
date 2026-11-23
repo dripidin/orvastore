@@ -24,8 +24,7 @@ const HOMEPAGE_FAQS = [
   },
   {
     question: "هل المنتجات أصلية؟",
-    answer:
-      "نعم، جميع ماكينات وأدوات CROWN و STARCLE PRO المعروضة في المتجر أصلية ومطابقة للمواصفات الفنية المذكورة.",
+    answer: "نعم، جميع ماكينات وأدوات CROWN و STARCLE PRO المعروضة في المتجر أصلية ومطابقة للمواصفات الفنية المذكورة.",
   },
 ] as const;
 
@@ -91,7 +90,7 @@ export function buildStorefrontHomeJsonLd(products: StoreProduct[]) {
         },
         image: `${ORVA_CANONICAL_ORIGIN}/images/orva-logo.png`,
         description:
-          "المتجر الجزائري المتخصص في عتاد وأدوات الورشة والصيانة الأصلية من CROWN و STARCLE PRO مع الدفع عند الاستلام، حق المعاينة قبل الدفع، والتوصيل إلى 58 ولاية.",
+          "المتجر الجزائري المتخصص في عتاد وأدوات الورشة والصيانة الأصلية من CROWN و STARCLE PRO مع الدفع عند الاستلام، حق المعاينة قبل الدفع، والتوصيل إلى 69 ولاية.",
         telephone: ORVA_CONTACT_PHONE,
         email: ORVA_CONTACT_EMAIL,
         priceRange: "4950 DZD - 29900 DZD",

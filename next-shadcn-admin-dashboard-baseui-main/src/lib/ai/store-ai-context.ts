@@ -1,8 +1,11 @@
 import { getAdminSettingsAction } from "@/app/actions/settings";
-import { computeCampaignProfitability, type CampaignProfitabilityRow } from "@/lib/analytics/campaign-profitability";
+import { type CodAccountingReport, computeCodAccountingReport } from "@/lib/analytics/accounting-report";
+import { type CampaignProfitabilityRow, computeCampaignProfitability } from "@/lib/analytics/campaign-profitability";
 import { adminListProducts } from "@/lib/catalog/server";
-import { normalizeOrvaOrder } from "@/lib/orva-api";
+import { getReturnFeesByWilayaMap } from "@/lib/geo/coverage";
 import { getStoredFallbackOrders } from "@/lib/orders-store";
+import { normalizeOrvaOrder } from "@/lib/orva-api";
+import { getMemoryReconRuns, listStoredAiFiles } from "@/lib/reconciliation/reconciliation-engine";
 import { DEFAULT_MOCK_ORDERS } from "@/lib/repository/mock-orders-dataset";
 import { computeEstimatedOrderProfit, computeUnitMargin, type Product } from "@/lib/repository/product-types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -78,6 +81,18 @@ export interface StoreReportSnapshot {
     productEconomics: ProductEconomicsSummary[];
     wilayaEfficiency: WilayaMarketingEfficiency[];
   };
+  accounting?: CodAccountingReport;
+  uploadedFilesSummary?: Array<{
+    id: string;
+    fileName: string;
+    courierId: string | null;
+    rowCount: number;
+    freshnessStatus: string;
+    diffSummary: Record<string, unknown>;
+    parsedSummary: Record<string, unknown>;
+    createdAt: string;
+  }>;
+  latestReconciliationCounts?: Record<string, number> | null;
 }
 
 function normalizeStatus(raw: unknown): string {
@@ -290,7 +305,20 @@ export async function buildStoreReportSnapshot(): Promise<{
     )
     .filter((o): o is NonNullable<typeof o> => o !== null);
 
-  const campaigns = computeCampaignProfitability(orvaOrdersForProfitability, {}, {}, loadedProducts);
+  const [returnFeesByWilaya, storedFiles] = await Promise.all([
+    getReturnFeesByWilayaMap().catch(() => ({}) as Record<number, number>),
+    listStoredAiFiles().catch(() => []),
+  ]);
+  const reconRuns = getMemoryReconRuns();
+  const latestRecon = reconRuns[0] ?? null;
+
+  const campaigns = computeCampaignProfitability(
+    orvaOrdersForProfitability,
+    {},
+    {},
+    loadedProducts,
+    returnFeesByWilaya,
+  );
 
   let totalAdSpendDzd = 0;
   let totalCogsDzd = 0;
@@ -304,17 +332,20 @@ export async function buildStoreReportSnapshot(): Promise<{
     estimatedNetProfitDzd += c.netProfitDzd;
   }
 
+  const accounting = computeCodAccountingReport({
+    orders: orvaOrdersForProfitability,
+    metaAdSpendDzd: totalAdSpendDzd,
+    returnFeesByWilaya,
+    products: loadedProducts,
+  });
+
   const outcomesTotal = statusCounts.delivered + statusCounts.returned;
-  const overallDeliveryRatePct =
-    outcomesTotal > 0 ? Math.round((statusCounts.delivered / outcomesTotal) * 100) : 0;
-  const overallRoas =
-    totalAdSpendDzd > 0 ? Number((deliveredRevenueDzd / totalAdSpendDzd).toFixed(2)) : null;
+  const overallDeliveryRatePct = outcomesTotal > 0 ? Math.round((statusCounts.delivered / outcomesTotal) * 100) : 0;
+  const overallRoas = totalAdSpendDzd > 0 ? Number((deliveredRevenueDzd / totalAdSpendDzd).toFixed(2)) : null;
   const overallCpaDzd =
     totalAdSpendDzd > 0 && allOrders.length > 0 ? Math.round(totalAdSpendDzd / allOrders.length) : null;
   const overallCpdDzd =
-    totalAdSpendDzd > 0 && statusCounts.delivered > 0
-      ? Math.round(totalAdSpendDzd / statusCounts.delivered)
-      : null;
+    totalAdSpendDzd > 0 && statusCounts.delivered > 0 ? Math.round(totalAdSpendDzd / statusCounts.delivered) : null;
 
   const productEconomics: ProductEconomicsSummary[] = loadedProducts.slice(0, 15).map((p) => {
     const unitMarginDzd = computeUnitMargin(p.sellingPrice, p.purchaseCost);
@@ -414,6 +445,18 @@ export async function buildStoreReportSnapshot(): Promise<{
         productEconomics,
         wilayaEfficiency,
       },
+      accounting,
+      uploadedFilesSummary: storedFiles.slice(0, 10).map((f) => ({
+        id: f.id,
+        fileName: f.fileName,
+        courierId: f.courierId,
+        rowCount: f.rowCount,
+        freshnessStatus: f.freshnessStatus,
+        diffSummary: f.diffSummary,
+        parsedSummary: f.parsedSummary,
+        createdAt: f.createdAt,
+      })),
+      latestReconciliationCounts: latestRecon ? latestRecon.counts : null,
     },
   };
 }
@@ -986,6 +1029,13 @@ export async function runOrvaGeminiAgentQuery(options: {
     `- تفصيل ربحية الحملات الإعلانية (Campaigns Breakdown): ${JSON.stringify(mkt?.campaigns ?? [])}`,
     `- اقتصاديات المنتجات والباقات وربط الإعلانات (Product Unit Economics & Break-Even CPA): ${JSON.stringify(mkt?.productEconomics ?? [])}`,
     `- كفاءة الولايات التسويقية ونسب التسليم (Wilaya Targeting Efficiency): ${JSON.stringify(mkt?.wilayaEfficiency ?? [])}`,
+    `- التقرير المحاسبي الشامل COD (الأموال العالقة، الجاهزة للدفع، المحصّلة، تكلفة المرتجعات الحقيقية tarif_retour): ${JSON.stringify(snapshot.accounting ?? {})}`,
+    snapshot.uploadedFilesSummary && snapshot.uploadedFilesSummary.length > 0
+      ? `- الملفات المرفوعة والمحفوظة في الذاكرة للتحليل ومقارنة الجديد بالقديم: ${JSON.stringify(snapshot.uploadedFilesSummary)}`
+      : `- لا توجد ملفات Excel/CSV مرفوعة إضافية حالياً.`,
+    snapshot.latestReconciliationCounts
+      ? `- آخر نتائج فرز ومطابقة شركات التوصيل (Excel/API Reconciliation): ${JSON.stringify(snapshot.latestReconciliationCounts)}`
+      : ``,
     `- أعلى الولايات طلباً: ${JSON.stringify(snapshot.topWilayas)}`,
     `- أداء المنتجات: ${JSON.stringify(snapshot.topProducts)}`,
     `- كتالوج المنتجات والمخزون: ${JSON.stringify(snapshot.catalogSummary)}`,

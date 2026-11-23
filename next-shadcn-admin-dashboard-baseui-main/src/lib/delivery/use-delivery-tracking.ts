@@ -2,32 +2,34 @@
 
 /**
  * ORVA Store — Phase 7G useDeliveryTracking Hook
- * 
+ *
  * Manages customer and delivery tracking state, manual courier synchronization,
  * search and filters, and customer multi-order inspection.
- * 
+ *
  * Invariants:
  * - External tracking refresh NEVER mutates internal order.status.
  * - External tracking refresh NEVER changes orderId, prices, COD, or customer data.
  * - In Live Mode, zero fake tracking data is shown; "Not Connected" is returned.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { getOrdersRepository, getAppRepositoryMode } from "@/lib/orva-api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { getAppRepositoryMode, getOrdersRepository } from "@/lib/orva-api";
 import type { OrvaOrder, RepositoryMode } from "@/lib/repository/types";
-import type {
-  CourierTrackingResult,
-  DeliveryFilterOptions,
-  DeliveryKPIMetrics,
-  CustomerOrderSummary,
-} from "./delivery-tracking-types";
-import { getMockCourierAdapter } from "./mock-courier-adapter";
+
 import {
   computeDeliveryKPIs,
+  extractUniqueCustomers,
   filterDeliveryOrders,
   resolveOrderTrackingCode,
-  extractUniqueCustomers,
 } from "./delivery-metrics-calculator";
+import type {
+  CourierTrackingResult,
+  CustomerOrderSummary,
+  DeliveryFilterOptions,
+  DeliveryKPIMetrics,
+} from "./delivery-tracking-types";
+import { getMockCourierAdapter } from "./mock-courier-adapter";
 
 const TRACKING_CACHE_KEY = "orva_delivery_tracking_cache_v1";
 
@@ -101,10 +103,7 @@ export function useDeliveryTracking() {
 
         if (typeof window !== "undefined") {
           try {
-            window.localStorage.setItem(
-              TRACKING_CACHE_KEY,
-              JSON.stringify(Array.from(initialMap.values()))
-            );
+            window.localStorage.setItem(TRACKING_CACHE_KEY, JSON.stringify(Array.from(initialMap.values())));
           } catch {
             // Ignore storage write errors
           }
@@ -127,10 +126,7 @@ export function useDeliveryTracking() {
   const persistTrackingMap = useCallback((newMap: Map<string, CourierTrackingResult>) => {
     if (typeof window !== "undefined") {
       try {
-        window.localStorage.setItem(
-          TRACKING_CACHE_KEY,
-          JSON.stringify(Array.from(newMap.values()))
-        );
+        window.localStorage.setItem(TRACKING_CACHE_KEY, JSON.stringify(Array.from(newMap.values())));
       } catch {
         // Ignore storage write errors
       }
@@ -156,10 +152,64 @@ export function useDeliveryTracking() {
       setSyncingOrderId(orderId);
       setIsSyncing(true);
       try {
-        // Simulate minor network sync delay for realistic operator feedback
-        await new Promise((r) => setTimeout(r, 400));
-
-        const result = await courierAdapter.getTrackingStatus(trackingCode, orderId);
+        let result: CourierTrackingResult;
+        if (repoMode !== "mock") {
+          const params = new URLSearchParams({
+            action: "track",
+            tracking: trackingCode,
+          });
+          if (targetOrder.courierId) params.set("courierId", targetOrder.courierId);
+          const res = await fetch(`/api/delivery?${params.toString()}`, {
+            cache: "no-store",
+            credentials: "same-origin",
+          });
+          const json = await res.json().catch(() => null);
+          const nowIso = new Date().toISOString();
+          if (res.ok && json?.success) {
+            const rawCode = String(json.status || "UNKNOWN");
+            const rich = await import("./courier-status-mapper").then((m) => m.mapExternalCourierStatus(rawCode));
+            result = {
+              orderId,
+              courierName: targetOrder.courierName || json.courierId || "Redex Express",
+              courierId: json.courierId || targetOrder.courierId || "redex",
+              trackingCode,
+              externalStatusCode: rawCode,
+              normalizedStatus: rich.normalizedStatus,
+              receiptClassification: rich.receiptClassification,
+              lastSyncedAt: nowIso,
+              syncResult: "success",
+              safeMessage: json.statusAr || rich.labelAr || rawCode,
+              timelineEvents: Array.isArray(json.activity)
+                ? json.activity.map((a: any, idx: number) => ({
+                    id: `${orderId}-act-${idx}`,
+                    stepKey: a.status || `step-${idx}`,
+                    titleAr: a.statusAr || a.status || "تحديث",
+                    titleEn: a.status || "Update",
+                    descriptionAr: [a.station, a.driver, a.reason || a.details].filter(Boolean).join(" • "),
+                    timestamp: [a.date, a.time].filter(Boolean).join(" ") || null,
+                    category: "courier_external",
+                    status: "completed",
+                  }))
+                : [],
+            };
+          } else {
+            result = {
+              orderId,
+              courierName: targetOrder.courierName || "شركة التوصيل",
+              courierId: targetOrder.courierId || "redex",
+              trackingCode,
+              externalStatusCode: "UNKNOWN",
+              normalizedStatus: "UNKNOWN",
+              receiptClassification: "Unknown",
+              lastSyncedAt: nowIso,
+              syncResult: res.status === 404 ? "not_found" : "failed",
+              safeMessage: json?.error || "تعذر جلب حالة التتبع الحية",
+              timelineEvents: [],
+            };
+          }
+        } else {
+          result = await courierAdapter.getTrackingStatus(trackingCode, orderId);
+        }
 
         setTrackingMap((prev) => {
           const next = new Map(prev);
@@ -198,26 +248,62 @@ export function useDeliveryTracking() {
         setIsSyncing(false);
       }
     },
-    [orders, courierAdapter, persistTrackingMap]
+    [orders, courierAdapter, persistTrackingMap],
   );
 
   // 3. Bulk Manual Tracking Refresh
   const refreshAllTracking = useCallback(async () => {
     setIsSyncing(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
-
       const updatedMap = new Map(trackingMap);
       let successCount = 0;
       let failedCount = 0;
 
-      for (const ord of orders) {
-        const trackingCode = resolveOrderTrackingCode(ord);
-        if (trackingCode) {
-          const res = await courierAdapter.getTrackingStatus(trackingCode, ord.id);
-          updatedMap.set(ord.id, res);
-          if (res.syncResult === "success") successCount++;
-          else failedCount++;
+      if (repoMode !== "mock") {
+        await fetch("/api/delivery?action=sync_all_active", {
+          cache: "no-store",
+          credentials: "same-origin",
+        }).catch(() => undefined);
+
+        const trackedOrders = orders.filter((o) => Boolean(resolveOrderTrackingCode(o))).slice(0, 40);
+        for (const ord of trackedOrders) {
+          const trackingCode = resolveOrderTrackingCode(ord)!;
+          const res = await fetch(
+            `/api/delivery?action=track&tracking=${encodeURIComponent(trackingCode)}${ord.courierId ? `&courierId=${encodeURIComponent(ord.courierId)}` : ""}`,
+            { cache: "no-store", credentials: "same-origin" },
+          )
+            .then((r) => r.json().catch(() => null))
+            .catch(() => null);
+          if (res?.success) {
+            const rawCode = String(res.status || "UNKNOWN");
+            const rich = await import("./courier-status-mapper").then((m) => m.mapExternalCourierStatus(rawCode));
+            updatedMap.set(ord.id, {
+              orderId: ord.id,
+              courierName: ord.courierName || res.courierId || "Redex Express",
+              courierId: res.courierId || ord.courierId || "redex",
+              trackingCode,
+              externalStatusCode: rawCode,
+              normalizedStatus: rich.normalizedStatus,
+              receiptClassification: rich.receiptClassification,
+              lastSyncedAt: new Date().toISOString(),
+              syncResult: "success",
+              safeMessage: res.statusAr || rich.labelAr || rawCode,
+              timelineEvents: [],
+            });
+            successCount++;
+          } else {
+            failedCount++;
+          }
+        }
+      } else {
+        for (const ord of orders) {
+          const trackingCode = resolveOrderTrackingCode(ord);
+          if (trackingCode) {
+            const res = await courierAdapter.getTrackingStatus(trackingCode, ord.id);
+            updatedMap.set(ord.id, res);
+            if (res.syncResult === "success") successCount++;
+            else failedCount++;
+          }
         }
       }
 
@@ -238,7 +324,7 @@ export function useDeliveryTracking() {
     } finally {
       setIsSyncing(false);
     }
-  }, [orders, trackingMap, courierAdapter, persistTrackingMap]);
+  }, [orders, trackingMap, repoMode, courierAdapter, persistTrackingMap]);
 
   // 4. Reset Tracking Cache
   const resetTrackingCache = useCallback(async () => {
@@ -273,7 +359,7 @@ export function useDeliveryTracking() {
         return rawPhone === customerKey || rawName === customerKey || o.id === customerKey;
       });
     },
-    [orders]
+    [orders],
   );
 
   return {
