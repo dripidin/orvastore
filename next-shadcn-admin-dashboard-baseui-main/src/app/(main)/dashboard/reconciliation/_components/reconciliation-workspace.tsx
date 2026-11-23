@@ -241,6 +241,7 @@ export function ReconciliationWorkspace() {
       <AiDiscrepancySummaryPanel
         couriers={couriers.map((c) => ({ id: c.id, name: c.nameAr || c.name }))}
         accounting={runResult?.accounting ?? null}
+        runResult={runResult}
       />
     </div>
   );

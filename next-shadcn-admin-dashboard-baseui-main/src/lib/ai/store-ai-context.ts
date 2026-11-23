@@ -569,8 +569,8 @@ const discoveredModelsCache = new Map<string, { expiresAt: number; models: strin
 const FOUR_OH_FOUR_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
 const TRANSIENT_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 const DISCOVERY_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const TOTAL_ROUTING_BUDGET_MS = 25_000;
-const PER_ATTEMPT_MAX_TIMEOUT_MS = 12_000;
+const TOTAL_ROUTING_BUDGET_MS = 45_000;
+const PER_ATTEMPT_MAX_TIMEOUT_MS = 25_000;
 const MAX_MODEL_ATTEMPTS_PER_REQUEST = 4;
 
 const EXCLUDED_MODEL_SUBSTRINGS = [
@@ -705,6 +705,8 @@ interface SingleCallResult {
   text: string;
   latencyMs: number;
   statusCode?: number;
+  finishReason?: string;
+  truncated?: boolean;
   errorMessage?: string;
   isAuthError?: boolean;
 }
@@ -722,7 +724,7 @@ async function callSingleGeminiModel(options: {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`;
 
   const contents = [
-    ...(options.history ?? []).slice(-6).map((msg) => ({
+    ...(options.history ?? []).slice(-10).map((msg) => ({
       role: msg.role === "assistant" ? "model" : "user",
       parts: [{ text: msg.content }],
     })),
@@ -747,7 +749,7 @@ async function callSingleGeminiModel(options: {
         contents,
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: options.maxOutputTokens ?? 1024,
+          maxOutputTokens: options.maxOutputTokens ?? 4096,
         },
       }),
       cache: "no-store",
@@ -756,12 +758,18 @@ async function callSingleGeminiModel(options: {
 
     const latencyMs = Date.now() - attemptStart;
     const json = (await response.json().catch(() => null)) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      candidates?: Array<{
+        finishReason?: string;
+        content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+      }>;
       error?: { code?: number; message?: string; status?: string };
     } | null;
 
-    const candidateText = json?.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
+    const firstCandidate = json?.candidates?.[0];
+    const finishReason = firstCandidate?.finishReason;
+    const candidateText = firstCandidate?.content?.parts
+      ?.filter((p) => p.thought !== true)
+      .map((p) => p.text ?? "")
       .join("\n")
       .trim();
 
@@ -772,7 +780,14 @@ async function callSingleGeminiModel(options: {
         unhealthyUntil: undefined,
         lastError: undefined,
       });
-      return { ok: true, text: candidateText, latencyMs, statusCode: response.status };
+      return {
+        ok: true,
+        text: candidateText,
+        latencyMs,
+        statusCode: response.status,
+        finishReason,
+        truncated: finishReason === "MAX_TOKENS",
+      };
     }
 
     const errMsg = json?.error?.message ?? `HTTP ${response.status}`;
@@ -952,6 +967,8 @@ export async function runOrvaGeminiAgentQuery(options: {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   overrideApiKey?: string;
   overrideModel?: string;
+  maxOutputTokens?: number;
+  extraSystemContext?: string;
 }): Promise<{
   ok: boolean;
   reply: string;
@@ -963,6 +980,8 @@ export async function runOrvaGeminiAgentQuery(options: {
   projectName: string;
   projectNumber: string;
   latencyMs: number;
+  finishReason?: string;
+  truncated?: boolean;
   attemptedModels: Array<{ model: string; status?: number; error?: string; latencyMs: number }>;
   errorCode?: GeminiErrorCode;
   apiError?: string;
@@ -1043,7 +1062,10 @@ export async function runOrvaGeminiAgentQuery(options: {
     matchedOrders.length > 0
       ? `- نتائج البحث المطابقة لرسالة الأدمن (برقم الطلبية أو الهاتف أو الاسم): ${JSON.stringify(matchedOrders)}`
       : `- ملاحظة: لم يتضمن سؤال الأدمن رقم طلبية أو هاتف محدد للبحث المباشر.`,
-  ].join("\n");
+    options.extraSystemContext ? `\n${options.extraSystemContext}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const deadline = startTime + TOTAL_ROUTING_BUDGET_MS;
   const initialCandidates = await buildCandidateModels(configuredModel, apiKey, false);
@@ -1057,7 +1079,10 @@ export async function runOrvaGeminiAgentQuery(options: {
       const remainingMs = deadline - Date.now();
       if (remainingMs < 1500) {
         lastError = "Total Gemini routing timeout budget exceeded";
-        return { authFailed: false, succeeded: null as { model: string; text: string } | null };
+        return {
+          authFailed: false,
+          succeeded: null as { model: string; text: string; finishReason?: string; truncated?: boolean } | null,
+        };
       }
 
       attemptedSet.add(model);
@@ -1069,11 +1094,20 @@ export async function runOrvaGeminiAgentQuery(options: {
         history: options.history,
         userMessage: options.userMessage,
         timeoutMs,
+        maxOutputTokens: options.maxOutputTokens ?? 4096,
       });
 
       if (result.ok) {
         attemptedModels.push({ model, status: result.statusCode, latencyMs: result.latencyMs });
-        return { authFailed: false, succeeded: { model, text: result.text } };
+        return {
+          authFailed: false,
+          succeeded: {
+            model,
+            text: result.text,
+            finishReason: result.finishReason,
+            truncated: result.truncated,
+          },
+        };
       }
 
       lastError = result.errorMessage ?? lastError;
@@ -1109,6 +1143,8 @@ export async function runOrvaGeminiAgentQuery(options: {
       projectName,
       projectNumber,
       latencyMs: Date.now() - startTime,
+      finishReason: passResult.succeeded.finishReason,
+      truncated: passResult.succeeded.truncated,
       attemptedModels,
     };
   }

@@ -1,42 +1,92 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { runOrvaGeminiAgentQuery } from "@/lib/ai/store-ai-context";
+import { formatGeminiUserErrorMessage, runOrvaGeminiAgentQuery } from "@/lib/ai/store-ai-context";
 import { computeCodAccountingReport } from "@/lib/analytics/accounting-report";
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
+import { adminListProducts } from "@/lib/catalog/server";
 import { getReturnFeesByWilayaMap } from "@/lib/geo/coverage";
 import { getMemoryReconRuns, loadAllStoreOrdersForReconciliation } from "@/lib/reconciliation/reconciliation-engine";
 
 export const dynamic = "force-dynamic";
+
+interface RequestHistoryItem {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface RequestRunContext {
+  counts?: {
+    matched_synced?: number;
+    matched_unsynced?: number;
+    store_only?: number;
+    courier_only?: number;
+    duplicate?: number;
+    totalExternalRows?: number;
+    totalStoreOrders?: number;
+  };
+  discrepancySamples?: Array<Record<string, unknown>>;
+}
 
 export async function POST(request: NextRequest) {
   if (!(await verifyAdminSession(request))) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  const body = (await request.json().catch(() => ({}))) as {
+    courierId?: string;
+    message?: string;
+    history?: RequestHistoryItem[];
+    runContext?: RequestRunContext;
+  };
+
   const courierScope = String(body.courierId || "all")
     .trim()
     .toLowerCase();
+  const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
+  const isChat = rawMessage.length > 0;
+
+  const cleanHistory: RequestHistoryItem[] = Array.isArray(body.history)
+    ? body.history
+        .filter(
+          (item): item is RequestHistoryItem =>
+            Boolean(item) &&
+            (item.role === "user" || item.role === "assistant") &&
+            typeof item.content === "string" &&
+            item.content.trim().length > 0,
+        )
+        .slice(-12)
+        .map((item) => ({ role: item.role, content: item.content.trim() }))
+    : [];
+
   const runs = getMemoryReconRuns();
   const latestRun = runs[0] ?? null;
 
-  const storeOrders = await loadAllStoreOrdersForReconciliation();
+  const [storeOrders, products, returnFeeMap] = await Promise.all([
+    loadAllStoreOrdersForReconciliation(),
+    adminListProducts().catch(() => []),
+    getReturnFeesByWilayaMap(courierScope === "all" ? undefined : courierScope).catch(
+      () => ({}) as Record<number, number>,
+    ),
+  ]);
+
   const scopedStoreOrders =
     courierScope === "all"
       ? storeOrders
       : storeOrders.filter((o) => (o.courierId || (o.inRedex ? "redex" : "")).toLowerCase() === courierScope);
 
-  const scopedReconRows = latestRun
+  const serverReconRows = latestRun
     ? courierScope === "all"
       ? latestRun.rows
       : latestRun.rows.filter((r) => r.courierId === courierScope)
     : [];
 
-  const returnFeeMap = await getReturnFeesByWilayaMap(courierScope === "all" ? undefined : courierScope).catch(
-    () => ({}) as Record<number, number>,
-  );
+  const fallbackSamples = Array.isArray(body.runContext?.discrepancySamples)
+    ? body.runContext.discrepancySamples.filter((r) =>
+        courierScope === "all" ? true : String(r.courierId || "").toLowerCase() === courierScope,
+      )
+    : [];
 
-  const capturedReturns = scopedReconRows
+  const capturedReturns = serverReconRows
     .filter((r) => r.bucket === "courier_only" && r.isStoreOwnedReturn)
     .map((r) => ({
       trackingCode: r.trackingCode || r.id,
@@ -51,16 +101,51 @@ export async function POST(request: NextRequest) {
     orders: scopedStoreOrders,
     capturedReturns,
     returnFeesByWilaya: returnFeeMap,
+    products,
   });
 
+  const fallbackCounts = body.runContext?.counts;
+  const useFallbackCounts = !latestRun && fallbackCounts && courierScope === "all";
+
   const bucketCounts = {
-    matched_synced: scopedReconRows.filter((r) => r.bucket === "matched_synced").length,
-    matched_unsynced: scopedReconRows.filter((r) => r.bucket === "matched_unsynced").length,
-    store_only: scopedReconRows.filter((r) => r.bucket === "store_only").length,
-    courier_only: scopedReconRows.filter((r) => r.bucket === "courier_only").length,
-    duplicate: scopedReconRows.filter((r) => r.bucket === "duplicate").length,
+    matched_synced: useFallbackCounts
+      ? Number(fallbackCounts?.matched_synced ?? 0)
+      : serverReconRows.filter((r) => r.bucket === "matched_synced").length,
+    matched_unsynced: useFallbackCounts
+      ? Number(fallbackCounts?.matched_unsynced ?? 0)
+      : serverReconRows.filter((r) => r.bucket === "matched_unsynced").length,
+    store_only: useFallbackCounts
+      ? Number(fallbackCounts?.store_only ?? 0)
+      : serverReconRows.filter((r) => r.bucket === "store_only").length,
+    courier_only: useFallbackCounts
+      ? Number(fallbackCounts?.courier_only ?? 0)
+      : serverReconRows.filter((r) => r.bucket === "courier_only").length,
+    duplicate: useFallbackCounts
+      ? Number(fallbackCounts?.duplicate ?? 0)
+      : serverReconRows.filter((r) => r.bucket === "duplicate").length,
     storeOwnedReturns: capturedReturns.length,
   };
+
+  const discrepancySamples =
+    serverReconRows.length > 0
+      ? serverReconRows
+          .filter((r) => r.bucket !== "matched_synced")
+          .slice(0, 40)
+          .map((r) => ({
+            bucket: r.bucket,
+            courier: r.courierName,
+            tracking: r.trackingCode,
+            orderRef: r.reference || r.storeOrderId,
+            customer: r.customerName,
+            wilaya: r.wilayaName,
+            montantDzd: r.montantDzd,
+            returnFeeDzd: r.returnFeeDzd,
+            store: r.storeOrderStatus,
+            courierStatus: r.courierStatusAr,
+            financialStage: r.financialStatus,
+            reason: r.discrepancyReason,
+          }))
+      : fallbackSamples.slice(0, 40);
 
   const deterministicMemo = [
     `📋 **ملخص تدقيق المطابقة (${courierScope === "all" ? "كافة شركات التوصيل" : courierScope})**:`,
@@ -74,44 +159,76 @@ export async function POST(request: NextRequest) {
     `- إجمالي مبالغ الطلبيات المسلّمة: **${accounting.grossDeliveredCodDzd.toLocaleString("fr-DZ")} د.ج** (${accounting.deliveredCount} طلبية، نسبة التسليم ${accounting.deliveryRatePct}%)`,
     `- مستحقات عالقة/جاهزة عند التوصيل: **${accounting.courierCashStages.pendingReceivableDzd.toLocaleString("fr-DZ")} د.ج** | محصّل ومؤرشف: **${accounting.courierCashStages.settledPaidDzd.toLocaleString("fr-DZ")} د.ج**`,
     `- خسائر شحن المرتجعات الفعلية (tarif_retour): **${accounting.totalReturnLossDzd.toLocaleString("fr-DZ")} د.ج** (منها ${accounting.capturedExternalReturnLossDzd.toLocaleString("fr-DZ")} د.ج لمرتجعات لم تكن مسجّلة بالمتجر)`,
+    `- صافي الربح التشغيلي المقدر: **${accounting.netRealizedProfitDzd.toLocaleString("fr-DZ")} د.ج**`,
   ].join("\n");
 
-  let aiMemo = deterministicMemo;
-  try {
-    const prompt = [
-      `أعد صياغة تقرير مراجعة ومطابقة محاسبية احترافي باللغة العربية بناءً على البيانات التالية فقط لنطاق (${courierScope}):`,
-      `ملخص الفرز: ${JSON.stringify(bucketCounts)}`,
-      `أمثلة فوارق تحتاج تدخل: ${JSON.stringify(
-        scopedReconRows
-          .filter((r) => r.bucket !== "matched_synced")
-          .slice(0, 12)
-          .map((r) => ({
-            bucket: r.bucket,
-            courier: r.courierName,
-            tracking: r.trackingCode,
-            customer: r.customerName,
-            store: r.storeOrderStatus,
-            courierStatus: r.courierStatusAr,
-            reason: r.discrepancyReason,
-          })),
-      )}`,
-      `التقرير المالي COD: ${JSON.stringify(accounting)}`,
-      `قدّم توصيات عملية مرتبة بالأرقام.`,
-    ].join("\n");
+  const extraSystemContext = [
+    `سياق تدقيق المطابقة والمحاسبة الحي (COD Accounting Reconciliation Scope):`,
+    `- نطاق شركة التوصيل المحدد الآن: ${courierScope === "all" ? "جميع شركات التوصيل (الكل)" : courierScope}`,
+    `- ملخص الفرز الحالي (Bucket Counts): ${JSON.stringify(bucketCounts)}`,
+    `- التقرير المالي COD الكامل للنطاق: ${JSON.stringify(accounting)}`,
+    discrepancySamples.length > 0
+      ? `- عينة مفارقات وحالات تحتاج مراجعة (حتى ${discrepancySamples.length} حالة): ${JSON.stringify(discrepancySamples)}`
+      : `- ملاحظة: لا توجد صفوف مفارقات مرفوعة حالياً خارج الطلبيات المتزامنة في هذا النطاق.`,
+    `- تعليمات صارمة للإخراج: أجب باللغة العربية بشكل كامل ومنظم ومرتب بالنقاط والأرقام الدقيقة، وأكمل التقرير وجميع الجمل والفقرات حتى الخاتمة دون أن تنقطع في منتصف الكلام.`,
+  ].join("\n");
 
-    const aiRes = await runOrvaGeminiAgentQuery({ userMessage: prompt });
-    if (aiRes.ok && aiRes.reply) {
-      aiMemo = aiRes.reply;
-    }
-  } catch {
-    // Fallback deterministic memo already computed
+  const defaultSummaryPrompt = [
+    `قدّم تقرير مراجعة ومطابقة محاسبية احترافياً وشاملاً باللغة العربية لنطاق (${courierScope === "all" ? "كافة شركات التوصيل" : courierScope})، يتضمن:`,
+    `1) ملخص الفوارق والطلبيات غير المتزامنة والمكررة والمرتجعات الخارجية.`,
+    `2) تحليل الموقف المالي COD (المسلّم، العالق، الجاهز للدفع، المحصّل، وخسائر المرتجعات tarif_retour وصافي الربح).`,
+    `3) خطوات وتوصيات عملية مرتبة بالأولوية ومعرّفات الطلبيات الموجودة في البيانات.`,
+  ].join("\n");
+
+  const aiRes = await runOrvaGeminiAgentQuery({
+    userMessage: isChat ? rawMessage : defaultSummaryPrompt,
+    history: cleanHistory,
+    extraSystemContext,
+    maxOutputTokens: 6144,
+  });
+
+  if (aiRes.ok && aiRes.reply) {
+    return NextResponse.json({
+      success: true,
+      mode: isChat ? "chat" : "summary",
+      courierScope,
+      bucketCounts,
+      accounting,
+      summaryText: aiRes.reply,
+      reply: aiRes.reply,
+      model: aiRes.model || null,
+      finishReason: aiRes.finishReason || null,
+      truncated: Boolean(aiRes.truncated),
+      usedFallback: false,
+    });
+  }
+
+  if (isChat) {
+    return NextResponse.json(
+      {
+        success: false,
+        mode: "chat",
+        courierScope,
+        bucketCounts,
+        accounting,
+        error: formatGeminiUserErrorMessage(aiRes.errorCode, aiRes.apiError),
+      },
+      { status: aiRes.errorCode === "MISSING_API_KEY" ? 424 : 503 },
+    );
   }
 
   return NextResponse.json({
     success: true,
+    mode: "summary",
     courierScope,
     bucketCounts,
     accounting,
-    summaryText: aiMemo,
+    summaryText: deterministicMemo,
+    reply: deterministicMemo,
+    model: null,
+    finishReason: null,
+    truncated: false,
+    usedFallback: true,
+    aiWarning: formatGeminiUserErrorMessage(aiRes.errorCode, aiRes.apiError),
   });
 }
