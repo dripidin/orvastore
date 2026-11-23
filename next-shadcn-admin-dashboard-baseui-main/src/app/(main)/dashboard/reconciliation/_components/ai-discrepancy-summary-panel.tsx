@@ -12,7 +12,6 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
-  SendHorizontal,
   Sparkles,
   User,
   Wallet,
@@ -22,7 +21,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import {
+  PromptBox,
+  PromptBoxAction,
+  type PromptBoxAttachment,
+  type PromptBoxMessage,
+} from "@/components/ui/prompt-box";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CodAccountingReport } from "@/lib/analytics/accounting-report";
 import { orvaFetch } from "@/lib/orva-api";
@@ -35,11 +39,20 @@ interface AiDiscrepancySummaryPanelProps {
   runResult?: ReconciliationRunSummary | null;
 }
 
+interface ReconChatAttachmentPreview {
+  id: string;
+  name: string;
+  previewUrl: string;
+  mimeType: string;
+  dataBase64: string;
+}
+
 interface ReconChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  attachments?: ReconChatAttachmentPreview[];
   model?: string | null;
   truncated?: boolean;
   usedFallback?: boolean;
@@ -68,10 +81,47 @@ const RECON_QUICK_PROMPTS = [
   },
 ] as const;
 
+async function readAttachmentAsDataUrl(att: PromptBoxAttachment): Promise<ReconChatAttachmentPreview | null> {
+  try {
+    let dataUrl = "";
+    let mimeType = att.file?.type || "image/png";
+
+    if (att.file) {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Failed reading file"));
+        reader.readAsDataURL(att.file as File);
+      });
+    } else if (att.url.startsWith("data:")) {
+      dataUrl = att.url;
+    } else {
+      return null;
+    }
+
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    mimeType = match[1] || mimeType;
+    const dataBase64 = match[2];
+    if (!dataBase64) return null;
+
+    return {
+      id: att.id,
+      name: att.name,
+      previewUrl: dataUrl,
+      mimeType,
+      dataBase64,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: AiDiscrepancySummaryPanelProps) {
   const [scope, setScope] = React.useState("all");
   const [messages, setMessages] = React.useState<ReconChatMessage[]>([]);
   const [input, setInput] = React.useState("");
+  const [attachments, setAttachments] = React.useState<PromptBoxAttachment[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [loadingLabel, setLoadingLabel] = React.useState("جارٍ تحليل المفارقات والتقرير المحاسبي...");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -83,6 +133,7 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
   const isNearBottomRef = React.useRef(true);
   const messagesRef = React.useRef<ReconChatMessage[]>([]);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     messagesRef.current = messages;
@@ -132,6 +183,7 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
         customer: r.customerName,
         wilaya: r.wilayaName,
         montantDzd: r.montantDzd,
+        storeTotalDzd: r.storeTotalDzd,
         returnFeeDzd: r.returnFeeDzd,
         store: r.storeOrderStatus,
         courierStatus: r.courierStatusAr,
@@ -150,10 +202,25 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
       minute: "2-digit",
     });
 
-  const callReconAi = async (options: { mode: "summary" | "chat"; userMessage?: string }) => {
+  const handleStopRequest = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+  };
+
+  const callReconAi = async (options: {
+    mode: "summary" | "chat";
+    userMessage?: string;
+    promptAttachments?: PromptBoxAttachment[];
+  }) => {
     if (loading) return;
     const trimmed = (options.userMessage ?? "").trim();
-    if (options.mode === "chat" && !trimmed) return;
+    const rawAtts = options.promptAttachments ?? [];
+    if (options.mode === "chat" && !trimmed && rawAtts.length === 0) return;
+
+    const encodedAttachments = (await Promise.all(rawAtts.map(readAttachmentAsDataUrl))).filter(
+      (x): x is ReconChatAttachmentPreview => x !== null,
+    );
 
     const historyPayload = messagesRef.current.slice(-10).map((m) => ({
       role: m.role,
@@ -165,18 +232,24 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
       const userMsg: ReconChatMessage = {
         id: `recon-user-${Date.now()}`,
         role: "user",
-        content: trimmed,
+        content: trimmed || "تحليل الصورة المرفقة",
+        attachments: encodedAttachments.length > 0 ? encodedAttachments : undefined,
         timestamp: nowTime(),
       };
       isNearBottomRef.current = true;
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
-      setLoadingLabel("الوكيل يراجع الأرقام ويكتب الرد...");
+      setAttachments([]);
+      setLoadingLabel(
+        encodedAttachments.length > 0 ? "الوكيل يحلّل الصور والأرقام ويكتب الرد..." : "الوكيل يراجع الأرقام ويكتب الرد...",
+      );
     } else {
       isNearBottomRef.current = true;
       setLoadingLabel("جارٍ توليد تقرير التدقيق والمحاسبة الكامل...");
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     try {
       const res = await orvaFetch("/api/reconciliation/ai-summary", {
@@ -186,10 +259,19 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
           "X-Requested-With": "XMLHttpRequest",
         },
         credentials: "same-origin",
+        signal: controller.signal,
         body: JSON.stringify({
           courierId: scope,
           message: options.mode === "chat" ? trimmed : undefined,
           history: historyPayload,
+          attachments:
+            encodedAttachments.length > 0
+              ? encodedAttachments.map((a) => ({
+                  name: a.name,
+                  mimeType: a.mimeType,
+                  dataBase64: a.dataBase64,
+                }))
+              : undefined,
           runContext: buildRunContext(),
         }),
       });
@@ -218,16 +300,21 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
         setErrorMsg(String(data.aiWarning));
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || "حدث خطأ أثناء التواصل مع الوكيل الذكي.");
+      if (err?.name !== "AbortError") {
+        setErrorMsg(err?.message || "حدث خطأ أثناء التواصل مع الوكيل الذكي.");
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    void callReconAi({ mode: "chat", userMessage: input });
+  const handlePromptSubmit = (msg: PromptBoxMessage) => {
+    void callReconAi({
+      mode: "chat",
+      userMessage: msg.text,
+      promptAttachments: msg.attachments,
+    });
   };
 
   const handleCopyMessage = async (msg: ReconChatMessage) => {
@@ -241,6 +328,7 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
   };
 
   const lastMessage = messages[messages.length - 1];
+  const scopeLabel = scope === "all" ? "كل الشركات" : couriers.find((c) => c.id === scope)?.name || scope;
 
   return (
     <Card className="border-emerald-500/20 bg-emerald-500/[0.02]">
@@ -252,8 +340,8 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
               ملخص الوكيل الذكي للمفارقات والتقرير المحاسبي (COD Accounting)
             </CardTitle>
             <CardDescription className="mt-1 text-xs">
-              يحلّل الفوارق والمرتجعات المسجلة وغير المسجلة ويحسب المبالغ العالقة والمحصلة وخسائر الارتجاع لكل شركة أو
-              لجميع الشركات معاً مع دردشة مباشرة مع الوكيل.
+              يحلّل الفوارق والمرتجعات ولقطات شاشة شركات التوصيل ويحسب المبالغ العالقة والمحصلة وخسائر الارتجاع مع
+              دردشة تفاعلية مدعومة بالصور عبر PromptBox.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -346,11 +434,11 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
           </div>
         )}
 
-        {/* Dedicated Embedded Scrollable AI Chat + Always-Ready Bottom Composer */}
+        {/* Dedicated Embedded Scrollable AI Chat + Always-Ready PromptBox Composer */}
         <div
           className={cn(
-            "relative flex flex-col overflow-hidden rounded-xl border border-emerald-500/25 bg-background shadow-xs transition-[height] duration-200",
-            isExpanded ? "h-[680px]" : "h-[480px]",
+            "relative flex flex-col overflow-hidden rounded-2xl border border-emerald-500/25 bg-background shadow-xs transition-[height] duration-200",
+            isExpanded ? "h-[700px]" : "h-[520px]",
           )}
         >
           {/* Chat Header Bar */}
@@ -358,7 +446,7 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
             <div className="flex min-w-0 items-center gap-2">
               <span className="inline-flex size-2 shrink-0 rounded-full bg-emerald-500" />
               <span className="truncate font-semibold text-xs text-foreground">
-                محادثة الوكيل المحاسبي ({scope === "all" ? "كل الشركات" : scope})
+                محادثة الوكيل المحاسبي ({scopeLabel})
               </span>
               {lastMessage?.model && (
                 <Badge variant="outline" className="hidden font-mono text-[10px] text-emerald-600 sm:inline-flex">
@@ -411,8 +499,8 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
                   الوكيل المحاسبي جاهز للرد على أسئلتك وتوليد التقرير الكامل
                 </div>
                 <p className="max-w-md text-[11px] leading-relaxed">
-                  اضغط على «توليد ملخص الوكيل» للحصول على التقرير المفصل بالكامل، أو اكتب سؤالك مباشرة في الصندوق
-                  بالأسفل للاستفسار عن أي شركة، ولاية، طلبية، أو خسارة مرتجعات.
+                  اضغط على «توليد ملخص الوكيل»، أو اكتب سؤالك، أو ألصق/اسحب لقطة شاشة من ريديكس أو Excel مباشرة في
+                  صندوق PromptBox بالأسفل لتحليلها فوراً.
                 </p>
               </div>
             )}
@@ -436,6 +524,18 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
                     <Bot className="mt-1 size-4 shrink-0 text-emerald-600" />
                   )}
                   <div className="min-w-0 flex-1 space-y-2">
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {msg.attachments.map((att) => (
+                          <img
+                            key={att.id}
+                            src={att.previewUrl}
+                            alt={att.name}
+                            className="size-16 rounded-xl object-cover ring-1 ring-white/20"
+                          />
+                        ))}
+                      </div>
+                    )}
                     <div dir="auto" className="whitespace-pre-wrap break-words text-xs leading-7 sm:text-[13px]">
                       {msg.content}
                     </div>
@@ -523,8 +623,8 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
             </div>
           )}
 
-          {/* Always-Ready Bottom Input Composer */}
-          <div className="shrink-0 space-y-2 border-t bg-muted/30 p-3">
+          {/* Always-Ready Bottom PromptBox Dock */}
+          <div className="shrink-0 space-y-2 border-t bg-muted/20 p-3">
             <div className="flex w-full gap-1.5 overflow-x-auto pb-0.5">
               {RECON_QUICK_PROMPTS.map((item) => (
                 <button
@@ -539,25 +639,34 @@ export function AiDiscrepancySummaryPanel({ couriers, accounting, runResult }: A
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
-              <Input
-                dir="auto"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="اسأل الوكيل المحاسبي أو اطلب تفصيلاً إضافياً (مثلاً: حلّل لي خسائر ولاية 16 أو قارن الشركات)..."
-                disabled={loading}
-                className="h-9 flex-1 bg-background text-xs"
-              />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={loading || !input.trim()}
-                className="h-9 shrink-0 gap-1.5 bg-emerald-600 px-3.5 text-white hover:bg-emerald-500"
-              >
-                {loading ? <Loader2 className="size-3.5 animate-spin" /> : <SendHorizontal className="size-3.5" />}
-                <span>إرسال</span>
-              </Button>
-            </form>
+            <PromptBox
+              value={input}
+              onValueChange={setInput}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              placeholder="اسأل الوكيل المحاسبي أو اسحب/ألصق صورة فاتورة أو لقطة من ريديكس..."
+              busy={loading}
+              onStop={handleStopRequest}
+              onSubmit={handlePromptSubmit}
+              minRows={2}
+              maxRows={6}
+              maxAttachments={6}
+              toolbar={
+                <>
+                  <PromptBoxAction
+                    onClick={() => void callReconAi({ mode: "summary" })}
+                    disabled={loading}
+                    title="توليد تقرير التدقيق الكامل"
+                  >
+                    <Sparkles className="size-3.5 text-emerald-600" />
+                    <span>تقرير التدقيق</span>
+                  </PromptBoxAction>
+                  <PromptBoxAction className="ms-auto hidden sm:inline-flex cursor-default hover:bg-transparent">
+                    <span className="text-[11px] text-muted-foreground">{scopeLabel}</span>
+                  </PromptBoxAction>
+                </>
+              }
+            />
           </div>
         </div>
       </CardContent>

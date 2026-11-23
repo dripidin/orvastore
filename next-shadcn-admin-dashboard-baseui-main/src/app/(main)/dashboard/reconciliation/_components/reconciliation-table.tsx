@@ -12,6 +12,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ReconciledRowItem, ReconciliationBucket } from "@/lib/reconciliation/reconciliation-engine";
 
+export type ReconciliationActionType =
+  | "sync_status"
+  | "sync_cod_amount"
+  | "sync_status_and_amount"
+  | "apply_upsell_quantity"
+  | "apply_stop_desk_tariff"
+  | "import_to_store"
+  | "push_to_courier"
+  | "resolve_duplicate"
+  | "manual_override_status"
+  | "live_refresh_via_api";
+
 interface ReconciliationTableProps {
   rows: ReconciledRowItem[];
   counts: Record<ReconciliationBucket, number> & {
@@ -20,13 +32,7 @@ interface ReconciliationTableProps {
   };
   busyRowId: string | null;
   onRowAction: (
-    action:
-      | "sync_status"
-      | "import_to_store"
-      | "push_to_courier"
-      | "resolve_duplicate"
-      | "manual_override_status"
-      | "live_refresh_via_api",
+    action: ReconciliationActionType,
     items: ReconciledRowItem[],
     extra?: Record<string, unknown>,
   ) => Promise<void>;
@@ -298,8 +304,20 @@ export function ReconciliationTable({ rows, counts, busyRowId, onRowAction }: Re
                         <Badge className="text-[10px] bg-orange-600 text-white">مرتجع خاص بالمتجر</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-[200px] text-[11px] text-muted-foreground">
-                      {r.discrepancyReason || "متزامنة بالكامل"}
+                    <TableCell className="max-w-[230px] text-[11px] text-muted-foreground space-y-1">
+                      <div className={r.autoHealed ? "font-medium text-emerald-700 dark:text-emerald-300" : undefined}>
+                        {r.discrepancyReason || "متزامنة بالكامل"}
+                      </div>
+                      {r.autoHealed && (
+                        <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-700">
+                          محدّثة تلقائياً من الناقل
+                        </Badge>
+                      )}
+                      {r.remarksSummary && (
+                        <div className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-foreground/80">
+                          💬 {r.remarksSummary}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -308,14 +326,19 @@ export function ReconciliationTable({ rows, counts, busyRowId, onRowAction }: Re
                             size="xs"
                             variant="outline"
                             disabled={isBusy}
-                            onClick={() => void onRowAction("sync_status", [r])}
+                            onClick={() =>
+                              void onRowAction(
+                                (r.codDiffDzd ?? 0) !== 0 ? "sync_status_and_amount" : "sync_status",
+                                [r],
+                              )
+                            }
                           >
                             {isBusy ? (
                               <Loader2 className="size-3 animate-spin" />
                             ) : (
                               <RefreshCw className="size-3 me-1" />
                             )}
-                            مزامنة
+                            {(r.codDiffDzd ?? 0) !== 0 ? "اعتماد ومزامنة" : "مزامنة"}
                           </Button>
                         )}
                         {r.bucket === "courier_only" && (

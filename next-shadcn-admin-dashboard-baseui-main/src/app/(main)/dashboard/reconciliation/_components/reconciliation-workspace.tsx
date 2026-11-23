@@ -2,21 +2,32 @@
 
 import * as React from "react";
 
-import { AlertCircle, CheckCircle2, FileSpreadsheet, Layers } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  FileSpreadsheet,
+  Layers,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { WilayaRiskStat } from "@/lib/analytics/wilaya-risk-guardrails";
 import type { ReconciledRowItem, ReconciliationRunSummary } from "@/lib/reconciliation/reconciliation-engine";
 
 import { AiDiscrepancySummaryPanel } from "./ai-discrepancy-summary-panel";
 import { ExcelUploadMapperCard, type StagedUploadFile } from "./excel-upload-mapper-card";
-import { ReconciliationTable } from "./reconciliation-table";
+import { ReconciliationTable, type ReconciliationActionType } from "./reconciliation-table";
 
 export function ReconciliationWorkspace() {
   const [couriers, setCouriers] = React.useState<any[]>([]);
   const [catalog, setCatalog] = React.useState<any[]>([]);
   const [runResult, setRunResult] = React.useState<ReconciliationRunSummary | null>(null);
+  const [highRiskWilayas, setHighRiskWilayas] = React.useState<WilayaRiskStat[]>([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [busyRowId, setBusyRowId] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<{
@@ -73,9 +84,13 @@ export function ReconciliationWorkspace() {
         throw new Error(data.error || "تعذرت معالجة ملفات Excel للمطابقة");
       }
       setRunResult(data.result);
+      const healedText =
+        (data.healedCount ?? 0) > 0
+          ? ` وتم التصحيح التلقائي لـ ${data.healedCount} طلبية (المبالغ/الحالات) من بيانات الناقل.`
+          : "";
       setFeedback({
         type: "success",
-        message: `اكتملت المطابقة الشاملة: فُحصت ${data.result.counts.totalExternalRows} طلبية من ${data.result.couriersProcessed.length} ملف/شركة مقابل ${data.result.counts.totalStoreOrders} طلبية بالمتجر.`,
+        message: `اكتملت المطابقة الشاملة: فُحصت ${data.result.counts.totalExternalRows} طلبية من ${data.result.couriersProcessed.length} ملف/شركة مقابل ${data.result.counts.totalStoreOrders} طلبية بالمتجر.${healedText}`,
       });
       await loadInitial();
     } catch (err: any) {
@@ -103,9 +118,13 @@ export function ReconciliationWorkspace() {
         throw new Error(data.error || "فشل سحب الطلبيات عبر API");
       }
       setRunResult(data.result);
+      const healedText =
+        (data.healedCount ?? 0) > 0
+          ? ` • تم تصحيح ومزامنة ${data.healedCount} طلبية تلقائياً (${data.priceHealedCount ?? 0} مبلغ/كمية).`
+          : "";
       setFeedback({
         type: "success",
-        message: `تمت المطابقة الحية عبر API Token (${courierIds.join(", ")}): ${data.result.counts.totalExternalRows} شحنة.`,
+        message: `تمت المطابقة الحية عبر API Token (${courierIds.join(", ")}): ${data.result.counts.totalExternalRows} شحنة.${healedText}`,
       });
     } catch (err: any) {
       setFeedback({ type: "error", message: err?.message || "فشل السحب عبر API" });
@@ -114,14 +133,33 @@ export function ReconciliationWorkspace() {
     }
   };
 
+  const handleRunAutoDailyCron = async () => {
+    setIsRunning(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/cron/reconcile-couriers", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "تعذر تشغيل المطابقة المالية التلقائية");
+      }
+      if (data.result) setRunResult(data.result);
+      if (Array.isArray(data.highRiskWilayas)) setHighRiskWilayas(data.highRiskWilayas);
+      setFeedback({
+        type: "success",
+        message: `اكتملت المطابقة المالية التلقائية (${(data.couriersSynced || []).join(", ")}): صُححت ${data.healedCount ?? 0} طلبية، ورُصدت ${data.highRiskWilayas?.length ?? 0} ولاية عالية المخاطر (<70%).`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err?.message || "خطأ أثناء تشغيل المطابقة التلقائية" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const handleRowAction = async (
-    action:
-      | "sync_status"
-      | "import_to_store"
-      | "push_to_courier"
-      | "resolve_duplicate"
-      | "manual_override_status"
-      | "live_refresh_via_api",
+    action: ReconciliationActionType,
     items: ReconciledRowItem[],
     extra?: Record<string, unknown>,
   ) => {
@@ -148,6 +186,30 @@ export function ReconciliationWorkspace() {
     }
   };
 
+  const leakageHighRiskFallback = React.useMemo(() => {
+    if (highRiskWilayas.length > 0) return highRiskWilayas;
+    if (!runResult?.accounting?.wilayaLeakage) return [];
+    return runResult.accounting.wilayaLeakage
+      .filter((w) => w.totalOrders >= 3 && w.deliveryRatePct < 70)
+      .slice(0, 6)
+      .map((w, idx) => ({
+        wilayaCode: idx + 1,
+        wilayaName: w.wilaya,
+        totalOrders: w.totalOrders,
+        deliveredOrders: Math.max(0, w.totalOrders - w.returnedOrders),
+        returnedOrders: w.returnedOrders,
+        outcomesCount: w.totalOrders,
+        deliveryRatePct: w.deliveryRatePct,
+        returnLossDzd: w.returnLossDzd,
+        riskTier: (w.deliveryRatePct < 50 ? "CRITICAL" : "HIGH") as "CRITICAL" | "HIGH",
+        isHighRisk: true,
+        recommendedActionAr:
+          w.deliveryRatePct < 50
+            ? "تأكيد هاتفي مزدوج + طلب عربون أو Stop Desk"
+            : "تأكيد هاتفي مشدد واقتراح مكتب الاستلام (Stop Desk)",
+      }));
+  }, [highRiskWilayas, runResult]);
+
   return (
     <div className="space-y-4" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,14 +219,26 @@ export function ReconciliationWorkspace() {
             مركز مطابقة الطلبيات وشركات التوصيل (Excel &amp; API)
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            فرز تلقائي للمتطابقة، غير المتزامنة، المكررة عبر الملفات، المسجلة في المتجر فقط أو عند الناقل فقط، مع التقاط
-            المرتجعات وإجراءات المعاينة والتحكم الشاملة.
+            فرز تلقائي ومزامنة ذاتية للمبالغ والحالات عبر Webhooks وAPI وExcel، مع التقاط المرتجعات وإنذار الولايات
+            عالية المخاطر.
           </p>
         </div>
-        <Badge variant="outline" className="text-xs gap-1">
-          <Layers className="size-3.5" />
-          69 ولاية • دعم متعدد الشركات
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isRunning}
+            onClick={() => void handleRunAutoDailyCron()}
+            className="gap-1.5"
+          >
+            {isRunning ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            تشغيل المطابقة المالية التلقائية الآن
+          </Button>
+          <Badge variant="outline" className="text-xs gap-1">
+            <Layers className="size-3.5" />
+            69 ولاية • دعم متعدد الشركات
+          </Badge>
+        </div>
       </div>
 
       {feedback && (
@@ -173,6 +247,42 @@ export function ReconciliationWorkspace() {
           <AlertTitle className="text-xs font-bold">{feedback.type === "error" ? "تنبيه" : "نتيجة العملية"}</AlertTitle>
           <AlertDescription className="text-xs">{feedback.message}</AlertDescription>
         </Alert>
+      )}
+
+      {leakageHighRiskFallback.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="size-4 shrink-0" />
+              الإنذار المبكر للولايات عالية المخاطر (نسبة تسليم أقل من 70%)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {leakageHighRiskFallback.slice(0, 6).map((w) => (
+                <div
+                  key={`${w.wilayaCode}-${w.wilayaName}`}
+                  className="rounded-lg border bg-background p-2.5 text-xs space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold">{w.wilayaName}</span>
+                    <Badge
+                      variant={w.riskTier === "CRITICAL" ? "destructive" : "outline"}
+                      className="text-[10px]"
+                    >
+                      تسليم {w.deliveryRatePct}%
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    مرتجعات: <strong>{w.returnedOrders}</strong> • خسارة الشحن:{" "}
+                    <strong className="text-rose-600">{w.returnLossDzd.toLocaleString()} د.ج</strong>
+                  </div>
+                  <div className="text-[10px] text-amber-700 dark:text-amber-300">{w.recommendedActionAr}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <ExcelUploadMapperCard

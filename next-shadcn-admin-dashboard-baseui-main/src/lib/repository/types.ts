@@ -4,6 +4,7 @@ export type OrderStatus =
   | "pushed"
   | "redex_station"
   | "shipped"
+  | "out_for_delivery"
   | "delivered"
   | "returned"
   | "cancelled"

@@ -6,12 +6,17 @@ import { computeCourierStatusBridgeUpdate } from "@/lib/delivery/status-bridge";
 import { getWilayaNameAr69 } from "@/lib/geo/algeria-69";
 import { getReturnFeesByWilayaMap } from "@/lib/geo/coverage";
 import { getStoredFallbackOrders, saveAllFallbackOrders } from "@/lib/orders-store";
+import { persistAuthoritativeOrderPatch } from "@/lib/reconciliation/reconciliation-engine";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 type ActionKind =
   | "sync_status"
+  | "sync_cod_amount"
+  | "sync_status_and_amount"
+  | "apply_upsell_quantity"
+  | "apply_stop_desk_tariff"
   | "import_to_store"
   | "push_to_courier"
   | "resolve_duplicate"
@@ -102,6 +107,42 @@ export async function POST(request: NextRequest) {
 
         successCount += 1;
         results.push({ id: orderId, success: true, message: `تمت المزامنة ← ${nextStatusUpper}` });
+      } else if (
+        action === "sync_cod_amount" ||
+        action === "sync_status_and_amount" ||
+        action === "apply_upsell_quantity" ||
+        action === "apply_stop_desk_tariff"
+      ) {
+        const orderId = String(item.storeOrderId || item.reference || "").trim();
+        const courierCod = Math.max(0, Number(item.montantDzd ?? 0));
+        const healPatch = item.autoHealPatch || {};
+        const effectivePatch = {
+          ...healPatch,
+          totalPayableDzd: courierCod > 0 ? courierCod : healPatch.totalPayableDzd,
+          driverName: item.driverName || healPatch.driverName,
+          driverPhone: item.driverPhone || healPatch.driverPhone,
+          returnFeeDzd: item.returnFeeDzd ?? healPatch.returnFeeDzd,
+          courierStatusRaw: item.courierStatusRaw || healPatch.courierStatusRaw,
+          courierStatusAr: item.courierStatusAr || healPatch.courierStatusAr,
+          financialStatus: item.financialStatus || healPatch.financialStatus,
+        };
+        if (action === "apply_stop_desk_tariff") {
+          effectivePatch.deliveryType = "STOP_DESK";
+        }
+        await persistAuthoritativeOrderPatch({
+          orderId,
+          courierId: item.courierId,
+          trackingCode: item.trackingCode,
+          patch: effectivePatch,
+        });
+        successCount += 1;
+        results.push({
+          id: orderId,
+          success: true,
+          message:
+            effectivePatch.adjustmentReasonAr ||
+            `تم اعتماد بيانات التوصيل (${courierCod.toLocaleString("fr-DZ")} د.ج) بنجاح`,
+        });
       } else if (action === "import_to_store") {
         const tracking = String(item.trackingCode || "").trim();
         const cid = String(item.courierId || "external")

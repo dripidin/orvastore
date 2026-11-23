@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { formatGeminiUserErrorMessage, runOrvaGeminiAgentQuery } from "@/lib/ai/store-ai-context";
+import {
+  formatGeminiUserErrorMessage,
+  type GeminiImageAttachment,
+  runOrvaGeminiAgentQuery,
+} from "@/lib/ai/store-ai-context";
 import { computeCodAccountingReport } from "@/lib/analytics/accounting-report";
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
 import { adminListProducts } from "@/lib/catalog/server";
@@ -36,14 +40,36 @@ export async function POST(request: NextRequest) {
     courierId?: string;
     message?: string;
     history?: RequestHistoryItem[];
+    attachments?: Array<{ mimeType?: string; dataBase64?: string; name?: string }>;
     runContext?: RequestRunContext;
   };
 
   const courierScope = String(body.courierId || "all")
     .trim()
     .toLowerCase();
+  const cleanAttachments: GeminiImageAttachment[] = Array.isArray(body.attachments)
+    ? body.attachments
+        .filter(
+          (a): a is { mimeType: string; dataBase64: string; name?: string } =>
+            Boolean(a) &&
+            typeof a.mimeType === "string" &&
+            a.mimeType.startsWith("image/") &&
+            typeof a.dataBase64 === "string" &&
+            a.dataBase64.length > 0 &&
+            a.dataBase64.length <= 6_000_000,
+        )
+        .slice(0, 6)
+        .map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64, name: a.name }))
+    : [];
+
   const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
-  const isChat = rawMessage.length > 0;
+  const hasAttachments = cleanAttachments.length > 0;
+  const effectiveChatMessage =
+    rawMessage ||
+    (hasAttachments
+      ? "حلّل هذه الصورة / اللقطة المرفقة بدقة في سياق المطابقة المحاسبية وطلبيات ORVA Store مع شركات التوصيل واستخرج الأرقام أو الفوارق إن وجدت."
+      : "");
+  const isChat = effectiveChatMessage.length > 0;
 
   const cleanHistory: RequestHistoryItem[] = Array.isArray(body.history)
     ? body.history
@@ -181,8 +207,9 @@ export async function POST(request: NextRequest) {
   ].join("\n");
 
   const aiRes = await runOrvaGeminiAgentQuery({
-    userMessage: isChat ? rawMessage : defaultSummaryPrompt,
+    userMessage: isChat ? effectiveChatMessage : defaultSummaryPrompt,
     history: cleanHistory,
+    attachments: cleanAttachments.length > 0 ? cleanAttachments : undefined,
     extraSystemContext,
     maxOutputTokens: 6144,
   });

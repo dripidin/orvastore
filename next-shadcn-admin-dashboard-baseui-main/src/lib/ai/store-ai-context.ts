@@ -700,6 +700,12 @@ async function buildCandidateModels(
   return Array.from(pool).slice(0, MAX_MODEL_ATTEMPTS_PER_REQUEST);
 }
 
+export interface GeminiImageAttachment {
+  mimeType: string;
+  dataBase64: string;
+  name?: string;
+}
+
 interface SingleCallResult {
   ok: boolean;
   text: string;
@@ -717,11 +723,30 @@ async function callSingleGeminiModel(options: {
   systemPrompt: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   userMessage: string;
+  attachments?: GeminiImageAttachment[];
   timeoutMs: number;
   maxOutputTokens?: number;
 }): Promise<SingleCallResult> {
   const attemptStart = Date.now();
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(options.model)}:generateContent`;
+
+  const userParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+  if (options.userMessage.trim()) {
+    userParts.push({ text: options.userMessage });
+  }
+  for (const att of options.attachments ?? []) {
+    if (att.dataBase64 && att.mimeType) {
+      userParts.push({
+        inlineData: {
+          mimeType: att.mimeType,
+          data: att.dataBase64,
+        },
+      });
+    }
+  }
+  if (userParts.length === 0) {
+    userParts.push({ text: "Analyze context." });
+  }
 
   const contents = [
     ...(options.history ?? []).slice(-10).map((msg) => ({
@@ -730,7 +755,7 @@ async function callSingleGeminiModel(options: {
     })),
     {
       role: "user",
-      parts: [{ text: options.userMessage }],
+      parts: userParts,
     },
   ];
 
@@ -965,6 +990,7 @@ export async function probeOrvaGeminiConnection(options?: {
 export async function runOrvaGeminiAgentQuery(options: {
   userMessage: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  attachments?: GeminiImageAttachment[];
   overrideApiKey?: string;
   overrideModel?: string;
   maxOutputTokens?: number;
@@ -1093,6 +1119,7 @@ export async function runOrvaGeminiAgentQuery(options: {
         systemPrompt,
         history: options.history,
         userMessage: options.userMessage,
+        attachments: options.attachments,
         timeoutMs,
         maxOutputTokens: options.maxOutputTokens ?? 4096,
       });

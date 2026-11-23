@@ -8,7 +8,7 @@
  */
 
 import { classifyCourierFinancialStage } from "@/lib/delivery/courier-status-mapper";
-import { extractWilayaCode69 } from "@/lib/geo/algeria-69";
+import { parseWilayaCode69 } from "@/lib/geo/algeria-69";
 import type { OrvaOrder } from "@/lib/orva-api";
 import { matchOrderToProduct, type Product } from "@/lib/repository/product-types";
 
@@ -123,7 +123,7 @@ export function computeCodAccountingReport(input: CodAccountingReportInput): Cod
     const finStage = classifyCourierFinancialStage(order.financialStatus || cs);
     const courierId = (order.courierId || (order.inRedex ? "redex" : "store")).toLowerCase();
     const wLabel = order.wilaya || "غير محدد";
-    const wCode = extractWilayaCode69(wLabel);
+    const wCode = parseWilayaCode69(wLabel);
 
     const wStat = wilayaAgg.get(wLabel) ?? {
       wilaya: wLabel,

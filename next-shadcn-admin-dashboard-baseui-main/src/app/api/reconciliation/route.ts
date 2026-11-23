@@ -9,11 +9,13 @@ import {
   loadCourierConfig,
 } from "@/lib/couriers";
 import { mapCourierStatusRich } from "@/lib/delivery/courier-status-mapper";
-import { extractWilayaCode69 } from "@/lib/geo/algeria-69";
+import { parseWilayaCode69 } from "@/lib/geo/algeria-69";
 import { type ParsedCourierRow, parseCourierExcelBuffer } from "@/lib/reconciliation/excel-parser";
 import {
+  applyAuthoritativeCourierAutoHeal,
   type CourierBatchInput,
   getMemoryReconRuns,
+  loadAllStoreOrdersForReconciliation,
   runMultiCourierReconciliation,
 } from "@/lib/reconciliation/reconciliation-engine";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/server";
@@ -127,8 +129,19 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const result = await runMultiCourierReconciliation({ batches, includeStoreOnly });
-      return NextResponse.json({ success: true, result });
+      const rawResult = await runMultiCourierReconciliation({ batches, includeStoreOnly });
+      const autoHealEnabled = String(formData.get("autoHeal") || "true") !== "false";
+      const healSummary = autoHealEnabled
+        ? await applyAuthoritativeCourierAutoHeal(rawResult)
+        : { summary: rawResult, healedCount: 0, priceHealedCount: 0, statusHealedCount: 0 };
+
+      return NextResponse.json({
+        success: true,
+        result: healSummary.summary,
+        healedCount: healSummary.healedCount,
+        priceHealedCount: healSummary.priceHealedCount,
+        statusHealedCount: healSummary.statusHealedCount,
+      });
     }
 
     // Mode 2: Live API Token Pull (`{ mode: "api_sync", courierIds: [...], startDate, endDate }`)
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest) {
             customerPhoneTail9: phoneDigits.slice(-9),
             customerPhone2: o.phone2 || "",
             wilayaRaw: o.wilayaName || (o.wilayaId ? String(o.wilayaId) : ""),
-            wilayaCode: o.wilayaId || extractWilayaCode69(o.wilayaName),
+            wilayaCode: o.wilayaId || parseWilayaCode69(o.wilayaName),
             commune: o.commune || "",
             address: o.address || "",
             montantDzd: Number(o.montant || 0),
@@ -194,13 +207,74 @@ export async function POST(request: NextRequest) {
             financialStatus: o.financialStatus || "",
             deliveryFeeDzd: Number(o.deliveryFee || 0),
             returnFeeDzd: o.returnFee ?? null,
+            stopDesk: o.stopDesk,
+            remarksSummary: o.remarksSummary,
             driverName: o.driverName || "",
             driverPhone: o.driverPhone || "",
             createdAt: o.createdAt || null,
             updatedAt: o.updatedAt || null,
+            lastUpdatedAt: o.lastUpdatedAt || o.updatedAt || null,
             rawRow: (o.raw as Record<string, unknown>) ?? {},
           };
         });
+
+        // Probe archived tracked store orders assigned to this courier if missing from paginated get/orders
+        const fetchedTrackings = new Set(extRows.map((r) => r.trackingCode).filter(Boolean));
+        const storeOrdersForCourier = await loadAllStoreOrdersForReconciliation();
+        const missingTrackedOrders = storeOrdersForCourier.filter((ord) => {
+          const ordCourier = (ord.courierId || (ord.inRedex || ord.redexTrackingCode ? "redex" : "")).toLowerCase();
+          const trk = (ord.redexTrackingCode || ord.redexTrackingId || "").trim().toUpperCase();
+          return ordCourier === cid && trk.length > 0 && !fetchedTrackings.has(trk);
+        });
+        if (missingTrackedOrders.length > 0) {
+          const missingCodes = missingTrackedOrders
+            .map((o) => String(o.redexTrackingCode || o.redexTrackingId).trim())
+            .slice(0, 100);
+          const bulkMissing = await client.getBulkOrdersStatus(missingCodes, "all");
+          if (bulkMissing.success && bulkMissing.data) {
+            for (const ord of missingTrackedOrders) {
+              const code = String(ord.redexTrackingCode || ord.redexTrackingId).trim();
+              const detail = bulkMissing.data[code];
+              if (!detail || typeof detail !== "object") continue;
+              const acts = Array.isArray(detail.activity) ? detail.activity : [];
+              const lastAct = acts[acts.length - 1];
+              const resolvedStatus = String(lastAct?.status || detail.last_status || detail.status || "").trim();
+              if (!resolvedStatus) continue;
+              const rich = mapCourierStatusRich(resolvedStatus);
+              extRows.push({
+                rowIndex: extRows.length + 1,
+                courierId: cid,
+                courierName: cfg?.nameAr || cfg?.name || cid,
+                sourceFileName: `API:${cid}:status`,
+                trackingCode: code.toUpperCase(),
+                reference: ord.id,
+                boutique: "ORVA Store",
+                customerName: ord.customer || "زبون",
+                customerPhone: ord.phone || "",
+                customerPhoneTail9: String(ord.phone || "").replace(/[^\d]/g, "").slice(-9),
+                customerPhone2: "",
+                wilayaRaw: ord.wilaya || "",
+                wilayaCode: parseWilayaCode69(ord.wilaya),
+                commune: ord.commune || "",
+                address: "",
+                montantDzd: Number(ord.grandTotalDzd ?? ord.priceDzd ?? 0),
+                productName: ord.productName || "",
+                rawStatus: resolvedStatus,
+                normalizedStatus: rich.normalizedStatus,
+                mappedStoreStatus: rich.orderStatus,
+                financialStatus: rich.financialStage !== "none" ? resolvedStatus : "",
+                deliveryFeeDzd: Number(ord.shippingDzd ?? 0),
+                returnFeeDzd: ord.returnFeeDzd ?? null,
+                stopDesk: false,
+                driverName: detail.driver || [...acts].reverse().find((a: any) => a?.driver)?.driver || "",
+                driverPhone: detail.driver_phone ? String(detail.driver_phone) : "",
+                createdAt: ord.createdAt || null,
+                updatedAt: lastAct?.date ? `${lastAct.date} ${lastAct.time || ""}`.trim() : null,
+                rawRow: detail,
+              });
+            }
+          }
+        }
       } else if (provider.getOrders) {
         const res = await provider.getOrders({ page: 1, startDate, endDate }, credentials);
         if (res.success) {
@@ -220,7 +294,7 @@ export async function POST(request: NextRequest) {
               customerPhoneTail9: phoneDigits.slice(-9),
               customerPhone2: o.phone2 || "",
               wilayaRaw: o.wilayaName || "",
-              wilayaCode: o.wilayaId || extractWilayaCode69(o.wilayaName),
+              wilayaCode: o.wilayaId || parseWilayaCode69(o.wilayaName),
               commune: o.commune || "",
               address: o.address || "",
               montantDzd: Number(o.montant || 0),
@@ -249,8 +323,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await runMultiCourierReconciliation({ batches, includeStoreOnly });
-    return NextResponse.json({ success: true, result });
+    const rawResult = await runMultiCourierReconciliation({ batches, includeStoreOnly });
+    const autoHealEnabled = body.autoHeal !== false;
+    const healSummary = autoHealEnabled
+      ? await applyAuthoritativeCourierAutoHeal(rawResult)
+      : { summary: rawResult, healedCount: 0, priceHealedCount: 0, statusHealedCount: 0 };
+
+    return NextResponse.json({
+      success: true,
+      result: healSummary.summary,
+      healedCount: healSummary.healedCount,
+      priceHealedCount: healSummary.priceHealedCount,
+      statusHealedCount: healSummary.statusHealedCount,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || "حدث خطأ أثناء معالجة المطابقة" },

@@ -20,6 +20,7 @@ export const ORDER_STATUS_RANK: Record<string, number> = {
   redex_station: 2,
   shipped: 3,
   in_transit: 3,
+  out_for_delivery: 4,
   delivered: 5,
   returned: 5,
   cancelled: 5,
@@ -28,6 +29,7 @@ export const ORDER_STATUS_RANK: Record<string, number> = {
 export interface CourierStatusBridgeInput {
   currentStoreStatus?: string | null;
   manualStatusOverride?: boolean | null;
+  authoritativeCourierStatus?: boolean;
   courierStatusRaw: string;
   courierStatusAr?: string | null;
   driverName?: string | null;
@@ -38,7 +40,7 @@ export interface CourierStatusBridgeInput {
   remarks?: CourierRemarkItem[] | null;
   returnFeeDzd?: number | null;
   financialStatus?: string | null;
-  statusSource?: "courier_api" | "courier_excel";
+  statusSource?: "courier_api" | "courier_excel" | "courier_webhook";
 }
 
 export interface CourierStatusBridgeUpdate {
@@ -48,7 +50,7 @@ export interface CourierStatusBridgeUpdate {
   normalized_courier_status: string;
   courier_location_stage: string;
   courier_last_synced_at: string;
-  status_source?: "courier_api" | "courier_excel" | "manual_override";
+  status_source?: "courier_api" | "courier_excel" | "courier_webhook" | "manual_override";
   financial_status?: string;
   driver_name?: string;
   driver_phone?: string;
@@ -66,10 +68,16 @@ export function shouldAdvanceStoreStatus(params: {
   currentStoreStatus: string;
   candidateCourierStoreStatus: StoreOrderLifecycleStatus;
   manualStatusOverride: boolean;
+  authoritativeCourierStatus?: boolean;
 }): boolean {
   const current = (params.currentStoreStatus || "pending").toLowerCase();
   const next = params.candidateCourierStoreStatus.toLowerCase();
   if (current === next) return false;
+
+  // Approved rule: detailed courier truth is authoritative during active courier reconciliation
+  if (params.authoritativeCourierStatus) {
+    return true;
+  }
 
   const isTerminalFromCourier = next === "delivered" || next === "returned" || next === "cancelled";
 
@@ -80,7 +88,7 @@ export function shouldAdvanceStoreStatus(params: {
   const currentRank = ORDER_STATUS_RANK[current] ?? 0;
   const nextRank = ORDER_STATUS_RANK[next] ?? 0;
 
-  // Never regress a terminal order
+  // Never regress a terminal order unless authoritativeCourierStatus is explicitly true
   if (currentRank >= 5 && next !== current) {
     return false;
   }
@@ -98,6 +106,7 @@ export function computeCourierStatusBridgeUpdate(input: CourierStatusBridgeInput
     currentStoreStatus: prevStore,
     candidateCourierStoreStatus: rich.orderStatus,
     manualStatusOverride: Boolean(input.manualStatusOverride),
+    authoritativeCourierStatus: Boolean(input.authoritativeCourierStatus),
   });
 
   const nextStore = advance ? rich.orderStatus : (prevStore as StoreOrderLifecycleStatus);

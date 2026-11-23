@@ -136,10 +136,17 @@ export interface CourierExternalOrder {
   financialStatus?: string;
   deliveryFee?: number;
   returnFee?: number;
+  stopDesk?: boolean;
   driverName?: string;
   driverPhone?: string;
+  currentStation?: string;
+  deskInfo?: CourierDeskInfo;
+  activity?: CourierActivityCheckpoint[];
+  remarks?: CourierRemarkItem[];
+  remarksSummary?: string;
   createdAt?: string;
   updatedAt?: string;
+  lastUpdatedAt?: string;
   raw?: unknown;
 }
 

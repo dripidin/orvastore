@@ -190,16 +190,20 @@ export function normalizeOrvaOrder(value: unknown): OrvaOrder | null {
     phone: readOptionalString(raw, "phone", "phone_number", "customer_phone", "customerPhone"),
     productName: readOptionalString(raw, "productName", "product_name", "product", "product_title", "productTitle"),
     status: readString(raw, "status").toLowerCase() || "unknown",
-    wilaya: readOptionalString(raw, "wilaya"),
-    commune: readOptionalString(raw, "commune"),
+    wilaya:
+      readOptionalString(raw, "wilaya", "wilaya_name", "wilayaName") ||
+      (raw.wilaya_code || raw.wilayaCode ? String(raw.wilaya_code ?? raw.wilayaCode) : null),
+    commune: readOptionalString(raw, "commune", "commune_name", "communeName"),
     deliveryType: readOptionalString(raw, "deliveryType", "delivery_type"),
     ...(() => {
-      const rawGrandTotal = readDzdAmount(raw.grandTotal ?? raw.grand_total);
-      const rawPriceNum = readDzdAmount(raw.priceNum ?? raw.price_num);
+      const rawGrandTotal = readDzdAmount(
+        raw.grandTotal ?? raw.grand_total ?? raw.total_payable ?? raw.totalPayable ?? raw.total,
+      );
+      const rawPriceNum = readDzdAmount(raw.priceNum ?? raw.price_num ?? raw.total_payable ?? raw.totalPayable);
       const shippingDzd =
-        readDzdAmount(raw.shippingFee ?? raw.shipping_fee) ??
+        readDzdAmount(raw.shippingFee ?? raw.shipping_fee ?? raw.delivery_fee ?? raw.deliveryFee) ??
         (rawGrandTotal && rawPriceNum && rawGrandTotal > rawPriceNum ? rawGrandTotal - rawPriceNum : 0);
-      const rawProductTotal = readDzdAmount(raw.productTotal ?? raw.product_total);
+      const rawProductTotal = readDzdAmount(raw.productTotal ?? raw.product_total ?? raw.subtotal);
 
       let priceDzd = rawProductTotal;
       let grandTotalDzd = rawGrandTotal;

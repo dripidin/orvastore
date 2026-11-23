@@ -10,7 +10,7 @@ import * as XLSX from "xlsx";
 
 import { mapCourierStatusRich, type StoreOrderLifecycleStatus } from "@/lib/delivery/courier-status-mapper";
 import type { NormalizedCourierStatus } from "@/lib/delivery/delivery-tracking-types";
-import { extractWilayaCode69 } from "@/lib/geo/algeria-69";
+import { parseWilayaCode69 } from "@/lib/geo/algeria-69";
 
 import crypto from "node:crypto";
 
@@ -64,10 +64,13 @@ export interface ParsedCourierRow {
   financialStatus: string;
   deliveryFeeDzd: number;
   returnFeeDzd: number | null;
+  stopDesk?: boolean;
+  remarksSummary?: string;
   driverName: string;
   driverPhone: string;
   createdAt: string | null;
   updatedAt: string | null;
+  lastUpdatedAt?: string | null;
   rawRow: Record<string, unknown>;
 }
 
@@ -226,7 +229,7 @@ function buildRowObject(
   const phone1 = normalizePhone(get("phone"));
   const phone2 = normalizePhone(get("phone2"));
   const wilayaRaw = get("wilaya");
-  const wilayaCode = extractWilayaCode69(wilayaRaw);
+  const wilayaCode = parseWilayaCode69(wilayaRaw);
   const rawStatus = get("status") || get("financialStatus") || "UNKNOWN";
   const statusRich = mapCourierStatusRich(rawStatus);
 
@@ -255,12 +258,24 @@ function buildRowObject(
     normalizedStatus: statusRich.normalizedStatus,
     mappedStoreStatus: statusRich.orderStatus,
     financialStatus: get("financialStatus") || (statusRich.financialStage !== "none" ? rawStatus : ""),
-    deliveryFeeDzd: parseDzdNumber(mapping.deliveryFee ? rawRow[mapping.deliveryFee] : 0),
-    returnFeeDzd: parseOptionalDzd(mapping.returnFee ? rawRow[mapping.returnFee] : null),
+    deliveryFeeDzd: parseDzdNumber(mapping.deliveryFee ? rawRow[mapping.deliveryFee] : rawRow.tarif_prestation ?? 0),
+    returnFeeDzd: parseOptionalDzd(mapping.returnFee ? rawRow[mapping.returnFee] : rawRow.tarif_retour ?? null),
+    stopDesk: Number(rawRow.stop_desk ?? 0) === 1,
+    remarksSummary: Array.isArray(rawRow.status_reason)
+      ? rawRow.status_reason
+          .map((item: any) => {
+            const rem = String(item?.remarque || item?.comment || "").trim();
+            if (!rem) return "";
+            return item?.livreur ? `${item.livreur}: ${rem}` : rem;
+          })
+          .filter(Boolean)
+          .join(" | ")
+      : undefined,
     driverName: get("driverName"),
     driverPhone: normalizePhone(get("driverPhone")).clean,
     createdAt: normalizeDateIso(createdRaw),
     updatedAt: normalizeDateIso(updatedRaw),
+    lastUpdatedAt: normalizeDateIso(rawRow.last_updated_at ?? updatedRaw),
     rawRow,
   };
 }

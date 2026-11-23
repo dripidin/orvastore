@@ -23,6 +23,7 @@ export type StoreOrderLifecycleStatus =
   | "confirmed"
   | "pushed"
   | "shipped"
+  | "out_for_delivery"
   | "delivered"
   | "returned"
   | "cancelled";
@@ -82,6 +83,7 @@ const RAW_CODE_TO_NORMALIZED: Record<string, NormalizedCourierStatus> = {
 
   // In Transit / Hub / Station
   IN_TRANSIT: "IN_TRANSIT",
+  EN_PROCESS: "IN_TRANSIT",
   EN_TRANSIT: "IN_TRANSIT",
   EXPEDIE: "IN_TRANSIT",
   EN_ACHEMINEMENT: "IN_TRANSIT",
@@ -345,9 +347,11 @@ export function mapCourierStatusRich(rawCode: string | null | undefined): RichCo
     case "PENDING":
       orderStatus = "pushed";
       break;
+    case "OUT_FOR_DELIVERY":
+      orderStatus = "out_for_delivery";
+      break;
     case "PICKED_UP":
     case "IN_TRANSIT":
-    case "OUT_FOR_DELIVERY":
     case "DELIVERY_FAILED":
       orderStatus = "shipped";
       break;

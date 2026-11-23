@@ -5,16 +5,64 @@
 import type { CodAccountingReport } from "@/lib/analytics/accounting-report";
 import { computeCodAccountingReport } from "@/lib/analytics/accounting-report";
 import { autoRegisterExternalCourier, loadCourierConfig } from "@/lib/couriers/credentials-store";
-import { classifyParcelLocationStage, mapCourierStatusRich } from "@/lib/delivery/courier-status-mapper";
-import { extractWilayaCode69 } from "@/lib/geo/algeria-69";
+import {
+  classifyParcelLocationStage,
+  mapCourierStatusRich,
+  type RichCourierStatusMapping,
+  type StoreOrderLifecycleStatus,
+} from "@/lib/delivery/courier-status-mapper";
+import { computeCourierStatusBridgeUpdate } from "@/lib/delivery/status-bridge";
+import { parseWilayaCode69, resolveCarrierWilayaCode } from "@/lib/geo/algeria-69";
 import { getReturnFeesByWilayaMap } from "@/lib/geo/coverage";
-import { getStoredFallbackOrders } from "@/lib/orders-store";
+import { getStoredFallbackOrders, saveAllFallbackOrders } from "@/lib/orders-store";
 import { normalizeOrvaOrder, type OrvaOrder } from "@/lib/orva-api";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/server";
 
 import type { ParsedCourierFileResult, ParsedCourierRow } from "./excel-parser";
 
 export type ReconciliationBucket = "matched_synced" | "matched_unsynced" | "store_only" | "courier_only" | "duplicate";
+
+export type ReconciliationMatchMethod =
+  | "exact_tracking"
+  | "exact_or_stripped_reference"
+  | "phone_match"
+  | "fuzzy_phone_typo"
+  | "fuzzy_name_wilaya"
+  | "unmatched";
+
+export type DiscrepancyCategory =
+  | "none"
+  | "quantity_upsell"
+  | "stop_desk_tariff_shift"
+  | "commercial_rounding_discount"
+  | "price_mismatch"
+  | "status_lag"
+  | "terminal_store_override_conflict"
+  | "price_and_status"
+  | "orphan_with_tracking"
+  | "unpushed_store_order"
+  | "unregistered_courier_order"
+  | "store_owned_return"
+  | "duplicate";
+
+export interface AutoHealOrderPatch {
+  totalPayableDzd?: number;
+  subtotalDzd?: number;
+  quantity?: number;
+  deliveryFeeDzd?: number;
+  deliveryType?: "DOMICILE" | "STOP_DESK";
+  courierStatusRaw?: string;
+  courierStatusAr?: string;
+  normalizedCourierStatus?: string;
+  courierLocationStage?: string;
+  storeStatus?: StoreOrderLifecycleStatus;
+  financialStatus?: string;
+  returnFeeDzd?: number;
+  driverName?: string;
+  driverPhone?: string;
+  remarksSummary?: string;
+  adjustmentReasonAr?: string;
+}
 
 export interface ReconciledRowItem {
   id: string;
@@ -35,12 +83,21 @@ export interface ReconciledRowItem {
   commune: string;
   montantDzd: number;
   storeTotalDzd: number | null;
+  codDiffDzd?: number;
   returnFeeDzd: number;
   driverName: string | null;
   driverPhone: string | null;
   boutique: string | null;
+  remarksSummary?: string | null;
   isStoreOwnedReturn: boolean;
   discrepancyReason: string | null;
+  discrepancyCategory?: DiscrepancyCategory;
+  suggestedFixAr?: string | null;
+  matchMethod?: ReconciliationMatchMethod;
+  matchConfidence?: number;
+  autoHealPatch?: AutoHealOrderPatch;
+  autoHealed?: boolean;
+  autoHealAppliedAt?: string;
   sourceFileName: string | null;
   financialStatus: string | null;
   rawCourierRow?: ParsedCourierRow;
@@ -126,6 +183,60 @@ function normalizePhoneTail(raw?: string | null): string {
   return digits.slice(-9);
 }
 
+function phoneHammingDistance(a: string, b: string): number {
+  if (!a || !b || a.length !== b.length) return 99;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) diff += 1;
+  }
+  return diff;
+}
+
+function normalizePersonName(name?: string | null): string {
+  return String(name || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[^a-z0-9\u0600-\u06FF\s]/gi, " ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nameSimilarityScore(a?: string | null, b?: string | null): number {
+  const na = normalizePersonName(a);
+  const nb = normalizePersonName(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.9;
+
+  const ta = new Set(na.split(" ").filter((w) => w.length >= 2));
+  const tb = new Set(nb.split(" ").filter((w) => w.length >= 2));
+  if (ta.size === 0 || tb.size === 0) return 0;
+
+  let overlap = 0;
+  for (const word of ta) {
+    if (tb.has(word)) overlap += 1;
+  }
+  return (2 * overlap) / (ta.size + tb.size);
+}
+
+function wilayasCompatible(w1: number | null, w2: number | null): boolean {
+  if (!w1 || !w2) return true;
+  if (w1 === w2) return true;
+  return resolveCarrierWilayaCode(w1) === resolveCarrierWilayaCode(w2);
+}
+
+function extractRefSuffix(ref: string): string {
+  const clean = ref.trim().toUpperCase();
+  if (!clean) return "";
+  const parts = clean.split(/[-_\s]+/).filter(Boolean);
+  const tail = parts[parts.length - 1] || clean;
+  return tail.length >= 5 ? tail : "";
+}
+
 function doesRowBelongToStore(
   row: Pick<ParsedCourierRow, "boutique" | "reference" | "trackingCode">,
   identifiers: string[],
@@ -142,11 +253,166 @@ function statusesMatchInSync(storeStatusRaw: string, mappedStoreStatus: string):
   const s = (storeStatusRaw || "").toLowerCase();
   const m = mappedStoreStatus.toLowerCase();
   if (s === m) return true;
-  if (m === "shipped" && ["shipped", "in_transit", "out_for_delivery", "pushed", "redex_station"].includes(s)) {
-    return s === "shipped" || s === "in_transit" || s === "out_for_delivery";
-  }
   if (m === "pushed" && (s === "pushed" || s === "confirmed")) return true;
   return false;
+}
+
+export interface DiscrepancyDiagnosisResult {
+  category: DiscrepancyCategory;
+  codDiffDzd: number;
+  inSync: boolean;
+  amountMismatch: boolean;
+  reasons: string[];
+  suggestedFixAr: string | null;
+  autoHealPatch: AutoHealOrderPatch;
+}
+
+export function diagnoseOrderDiscrepancy(params: {
+  ord: OrvaOrder;
+  ext: ParsedCourierRow;
+  rich: RichCourierStatusMapping;
+  returnFeeDzd: number;
+}): DiscrepancyDiagnosisResult {
+  const { ord, ext, rich, returnFeeDzd } = params;
+  const storeTotal = Math.max(0, Number(ord.grandTotalDzd ?? ord.priceDzd ?? 0) || 0);
+  const storeShipping = Math.max(0, Number(ord.shippingDzd ?? 0) || 0);
+  const storeQty = Math.max(1, Number(ord.quantity ?? 1) || 1);
+  const storeSubtotal = Math.max(0, Number(ord.priceDzd ?? Math.max(0, storeTotal - storeShipping)) || 0);
+  const unitPrice = storeQty > 0 ? Math.round(storeSubtotal / storeQty) : storeSubtotal;
+
+  const courierCod = Math.max(0, Number(ext.montantDzd || 0));
+  const courierShipping = Math.max(0, Number(ext.deliveryFeeDzd || 0));
+  const codDiffDzd = courierCod > 0 && storeTotal > 0 ? courierCod - storeTotal : 0;
+
+  const bridge = computeCourierStatusBridgeUpdate({
+    currentStoreStatus: ord.status,
+    manualStatusOverride: Boolean(ord.manualStatusOverride),
+    authoritativeCourierStatus: true,
+    courierStatusRaw: ext.rawStatus,
+    courierStatusAr: rich.labelAr,
+    driverName: ext.driverName || undefined,
+    driverPhone: ext.driverPhone || undefined,
+    returnFeeDzd,
+    financialStatus: ext.financialStatus || undefined,
+    statusSource: ext.sourceFileName?.startsWith("API:") ? "courier_api" : "courier_excel",
+  });
+
+  const inSync = statusesMatchInSync(ord.status, rich.orderStatus);
+  const amountMismatch = courierCod > 0 && storeTotal > 0 && Math.abs(codDiffDzd) > 0;
+  const reasons: string[] = [];
+
+  const isTerminalStore = ["delivered", "returned", "cancelled"].includes((ord.status || "").toLowerCase());
+  const isNonTerminalCourier = !["delivered", "returned", "cancelled"].includes(rich.orderStatus);
+
+  let priceCategory: DiscrepancyCategory = "none";
+  let deliveryType: "DOMICILE" | "STOP_DESK" | undefined;
+  let newDeliveryFee: number | undefined;
+  let newQuantity: number | undefined;
+  let newSubtotal: number | undefined;
+  let adjustmentReasonAr: string | undefined;
+
+  if (amountMismatch) {
+    // 1. Check quantity upsell (e.g., 13,390 * 2 + 700 = 27,480 DZD)
+    if (codDiffDzd > 0 && unitPrice > 0) {
+      for (let n = storeQty + 1; n <= 10; n += 1) {
+        const expectedWithCourierShip = unitPrice * n + (courierShipping > 0 ? courierShipping : storeShipping);
+        const expectedWithStoreShip = unitPrice * n + storeShipping;
+        if (Math.abs(courierCod - expectedWithCourierShip) <= 50 || Math.abs(courierCod - expectedWithStoreShip) <= 50) {
+          const effFee = Math.abs(courierCod - expectedWithCourierShip) <= 50 && courierShipping > 0 ? courierShipping : storeShipping;
+          priceCategory = "quantity_upsell";
+          newQuantity = n;
+          newDeliveryFee = effFee;
+          newSubtotal = Math.max(0, courierCod - effFee);
+          adjustmentReasonAr = `مضاعفة الكمية (Upsell ×${n}: ${storeTotal.toLocaleString()} ← ${courierCod.toLocaleString()} د.ج)`;
+          break;
+        }
+      }
+    }
+
+    // 2. Check Domicile <-> Stop Desk tariff shift (e.g., stop_desk=1 & 1,300 -> 800 = -500 DZD)
+    if (priceCategory === "none") {
+      const feeDelta = courierShipping > 0 && storeShipping > 0 ? courierShipping - storeShipping : null;
+      const matchesFeeDelta = feeDelta !== null && Math.abs(codDiffDzd - feeDelta) <= 50;
+      const remarkIndicatesStopDesk = /bureau|stop[\s_-]*desk|المكتب|مكتب/i.test(ext.remarksSummary || "");
+      if (ext.stopDesk || matchesFeeDelta || remarkIndicatesStopDesk) {
+        priceCategory = "stop_desk_tariff_shift";
+        const resolvedFee = courierShipping > 0 ? courierShipping : Math.max(0, storeShipping + codDiffDzd);
+        deliveryType = ext.stopDesk || resolvedFee < storeShipping || remarkIndicatesStopDesk ? "STOP_DESK" : "DOMICILE";
+        newDeliveryFee = resolvedFee;
+        newSubtotal = Math.max(0, courierCod - resolvedFee);
+        adjustmentReasonAr = `تحويل التوصيل إلى المكتب Stop Desk (${codDiffDzd >= 0 ? `+${codDiffDzd}` : codDiffDzd} د.ج)`;
+      }
+    }
+
+    // 3. Check commercial rounding / discount (e.g., 14,140 -> 14,000 = -140 DZD)
+    if (priceCategory === "none" && codDiffDzd < 0 && Math.abs(codDiffDzd) <= 300) {
+      priceCategory = "commercial_rounding_discount";
+      newDeliveryFee = courierShipping > 0 ? courierShipping : storeShipping;
+      newSubtotal = Math.max(0, courierCod - newDeliveryFee);
+      adjustmentReasonAr = `تقريب / تخفيض تجاري (${codDiffDzd} د.ج)`;
+    }
+
+    // 4. General COD adjustment
+    if (priceCategory === "none") {
+      priceCategory = "price_mismatch";
+      newDeliveryFee = courierShipping > 0 ? courierShipping : storeShipping;
+      newSubtotal = Math.max(0, courierCod - newDeliveryFee);
+      adjustmentReasonAr = `تعديل مبلغ COD (${storeTotal.toLocaleString()} ← ${courierCod.toLocaleString()} د.ج)`;
+    }
+
+    reasons.push(`المبلغ في المتجر (${storeTotal} د.ج) ≠ التوصيل (${courierCod} د.ج) — ${adjustmentReasonAr}`);
+  }
+
+  let statusCategory: DiscrepancyCategory = "none";
+  if (!inSync) {
+    statusCategory = isTerminalStore && isNonTerminalCourier ? "terminal_store_override_conflict" : "status_lag";
+    reasons.push(`الحالة في المتجر (${ord.status}) ≠ شركة التوصيل (${rich.labelAr})`);
+  }
+
+  let category: DiscrepancyCategory = "none";
+  if (priceCategory !== "none" && statusCategory !== "none") {
+    category = priceCategory === "price_mismatch" ? "price_and_status" : priceCategory;
+  } else if (priceCategory !== "none") {
+    category = priceCategory;
+  } else if (statusCategory !== "none") {
+    category = statusCategory;
+  }
+
+  const fixParts: string[] = [];
+  if (adjustmentReasonAr) fixParts.push(adjustmentReasonAr);
+  if (!inSync) fixParts.push(`اعتماد حالة الناقل (${rich.orderStatus})`);
+
+  const autoHealPatch: AutoHealOrderPatch = {
+    courierStatusRaw: bridge.courier_status,
+    courierStatusAr: bridge.courier_status_ar,
+    normalizedCourierStatus: bridge.normalized_courier_status,
+    courierLocationStage: bridge.courier_location_stage,
+    storeStatus: rich.orderStatus,
+    financialStatus: bridge.financial_status || ext.financialStatus || undefined,
+    returnFeeDzd,
+    driverName: ext.driverName || undefined,
+    driverPhone: ext.driverPhone || undefined,
+    remarksSummary: ext.remarksSummary || undefined,
+    adjustmentReasonAr,
+  };
+
+  if (amountMismatch) {
+    autoHealPatch.totalPayableDzd = courierCod;
+    autoHealPatch.subtotalDzd = newSubtotal;
+    autoHealPatch.quantity = newQuantity ?? storeQty;
+    autoHealPatch.deliveryFeeDzd = newDeliveryFee;
+    if (deliveryType) autoHealPatch.deliveryType = deliveryType;
+  }
+
+  return {
+    category,
+    codDiffDzd,
+    inSync,
+    amountMismatch,
+    reasons,
+    suggestedFixAr: fixParts.length > 0 ? fixParts.join(" · ") : null,
+    autoHealPatch,
+  };
 }
 
 export async function loadAllStoreOrdersForReconciliation(): Promise<OrvaOrder[]> {
@@ -485,11 +751,15 @@ export async function runMultiCourierReconciliation(params: {
     });
   }
 
-  // 2. Index Store DB orders + detect DB duplicates
+  // 2. Index Store DB orders (Tracking, Exact/Stripped Reference, Primary & Secondary Phones)
   const storeByTracking = new Map<string, OrvaOrder[]>();
   const storeByRef = new Map<string, OrvaOrder[]>();
+  const storeByRefSuffix = new Map<string, OrvaOrder[]>();
   const storeByPhone9 = new Map<string, OrvaOrder[]>();
   const matchedStoreIds = new Set<string>();
+  const syncedCourierIds = new Set(
+    params.batches.map((b) => (b.courierId || "").trim().toLowerCase() || "external"),
+  );
 
   for (const ord of storeOrders) {
     const trk = (ord.redexTrackingCode || ord.redexTrackingId || "").trim().toUpperCase();
@@ -503,12 +773,24 @@ export async function runMultiCourierReconciliation(params: {
       const list = storeByRef.get(refKey) ?? [];
       list.push(ord);
       storeByRef.set(refKey, list);
+      const suffix = extractRefSuffix(refKey);
+      if (suffix) {
+        const sList = storeByRefSuffix.get(suffix) ?? [];
+        sList.push(ord);
+        storeByRefSuffix.set(suffix, sList);
+      }
     }
-    const p9 = normalizePhoneTail(ord.phone);
-    if (p9) {
-      const list = storeByPhone9.get(p9) ?? [];
-      list.push(ord);
-      storeByPhone9.set(p9, list);
+    const rawAny = (ord.raw ?? {}) as Record<string, unknown>;
+    const phones = [ord.phone, String(rawAny.phone2 ?? rawAny.phone_2 ?? rawAny.telephone_2 ?? rawAny.customer_phone_2 ?? "")];
+    for (const phRaw of phones) {
+      const p9 = normalizePhoneTail(phRaw);
+      if (p9) {
+        const list = storeByPhone9.get(p9) ?? [];
+        if (!list.some((existing) => existing.id === ord.id)) {
+          list.push(ord);
+          storeByPhone9.set(p9, list);
+        }
+      }
     }
   }
 
@@ -608,21 +890,100 @@ export async function runMultiCourierReconciliation(params: {
         trackingCode: trk,
       });
 
-      // Attempt Store Match: tracking -> reference -> phone9 + (wilaya or amount)
+      // 5-Tier Intelligent Matching:
+      // Tier 1: exact tracking | Tier 2: exact or stripped reference | Tier 3: phone_match
+      // Tier 4: fuzzy_phone_typo (Hamming = 1 + same wilaya) | Tier 5: fuzzy_name_wilaya (>= 72%)
       let storeMatches: OrvaOrder[] = [];
+      let matchMethod: ReconciliationMatchMethod = "unmatched";
+      let matchConfidence = 0;
+
       if (trk && storeByTracking.has(trk)) {
         storeMatches = storeByTracking.get(trk)!;
+        matchMethod = "exact_tracking";
+        matchConfidence = 100;
       } else if (refUpper && storeByRef.has(refUpper)) {
         storeMatches = storeByRef.get(refUpper)!;
-      } else if (ext.customerPhoneTail9 && storeByPhone9.has(ext.customerPhoneTail9)) {
-        const candidates = storeByPhone9.get(ext.customerPhoneTail9)!;
-        storeMatches = candidates.filter((c) => {
-          const cw = extractWilayaCode69(c.wilaya);
-          const wOk = !ext.wilayaCode || !cw || cw === ext.wilayaCode;
+        matchMethod = "exact_or_stripped_reference";
+        matchConfidence = 98;
+      } else if (refUpper) {
+        const refTail = extractRefSuffix(refUpper) || (refUpper.length >= 5 ? refUpper : "");
+        if (refTail && storeByRefSuffix.has(refTail)) {
+          const suffixCandidates = storeByRefSuffix.get(refTail)!;
+          if (suffixCandidates.length === 1) {
+            storeMatches = suffixCandidates;
+          } else {
+            const narrowed = suffixCandidates.filter((c) => {
+              const pOk = Boolean(ext.customerPhoneTail9 && normalizePhoneTail(c.phone) === ext.customerPhoneTail9);
+              const wOk = wilayasCompatible(ext.wilayaCode, parseWilayaCode69(c.wilaya));
+              return pOk || wOk;
+            });
+            storeMatches = narrowed.length > 0 ? narrowed : suffixCandidates;
+          }
+          matchMethod = "exact_or_stripped_reference";
+          matchConfidence = 95;
+        }
+      }
+
+      if (storeMatches.length === 0) {
+        const p2Tail = normalizePhoneTail(ext.customerPhone2);
+        const phoneCandidates = [
+          ...(ext.customerPhoneTail9 ? (storeByPhone9.get(ext.customerPhoneTail9) ?? []) : []),
+          ...(p2Tail && p2Tail !== ext.customerPhoneTail9 ? (storeByPhone9.get(p2Tail) ?? []) : []),
+        ];
+        if (phoneCandidates.length > 0) {
+          const deduped = phoneCandidates.filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i);
+          const wilayaMatched = deduped.filter((c) =>
+            wilayasCompatible(ext.wilayaCode, parseWilayaCode69(c.wilaya)),
+          );
+          const pool = wilayaMatched.length > 0 ? wilayaMatched : deduped;
+          if (pool.length === 1) {
+            storeMatches = pool;
+          } else {
+            const closeAmt = pool.filter((c) => {
+              const total = Number(c.grandTotalDzd ?? c.priceDzd ?? 0);
+              return !ext.montantDzd || !total || Math.abs(total - ext.montantDzd) <= 600;
+            });
+            storeMatches = closeAmt.length > 0 ? closeAmt : pool;
+          }
+          matchMethod = "phone_match";
+          matchConfidence = 92;
+        }
+      }
+
+      // Tier 4: 1-digit phone typo + same/mother wilaya + (amount <= 600 OR name >= 65%)
+      if (storeMatches.length === 0 && ext.customerPhoneTail9.length === 9) {
+        const fuzzyPhoneHits = storeOrders.filter((c) => {
+          if (matchedStoreIds.has(c.id)) return false;
+          const p9 = normalizePhoneTail(c.phone);
+          if (phoneHammingDistance(p9, ext.customerPhoneTail9) !== 1) return false;
+          if (!wilayasCompatible(ext.wilayaCode, parseWilayaCode69(c.wilaya))) return false;
           const total = Number(c.grandTotalDzd ?? c.priceDzd ?? 0);
-          const amtOk = !ext.montantDzd || !total || Math.abs(total - ext.montantDzd) <= 200;
-          return wOk && amtOk;
+          const closeAmt = !ext.montantDzd || !total || Math.abs(total - ext.montantDzd) <= 600;
+          const sim = nameSimilarityScore(ext.customerName, c.customer);
+          return closeAmt || sim >= 0.65;
         });
+        if (fuzzyPhoneHits.length > 0) {
+          storeMatches = fuzzyPhoneHits;
+          matchMethod = "fuzzy_phone_typo";
+          matchConfidence = 84;
+        }
+      }
+
+      // Tier 5: Normalized name similarity >= 72% + compatible wilaya + amount <= 600
+      if (storeMatches.length === 0 && ext.wilayaCode) {
+        const fuzzyNameHits = storeOrders.filter((c) => {
+          if (matchedStoreIds.has(c.id)) return false;
+          if (!wilayasCompatible(ext.wilayaCode, parseWilayaCode69(c.wilaya))) return false;
+          const sim = nameSimilarityScore(ext.customerName, c.customer);
+          if (sim < 0.72) return false;
+          const total = Number(c.grandTotalDzd ?? c.priceDzd ?? 0);
+          return !ext.montantDzd || !total || Math.abs(total - ext.montantDzd) <= 600;
+        });
+        if (fuzzyNameHits.length === 1) {
+          storeMatches = fuzzyNameHits;
+          matchMethod = "fuzzy_name_wilaya";
+          matchConfidence = 76;
+        }
       }
 
       if (storeMatches.length > 1) {
@@ -648,12 +1009,17 @@ export async function runMultiCourierReconciliation(params: {
           commune: ext.commune || primary.commune || "",
           montantDzd: ext.montantDzd,
           storeTotalDzd: primary.grandTotalDzd ?? primary.priceDzd ?? null,
+          codDiffDzd: 0,
           returnFeeDzd: returnFee,
           driverName: ext.driverName || null,
           driverPhone: ext.driverPhone || null,
           boutique: ext.boutique || null,
+          remarksSummary: ext.remarksSummary ?? null,
           isStoreOwnedReturn: false,
           discrepancyReason: `تطابق مع ${storeMatches.length} طلبيات مكررة في قاعدة المتجر (${storeMatches.map((m) => m.id).join(", ")})`,
+          discrepancyCategory: "duplicate",
+          matchMethod,
+          matchConfidence,
           sourceFileName: batch.fileName ?? null,
           financialStatus: ext.financialStatus || null,
           rawCourierRow: ext,
@@ -666,10 +1032,14 @@ export async function runMultiCourierReconciliation(params: {
         const ord = storeMatches[0];
         matchedStoreIds.add(ord.id);
         const storeTotal = Number(ord.grandTotalDzd ?? ord.priceDzd ?? 0);
-        const inSync = statusesMatchInSync(ord.status, rich.orderStatus);
-        const amountMismatch = ext.montantDzd > 0 && storeTotal > 0 && Math.abs(ext.montantDzd - storeTotal) > 100;
+        const diagnosis = diagnoseOrderDiscrepancy({
+          ord,
+          ext,
+          rich,
+          returnFeeDzd: returnFee,
+        });
 
-        if (inSync && !amountMismatch) {
+        if (diagnosis.inSync && !diagnosis.amountMismatch) {
           counts.matched_synced += 1;
           rows.push({
             id: `${runId}-sync-${rows.length + 1}`,
@@ -685,17 +1055,23 @@ export async function runMultiCourierReconciliation(params: {
             courierLocationStage: locStage,
             customerName: ext.customerName || ord.customer || "—",
             customerPhone: ext.customerPhone || ord.phone || "",
-            wilayaCode: ext.wilayaCode ?? extractWilayaCode69(ord.wilaya),
+            wilayaCode: ext.wilayaCode ?? parseWilayaCode69(ord.wilaya),
             wilayaName: ext.wilayaRaw || ord.wilaya || "—",
             commune: ext.commune || ord.commune || "",
             montantDzd: ext.montantDzd || storeTotal,
             storeTotalDzd: storeTotal,
+            codDiffDzd: 0,
             returnFeeDzd: returnFee,
             driverName: ext.driverName || null,
             driverPhone: ext.driverPhone || null,
             boutique: ext.boutique || null,
+            remarksSummary: ext.remarksSummary ?? null,
             isStoreOwnedReturn: false,
             discrepancyReason: null,
+            discrepancyCategory: "none",
+            matchMethod,
+            matchConfidence,
+            autoHealPatch: diagnosis.autoHealPatch,
             sourceFileName: batch.fileName ?? null,
             financialStatus: ext.financialStatus || null,
             rawCourierRow: ext,
@@ -703,13 +1079,6 @@ export async function runMultiCourierReconciliation(params: {
           });
         } else {
           counts.matched_unsynced += 1;
-          const reasons: string[] = [];
-          if (!inSync) {
-            reasons.push(`الحالة في المتجر (${ord.status}) ≠ شركة التوصيل (${rich.labelAr})`);
-          }
-          if (amountMismatch) {
-            reasons.push(`المبلغ في المتجر (${storeTotal} د.ج) ≠ التوصيل (${ext.montantDzd} د.ج)`);
-          }
           rows.push({
             id: `${runId}-unsync-${rows.length + 1}`,
             bucket: "matched_unsynced",
@@ -724,17 +1093,24 @@ export async function runMultiCourierReconciliation(params: {
             courierLocationStage: locStage,
             customerName: ext.customerName || ord.customer || "—",
             customerPhone: ext.customerPhone || ord.phone || "",
-            wilayaCode: ext.wilayaCode ?? extractWilayaCode69(ord.wilaya),
+            wilayaCode: ext.wilayaCode ?? parseWilayaCode69(ord.wilaya),
             wilayaName: ext.wilayaRaw || ord.wilaya || "—",
             commune: ext.commune || ord.commune || "",
             montantDzd: ext.montantDzd || storeTotal,
             storeTotalDzd: storeTotal,
+            codDiffDzd: diagnosis.codDiffDzd,
             returnFeeDzd: returnFee,
             driverName: ext.driverName || null,
             driverPhone: ext.driverPhone || null,
             boutique: ext.boutique || null,
+            remarksSummary: ext.remarksSummary ?? null,
             isStoreOwnedReturn: false,
-            discrepancyReason: reasons.join(" · "),
+            discrepancyReason: diagnosis.reasons.join(" · "),
+            discrepancyCategory: diagnosis.category,
+            suggestedFixAr: diagnosis.suggestedFixAr,
+            matchMethod,
+            matchConfidence,
+            autoHealPatch: diagnosis.autoHealPatch,
             sourceFileName: batch.fileName ?? null,
             financialStatus: ext.financialStatus || null,
             rawCourierRow: ext,
@@ -796,19 +1172,25 @@ export async function runMultiCourierReconciliation(params: {
     }
   }
 
-  // 4. Store-only orders (not present in any uploaded/synced courier batch)
+  // 4. Store-only orders — STRICTLY SCOPED to synced courier(s) so syncing yalidine/zrexpress never flags Redex parcels!
   if (params.includeStoreOnly !== false) {
+    const includesPrimaryOrRedex = syncedCourierIds.has("redex") || syncedCourierIds.size === 0;
     for (const ord of storeOrders) {
       if (matchedStoreIds.has(ord.id)) continue;
       if ((ord.status || "").toLowerCase() === "deleted") continue;
 
+      const ordCourier = (ord.courierId || (ord.inRedex || ord.redexTrackingCode ? "redex" : "")).toLowerCase();
+      const hasExplicitOtherCourier = Boolean(ordCourier && !syncedCourierIds.has(ordCourier));
+      if (hasExplicitOtherCourier) continue;
+      if (!ordCourier && !includesPrimaryOrRedex) continue;
+
       counts.store_only += 1;
-      const wCode = extractWilayaCode69(ord.wilaya);
+      const wCode = parseWilayaCode69(ord.wilaya);
       rows.push({
         id: `${runId}-sonly-${rows.length + 1}`,
         bucket: "store_only",
-        courierId: (ord.courierId || (ord.inRedex ? "redex" : "unassigned")).toLowerCase(),
-        courierName: ord.courierName || (ord.inRedex ? "Redex Express" : "غير مدفوعة للشحن"),
+        courierId: ordCourier || "unassigned",
+        courierName: ord.courierName || (ordCourier === "redex" ? "Redex Express" : "غير مدفوعة للشحن"),
         trackingCode: ord.redexTrackingCode || ord.redexTrackingId || null,
         reference: ord.id,
         storeOrderId: ord.id,
@@ -828,6 +1210,7 @@ export async function runMultiCourierReconciliation(params: {
         driverPhone: ord.driverPhone ?? null,
         boutique: "ORVA Store",
         isStoreOwnedReturn: false,
+        discrepancyCategory: ord.redexTrackingCode ? "orphan_with_tracking" : "unpushed_store_order",
         discrepancyReason: ord.redexTrackingCode
           ? "تحمل رقم تتبع في المتجر لكنها لم تظهر في ملف/مزامنة شركة التوصيل الحالية"
           : "مسجّلة في المتجر ولم تُرسل لأي شركة توصيل بعد",
@@ -913,4 +1296,198 @@ export async function runMultiCourierReconciliation(params: {
   if (memoryReconRuns.length > 10) memoryReconRuns.length = 10;
 
   return summary;
+}
+
+/**
+ * Shared DB & fallback persistence helper for applying authoritative courier updates
+ * (status, COD total, quantity upsell, Stop Desk tariff shift, driver info, return fee).
+ */
+export async function persistAuthoritativeOrderPatch(params: {
+  orderId: string;
+  courierId?: string;
+  trackingCode?: string | null;
+  patch: AutoHealOrderPatch;
+}): Promise<boolean> {
+  const { orderId, courierId, trackingCode, patch } = params;
+  if (!orderId) return false;
+
+  const nowIso = new Date().toISOString();
+  const coreUpdate: Record<string, unknown> = { updated_at: nowIso };
+  const extraUpdate: Record<string, unknown> = {
+    courier_last_synced_at: nowIso,
+    status_source: "courier_api",
+    manual_status_override: false,
+  };
+
+  if (patch.storeStatus) {
+    coreUpdate.status = patch.storeStatus.toUpperCase();
+  }
+  if (trackingCode) {
+    coreUpdate.in_redex = true;
+    coreUpdate.tracking_code = trackingCode;
+    coreUpdate.redex_tracking_code = trackingCode;
+    extraUpdate.redex_tracking_id = trackingCode;
+  }
+  if (courierId) {
+    coreUpdate.courier = courierId.toUpperCase();
+    extraUpdate.courier_id = courierId;
+  }
+  if (patch.totalPayableDzd !== undefined && patch.totalPayableDzd > 0) {
+    coreUpdate.total_payable = patch.totalPayableDzd;
+    coreUpdate.total = patch.totalPayableDzd;
+    coreUpdate.price_num = patch.totalPayableDzd;
+    coreUpdate.grand_total = `${patch.totalPayableDzd.toLocaleString("fr-DZ")} د.ج`;
+  }
+  if (patch.subtotalDzd !== undefined && patch.subtotalDzd >= 0) {
+    coreUpdate.subtotal = patch.subtotalDzd;
+    coreUpdate.product_total = `${patch.subtotalDzd.toLocaleString("fr-DZ")} د.ج`;
+  }
+  if (patch.deliveryFeeDzd !== undefined && patch.deliveryFeeDzd >= 0) {
+    coreUpdate.delivery_fee = patch.deliveryFeeDzd;
+    coreUpdate.shipping_fee = `${patch.deliveryFeeDzd.toLocaleString("fr-DZ")} د.ج`;
+  }
+  if (patch.quantity !== undefined && patch.quantity >= 1) {
+    coreUpdate.quantity = patch.quantity;
+  }
+  if (patch.deliveryType) {
+    coreUpdate.delivery_method = patch.deliveryType;
+    coreUpdate.delivery_type = patch.deliveryType === "STOP_DESK" ? "توصيل للمكتب (Stop Desk)" : "توصيل للمنزل";
+  }
+
+  if (patch.courierStatusRaw) extraUpdate.courier_status = patch.courierStatusRaw;
+  if (patch.courierStatusAr) extraUpdate.courier_status_ar = patch.courierStatusAr;
+  if (patch.normalizedCourierStatus) extraUpdate.normalized_courier_status = patch.normalizedCourierStatus;
+  if (patch.courierLocationStage) extraUpdate.courier_location_stage = patch.courierLocationStage;
+  if (patch.financialStatus) extraUpdate.financial_status = patch.financialStatus;
+  if (patch.returnFeeDzd !== undefined && patch.returnFeeDzd >= 0) extraUpdate.return_fee_dzd = patch.returnFeeDzd;
+  if (patch.driverName) extraUpdate.driver_name = patch.driverName;
+  if (patch.driverPhone) extraUpdate.driver_phone = patch.driverPhone;
+
+  let persisted = false;
+  if (isServiceRoleConfigured()) {
+    try {
+      const supabase = getSupabaseServerClient() as any;
+      const safeKey = orderId.replace(/[,()]/g, "");
+      await supabase
+        .from("orders")
+        .update(coreUpdate)
+        .or(`order_id.eq.${safeKey},order_number.eq.${safeKey}`);
+      try {
+        await supabase
+          .from("orders")
+          .update(extraUpdate)
+          .or(`order_id.eq.${safeKey},order_number.eq.${safeKey}`);
+      } catch {
+        // Optional post-migration columns
+      }
+      persisted = true;
+    } catch {
+      // Fallback store below
+    }
+  }
+
+  const fbAll = getStoredFallbackOrders();
+  let fbChanged = false;
+  for (const fb of fbAll) {
+    if (fb.id === orderId || fb.orderNumber === orderId) {
+      if (patch.storeStatus) fb.status = patch.storeStatus.toUpperCase() as any;
+      if (patch.totalPayableDzd !== undefined && patch.totalPayableDzd > 0) fb.totalPayable = patch.totalPayableDzd;
+      if (patch.subtotalDzd !== undefined && patch.subtotalDzd >= 0) fb.productPrice = patch.subtotalDzd;
+      if (patch.deliveryFeeDzd !== undefined && patch.deliveryFeeDzd >= 0) fb.shippingFee = patch.deliveryFeeDzd;
+      if (patch.deliveryType) fb.deliveryType = patch.deliveryType;
+      if (patch.quantity !== undefined && patch.quantity >= 1) (fb as any).quantity = patch.quantity;
+      if (trackingCode) {
+        (fb as any).in_redex = true;
+        (fb as any).redex_tracking_code = trackingCode;
+        fb.redexTrackingId = trackingCode;
+      }
+      if (patch.courierStatusRaw) (fb as any).courier_status = patch.courierStatusRaw;
+      if (patch.courierStatusAr) (fb as any).courier_status_ar = patch.courierStatusAr;
+      if (patch.financialStatus) (fb as any).financial_status = patch.financialStatus;
+      if (patch.returnFeeDzd !== undefined) (fb as any).return_fee_dzd = patch.returnFeeDzd;
+      fbChanged = true;
+      persisted = true;
+    }
+  }
+  if (fbChanged) saveAllFallbackOrders(fbAll);
+  return persisted;
+}
+
+/**
+ * Approved /grill-me Policy:
+ * Authoritatively heals Store orders (COD total, quantity upsells, Stop Desk fees, detailed status)
+ * using Courier truth as the final reference, and promotes healed rows into `matched_synced`.
+ */
+export async function applyAuthoritativeCourierAutoHeal(
+  summary: ReconciliationRunSummary,
+): Promise<{
+  summary: ReconciliationRunSummary;
+  healedCount: number;
+  priceHealedCount: number;
+  statusHealedCount: number;
+}> {
+  const nowIso = new Date().toISOString();
+  let healedCount = 0;
+  let priceHealedCount = 0;
+  let statusHealedCount = 0;
+
+  for (const row of summary.rows) {
+    if (row.bucket !== "matched_unsynced" && row.bucket !== "matched_synced") continue;
+    if (!row.storeOrderId || !row.autoHealPatch) continue;
+
+    const patch = row.autoHealPatch;
+    const isUnsynced = row.bucket === "matched_unsynced";
+    if (!isUnsynced && !row.trackingCode) continue;
+
+    await persistAuthoritativeOrderPatch({
+      orderId: row.storeOrderId,
+      courierId: row.courierId,
+      trackingCode: row.trackingCode,
+      patch,
+    });
+
+    if (isUnsynced) {
+      healedCount += 1;
+      if (patch.totalPayableDzd !== undefined) priceHealedCount += 1;
+      if (patch.storeStatus && patch.storeStatus !== (row.storeOrderStatus || "").toLowerCase()) {
+        statusHealedCount += 1;
+      }
+
+      row.bucket = "matched_synced";
+      row.storeOrderStatus = patch.storeStatus || row.storeOrderStatus;
+      if (patch.totalPayableDzd !== undefined) row.storeTotalDzd = patch.totalPayableDzd;
+      row.codDiffDzd = 0;
+      row.autoHealed = true;
+      row.autoHealAppliedAt = nowIso;
+      row.discrepancyReason = patch.adjustmentReasonAr
+        ? `مزامنة تلقائية 100%: ${patch.adjustmentReasonAr}`
+        : `مزامنة تلقائية 100%: اعتماد حالة الناقل (${row.courierStatusAr || row.courierStatusRaw})`;
+    }
+  }
+
+  if (healedCount > 0) {
+    summary.counts.matched_unsynced = summary.rows.filter((r) => r.bucket === "matched_unsynced").length;
+    summary.counts.matched_synced = summary.rows.filter((r) => r.bucket === "matched_synced").length;
+    const [freshOrders, returnFeeMap] = await Promise.all([
+      loadAllStoreOrdersForReconciliation(),
+      getReturnFeesByWilayaMap().catch(() => ({}) as Record<number, number>),
+    ]);
+    const capturedReturns = summary.rows
+      .filter((r) => r.bucket === "courier_only" && r.isStoreOwnedReturn)
+      .map((r) => ({
+        trackingCode: r.trackingCode || r.id,
+        courierId: r.courierId,
+        courierName: r.courierName,
+        wilayaCode: r.wilayaCode,
+        returnFeeDzd: r.returnFeeDzd,
+        montantDzd: r.montantDzd,
+      }));
+    summary.accounting = computeCodAccountingReport({
+      orders: freshOrders,
+      capturedReturns,
+      returnFeesByWilaya: returnFeeMap,
+    });
+  }
+
+  return { summary, healedCount, priceHealedCount, statusHealedCount };
 }

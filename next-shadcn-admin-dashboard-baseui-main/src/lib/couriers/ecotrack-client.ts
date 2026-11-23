@@ -175,6 +175,7 @@ export const ECOTRACK_STATUS_MAP_AR: Record<
   en_station: { label: "متوقفة في مركز التوزيع", stage: "shipped" },
   vers_wilaya: { label: "في الطريق إلى ولاية العميل", stage: "shipped" },
   en_preparation: { label: "قيد التحضير للتوزيع", stage: "shipped" },
+  en_process: { label: "قيد المعالجة لدى شركة التوصيل", stage: "shipped" },
   dispatched_to_driver: { label: "سُلّمت لرجل التوصيل", stage: "shipped" },
   en_livraison: { label: "قيد التوصيل للزبون", stage: "shipped" },
   attempt_delivery: { label: "محاولة تسليم للزبون", stage: "shipped" },
@@ -1189,27 +1190,52 @@ export class EcoTrackClient {
       const json = await res.json().catch(() => null);
       const rawRows: any[] = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
 
-      const orders: CourierExternalOrder[] = rawRows.map((r) => ({
-        tracking: String(r.tracking || r.code_tracking || ""),
-        reference: String(r.reference || ""),
-        boutique: r.boutique ? String(r.boutique) : undefined,
-        client: String(r.client || r.nom_client || ""),
-        phone: String(r.phone || r.telephone || ""),
-        phone2: r.phone_2 || r.telephone_2 ? String(r.phone_2 || r.telephone_2) : undefined,
-        address: r.adresse ? String(r.adresse) : undefined,
-        commune: r.commune ? String(r.commune) : undefined,
-        wilayaId: r.wilaya_id ? Number(r.wilaya_id) : undefined,
-        montant: Number(r.montant || 0),
-        status: String(r.status || ""),
-        financialStatus: r.payment_status ? String(r.payment_status) : undefined,
-        deliveryFee: r.tarif_prestation !== undefined ? Number(r.tarif_prestation) : undefined,
-        returnFee: r.tarif_retour !== undefined ? Number(r.tarif_retour) : undefined,
-        driverName: r.livreur || r.driver ? String(r.livreur || r.driver) : undefined,
-        driverPhone: r.driver_phone ? String(r.driver_phone) : undefined,
-        createdAt: r.created_at ? String(r.created_at) : undefined,
-        updatedAt: r.updated_at ? String(r.updated_at) : undefined,
-        raw: r,
-      }));
+      const orders: CourierExternalOrder[] = rawRows.map((r) => {
+        const rawRemarks = Array.isArray(r.status_reason) ? r.status_reason : [];
+        const remarks: CourierRemarkItem[] = rawRemarks
+          .map((item: any) => {
+            const text = String(item?.remarque || item?.comment || item?.details || "").trim();
+            const driver = item?.livreur ? String(item.livreur) : undefined;
+            const station = item?.station ? String(item.station) : undefined;
+            return {
+              remarque: text,
+              livreur: driver,
+              station,
+              createdAt: item?.created_at || undefined,
+              authorRole: (driver ? "driver" : station ? "station" : "seller") as CourierRemarkItem["authorRole"],
+            };
+          })
+          .filter((item: CourierRemarkItem) => item.remarque.length > 0);
+        const remarksSummary = remarks
+          .map((m) => (m.livreur ? `${m.livreur}: ${m.remarque}` : m.remarque))
+          .join(" | ");
+
+        return {
+          tracking: String(r.tracking || r.code_tracking || ""),
+          reference: String(r.reference || ""),
+          boutique: r.boutique ? String(r.boutique) : undefined,
+          client: String(r.client || r.nom_client || ""),
+          phone: String(r.phone || r.telephone || ""),
+          phone2: r.phone_2 || r.telephone_2 ? String(r.phone_2 || r.telephone_2) : undefined,
+          address: r.adresse ? String(r.adresse) : undefined,
+          commune: r.commune ? String(r.commune) : undefined,
+          wilayaId: r.wilaya_id ? Number(r.wilaya_id) : undefined,
+          montant: Number(r.montant || 0),
+          status: String(r.status || r.global_status || ""),
+          financialStatus: r.payment_status ? String(r.payment_status) : undefined,
+          deliveryFee: r.tarif_prestation !== undefined ? Number(r.tarif_prestation) : undefined,
+          returnFee: r.tarif_retour !== undefined ? Number(r.tarif_retour) : undefined,
+          stopDesk: Number(r.stop_desk ?? 0) === 1,
+          driverName: r.livreur || r.driver ? String(r.livreur || r.driver) : undefined,
+          driverPhone: r.driver_phone ? String(r.driver_phone) : undefined,
+          remarks: remarks.length > 0 ? remarks : undefined,
+          remarksSummary: remarksSummary || undefined,
+          createdAt: r.created_at ? String(r.created_at) : undefined,
+          updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+          lastUpdatedAt: r.last_updated_at ? String(r.last_updated_at) : r.updated_at ? String(r.updated_at) : undefined,
+          raw: r,
+        };
+      });
 
       return {
         success: true,
@@ -1234,6 +1260,7 @@ export class EcoTrackClient {
     startDate?: string;
     endDate?: string;
     maxPages?: number;
+    enrichStatuses?: boolean;
   }): Promise<{ success: boolean; orders: CourierExternalOrder[]; error?: string }> {
     const maxPages = Math.min(50, Math.max(1, params?.maxPages ?? 15));
     const all: CourierExternalOrder[] = [];
@@ -1245,11 +1272,63 @@ export class EcoTrackClient {
         endDate: params?.endDate,
       });
       if (!res.success) {
-        if (all.length > 0) return { success: true, orders: all };
+        if (all.length > 0) break;
         return { success: false, orders: [], error: res.error };
       }
       all.push(...res.orders);
       if (page >= res.lastPage || res.orders.length === 0) break;
+    }
+
+    if (params?.enrichStatuses !== false && all.length > 0) {
+      const trackings = all.map((o) => o.tracking).filter(Boolean);
+      if (trackings.length > 0) {
+        const bulkRes = await this.getBulkOrdersStatus(trackings, "all");
+        if (bulkRes.success && bulkRes.data) {
+          for (const order of all) {
+            const detail = bulkRes.data[order.tracking];
+            if (!detail || typeof detail !== "object") continue;
+
+            const rawActs = Array.isArray(detail.activity) ? detail.activity : [];
+            const lastAct = rawActs[rawActs.length - 1];
+            const detailedStatus = String(
+              lastAct?.status || detail.last_status || detail.status || "",
+            ).trim();
+            if (detailedStatus && detailedStatus.toLowerCase() !== "en_process") {
+              order.status = detailedStatus;
+            }
+            if (detail.driver_phone && !order.driverPhone) {
+              order.driverPhone = String(detail.driver_phone);
+            }
+            const foundDriver = [...rawActs].reverse().find((a: any) => a?.driver)?.driver;
+            if (foundDriver && !order.driverName) {
+              order.driverName = String(foundDriver);
+            }
+            if (lastAct?.station && !order.currentStation) {
+              order.currentStation = String(lastAct.station);
+            }
+            if (rawActs.length > 0) {
+              order.activity = rawActs.map((a: any) => ({
+                date: String(a.date || ""),
+                time: String(a.time || ""),
+                status: String(a.status || ""),
+                statusAr: ECOTRACK_STATUS_MAP_AR[String(a.status || "")]?.label || a.details || a.status,
+                station: a.station ? String(a.station) : undefined,
+                driver: a.driver ? String(a.driver) : undefined,
+                details: a.details ? String(a.details) : undefined,
+                reason: a.reason ? String(a.reason) : undefined,
+              }));
+            }
+            if (detail.desk_phone || detail.desk_address || detail.desk_commune || detail.desk_map_link) {
+              order.deskInfo = {
+                deskPhone: detail.desk_phone ? String(detail.desk_phone) : undefined,
+                deskCommune: detail.desk_commune ? String(detail.desk_commune) : undefined,
+                deskAddress: detail.desk_address ? String(detail.desk_address) : undefined,
+                deskMapLink: detail.desk_map_link ? String(detail.desk_map_link) : undefined,
+              };
+            }
+          }
+        }
+      }
     }
 
     return { success: true, orders: all };

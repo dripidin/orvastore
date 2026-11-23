@@ -19,6 +19,7 @@ import {
 } from '@/lib/orders-store';
 import { computeCanonicalPayloadHash } from '@/lib/payload-hash';
 import { buildFbcFromFbclid } from '@/lib/analytics/attribution-tracker';
+import { evaluateWilayaRiskForCheckout } from '@/lib/analytics/wilaya-risk-guardrails';
 
 export type { FallbackOrderRecord };
 
@@ -86,6 +87,7 @@ async function triggerTelegramAlert(params: {
   total: number;
   attributionSource?: string;
   utmCampaign?: string;
+  wilayaWarningLine?: string | null;
 }) {
   try {
     let token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -180,6 +182,10 @@ async function triggerTelegramAlert(params: {
       lines.push(`📣 <b>المصدر:</b> <code>${escapeHtml(sourceText)}</code>${campaignText}`);
     }
     lines.push(`📅 <b>التاريخ:</b> ${formattedDate}`);
+    if (params.wilayaWarningLine) {
+      lines.push(`━━━━━━━━━━━━━━━━━━`);
+      lines.push(params.wilayaWarningLine);
+    }
     lines.push(`━━━━━━━━━━━━━━━━━━`);
     lines.push(`📌 <i>الطلبية محفوظة في Supabase (لم تُرسل لشركة التوصيل بعد).</i>`);
     lines.push(`👉 <a href="${dashboardOrderUrl}">[لوحة التحكم (Admin Dashboard)]</a>`);
@@ -474,6 +480,26 @@ async function executeCodOrderSubmission(
       };
     }
 
+    let wilayaRisk: Awaited<ReturnType<typeof evaluateWilayaRiskForCheckout>> = {
+      wilayaCode: validated.wilayaCode,
+      wilayaName: validated.wilayaName,
+      warningTriggered: false,
+      deliveryRatePct: 100,
+      outcomesCount: 0,
+      returnedOrders: 0,
+      riskScore: 0,
+      riskLevel: 'LOW',
+      riskDecision: 'ALLOW',
+      riskReasons: [],
+      recommendedActionAr: 'تأكيد قياسي',
+      telegramWarningLine: null,
+    };
+    try {
+      wilayaRisk = await evaluateWilayaRiskForCheckout(validated.wilayaCode);
+    } catch {
+      // Non-blocking: never interrupt customer checkout
+    }
+
     // 3. Database Persistence via Supabase Server Client
     let persistedToDatabase = false;
     let persistenceErrorMessage: string | null = null;
@@ -532,14 +558,22 @@ async function executeCodOrderSubmission(
         status: 'pending',
         in_redex: false,
         notes: address,
-        risk_score: 0,
-        risk_level: 'LOW',
-        risk_decision: 'ALLOW',
+        risk_score: wilayaRisk.riskScore,
+        risk_level: wilayaRisk.riskLevel,
+        risk_decision: wilayaRisk.riskDecision,
         courier: 'REDEX',
         metadata: {
           packId: validated.packId,
           productName: validated.productName,
           attribution: attributionPayload,
+          wilayaRisk: {
+            warningTriggered: wilayaRisk.warningTriggered,
+            deliveryRatePct: wilayaRisk.deliveryRatePct,
+            outcomesCount: wilayaRisk.outcomesCount,
+            returnedOrders: wilayaRisk.returnedOrders,
+            riskReasons: wilayaRisk.riskReasons,
+            recommendedActionAr: wilayaRisk.recommendedActionAr,
+          },
         },
       };
 
@@ -649,9 +683,9 @@ async function executeCodOrderSubmission(
               status: 'pending',
               in_redex: false,
               notes: address,
-              risk_score: 0,
-              risk_level: 'LOW',
-              risk_decision: 'ALLOW',
+              risk_score: wilayaRisk.riskScore,
+              risk_level: wilayaRisk.riskLevel,
+              risk_decision: wilayaRisk.riskDecision,
               courier: 'REDEX',
             })
             .select('id, order_id')
@@ -846,6 +880,7 @@ async function executeCodOrderSubmission(
         total: validated.totalPayable,
         attributionSource: validated.attributionSource?.trim() || 'direct',
         utmCampaign: validated.utmCampaign?.trim() || undefined,
+        wilayaWarningLine: wilayaRisk.telegramWarningLine,
       }),
       triggerMetaCapiPurchase({
         orderNumber: finalOrderNumber,
