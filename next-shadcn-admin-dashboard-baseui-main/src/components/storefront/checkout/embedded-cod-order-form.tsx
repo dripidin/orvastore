@@ -24,11 +24,15 @@ import {
   ALGERIA_69_WILAYAS,
   type CodOrderSubmission,
   calculateDeliveryTariff,
-  isStopDeskAllowed,
   isValidAlgerianPhone,
   setLiveTariffs,
 } from "@/lib/types/checkout";
 import { useDeliveryOffices } from "@/lib/use-delivery-offices";
+import {
+  CommuneOfficeStatusBanner,
+  HomeDeliveryIllustration,
+  StopDeskIllustration,
+} from "./delivery-illustrations";
 
 interface RawCommune {
   id: number;
@@ -154,20 +158,6 @@ export function EmbeddedCodOrderForm({
 
   const currentCoverage = coverageByWilaya[wilayaCode];
 
-  // Stop-Desk capability: wilaya must allow it AND live coverage + selected commune must have an office
-  const wilayaStopDeskAllowed = useMemo(() => {
-    if (currentCoverage) return currentCoverage.stopDeskEnabled;
-    return isStopDeskAllowed(wilayaCode);
-  }, [currentCoverage, wilayaCode]);
-  const stopDeskAllowed = wilayaStopDeskAllowed && communeHasOffice !== false;
-
-  // Fall back to home delivery as soon as the selected commune has no office
-  useEffect(() => {
-    if (!stopDeskAllowed && deliveryType === "STOP_DESK") {
-      setDeliveryType("DOMICILE");
-    }
-  }, [stopDeskAllowed, deliveryType]);
-
   // Live EcoTrack tariffs (falls back to the static matrix when unavailable)
   const [tariffVersion, setTariffVersion] = useState(0);
   useEffect(() => {
@@ -186,14 +176,25 @@ export function EmbeddedCodOrderForm({
     };
   }, []);
 
-  // Dynamic Shipping Fee
-  const shippingFee = useMemo(() => {
+  // Pre-compute both Home Delivery & Stop-Desk fees across all 69 wilayas
+  const domicileFee = useMemo(() => {
     try {
-      return calculateDeliveryTariff(wilayaCode, deliveryType);
+      return calculateDeliveryTariff(wilayaCode, "DOMICILE");
     } catch {
       return 500;
     }
-  }, [wilayaCode, deliveryType, tariffVersion]);
+  }, [wilayaCode, tariffVersion]);
+
+  const stopDeskFee = useMemo(() => {
+    try {
+      return calculateDeliveryTariff(wilayaCode, "STOP_DESK");
+    } catch {
+      return 400;
+    }
+  }, [wilayaCode, tariffVersion]);
+
+  // Dynamic Shipping Fee
+  const shippingFee = deliveryType === "STOP_DESK" ? stopDeskFee : domicileFee;
 
   // Total Net Payable
   const totalPayable = effectivePrice + shippingFee;
@@ -222,18 +223,10 @@ export function EmbeddedCodOrderForm({
     } else {
       setCommuneName("");
     }
-
-    // Barrier check: Wilayas 49 to 58 prohibit Stop-Desk
-    if (!isStopDeskAllowed(code) && deliveryType === "STOP_DESK") {
-      setDeliveryType("DOMICILE");
-    }
   };
 
-  // Handle Delivery Type toggle
+  // Handle Delivery Type toggle (both Home Delivery and Stop-Desk stay smoothly selectable across all wilayas & communes)
   const handleDeliveryTypeToggle = (type: "DOMICILE" | "STOP_DESK") => {
-    if (type === "STOP_DESK" && !stopDeskAllowed) {
-      return; // Barrier prevents selection
-    }
     setDeliveryType(type);
     setFieldErrors((prev) => ({ ...prev, deliveryType: "", deliveryAddress: "" }));
   };
@@ -500,22 +493,27 @@ export function EmbeddedCodOrderForm({
               {availableCommunes.map((c) => (
                 <option key={c.id} value={c.commune_name_ar || c.commune_name_fr}>
                   {c.commune_name_ar} {c.commune_name_fr ? `(${c.commune_name_fr})` : ""}
-                  {deliveryOffices.hasOffice(c.commune_name_ar) ? " — مكتب التوصيل متوفر ✓" : ""}
+                  {deliveryOffices.hasOffice(c.commune_name_ar) ? " — مكتب استلام متوفر ✓" : ""}
                 </option>
               ))}
             </select>
-            {communeHasOffice === true && (
-              <p className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                <CheckCircle2 className="size-3" />
-                مكتب التوصيل متوفر في هذه البلدية
-              </p>
-            )}
             {fieldErrors.communeName && <p className="text-xs text-red-600 font-medium">{fieldErrors.communeName}</p>}
           </div>
         </div>
 
-        {/* 4. Delivery Mode Toggle: Domicile vs Stop-Desk */}
-        <div className="space-y-2 pt-2">
+        {/* Illustrator-Style Visual Notice for Selected Commune Office Availability */}
+        <CommuneOfficeStatusBanner
+          communeName={communeName}
+          wilayaName={currentWilaya.nameAr}
+          communeHasOffice={communeHasOffice}
+          status={deliveryOffices.status}
+          offices={deliveryOffices.offices}
+          selectedDeliveryType={deliveryType}
+          onSelectDeliveryType={handleDeliveryTypeToggle}
+        />
+
+        {/* 4. Delivery Mode Toggle: Domicile vs Stop-Desk (Illustrator Cards) */}
+        <div className="space-y-2.5 pt-1">
           <label className="text-xs sm:text-sm font-bold block text-slate-800">
             أين تفضل استلام طلبيتك؟ <span className="text-amber-500">*</span>
           </label>
@@ -524,86 +522,84 @@ export function EmbeddedCodOrderForm({
             <button
               type="button"
               onClick={() => handleDeliveryTypeToggle("DOMICILE")}
-              className={`p-4 rounded-2xl border text-right transition flex items-start gap-3 ${
+              className={`group relative p-4 rounded-2xl border text-right transition-all flex items-center gap-3 cursor-pointer ${
                 deliveryType === "DOMICILE"
-                  ? "bg-amber-50/80 border-2 border-amber-500 text-slate-900 shadow-xs"
-                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100/50"
+                  ? "bg-amber-50/85 border-2 border-amber-500 text-slate-900 shadow-sm ring-2 ring-amber-500/20"
+                  : "bg-slate-50/70 border border-slate-200 text-slate-700 hover:border-amber-300 hover:bg-amber-50/30"
               }`}
             >
-              <div
-                className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                  deliveryType === "DOMICILE" ? "border-amber-500 bg-amber-500 text-slate-950" : "border-slate-400"
-                }`}
-              >
-                {deliveryType === "DOMICILE" && <div className="size-2 rounded-full bg-slate-950" />}
-              </div>
-              <div>
-                <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                  <Home className="size-4 text-amber-500" />
-                  <span>توصيل لباب المنزل</span>
+              <HomeDeliveryIllustration className="w-20 h-16 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                    <div
+                      className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        deliveryType === "DOMICILE"
+                          ? "border-amber-500 bg-amber-500 text-slate-950"
+                          : "border-slate-400"
+                      }`}
+                    >
+                      {deliveryType === "DOMICILE" && <div className="size-1.5 rounded-full bg-slate-950" />}
+                    </div>
+                    <span>توصيل لباب المنزل</span>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  يسلمك موزع البريد السلعة مباشرة في عنوانك الشخصي
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  يسلمك موزع البريد الطرد مباشرة إلى عنوانك في {communeName || currentWilaya.nameAr}
                 </p>
+                <div className="pt-0.5 flex items-center gap-1.5">
+                  <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-900">
+                    {domicileFee.toLocaleString()} د.ج
+                  </span>
+                  <span className="text-[10px] font-semibold text-amber-700">توصيل مباشر</span>
+                </div>
               </div>
             </button>
 
-            {/* Stop-Desk Card */}
+            {/* Stop-Desk Card (Always Enabled across all wilayas & communes) */}
             <button
               type="button"
-              disabled={!stopDeskAllowed}
               onClick={() => handleDeliveryTypeToggle("STOP_DESK")}
-              className={`p-4 rounded-2xl border text-right transition flex items-start gap-3 ${
-                !stopDeskAllowed
-                  ? "bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed text-slate-400"
-                  : deliveryType === "STOP_DESK"
-                    ? "bg-amber-50/80 border-2 border-amber-500 text-slate-900 shadow-xs"
-                    : "bg-slate-50 border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100/50"
+              className={`group relative p-4 rounded-2xl border text-right transition-all flex items-center gap-3 cursor-pointer ${
+                deliveryType === "STOP_DESK"
+                  ? "bg-emerald-50/75 border-2 border-emerald-500 text-slate-900 shadow-sm ring-2 ring-emerald-500/20"
+                  : "bg-slate-50/70 border border-slate-200 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/30"
               }`}
             >
-              <div
-                className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                  deliveryType === "STOP_DESK" ? "border-amber-500 bg-amber-500 text-slate-950" : "border-slate-400"
-                }`}
-              >
-                {deliveryType === "STOP_DESK" && <div className="size-2 rounded-full bg-slate-950" />}
-              </div>
-              <div>
-                <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                  <Building2 className="size-4 text-amber-500" />
-                  <span>استلام من المكتب (Stop-Desk)</span>
+              <StopDeskIllustration className="w-20 h-16 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                    <div
+                      className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        deliveryType === "STOP_DESK"
+                          ? "border-emerald-600 bg-emerald-600 text-white"
+                          : "border-slate-400"
+                      }`}
+                    >
+                      {deliveryType === "STOP_DESK" && <div className="size-1.5 rounded-full bg-white" />}
+                    </div>
+                    <span>استلام من المكتب</span>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  {stopDeskAllowed
-                    ? "تستلم بنفسك من مكتب التوصيل في بلديتك بتكلفة أقل"
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  {communeHasOffice === true
+                    ? `استلم طردك مباشرة من مكتب بلدية ${communeName}`
                     : communeHasOffice === false
-                      ? "لا يوجد مكتب توصيل في هذه البلدية"
-                      : "غير متوفر في هذه الولاية"}
+                      ? `الاستلام من أقرب مكتب رئيسي في ولاية ${currentWilaya.nameAr}`
+                      : `استلام سريع من مكتب التوصيل في ولاية ${currentWilaya.nameAr}`}
                 </p>
+                <div className="pt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center rounded-full bg-white border border-slate-200 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-900">
+                    {stopDeskFee.toLocaleString()} د.ج
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold">
+                    {communeHasOffice === true ? "مكتب متوفر ✓" : "أوفر سعراً"}
+                  </span>
+                </div>
               </div>
             </button>
           </div>
-          {communeHasOffice === false && wilayaStopDeskAllowed ? (
-            <div className="text-[11px] leading-relaxed text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-1">
-              <p className="font-bold">
-                ⚠️ لا يوجد مكتب توصيل في بلدية {communeName}، لذلك سيتم التوصيل عبر رجل التوصيل إلى باب منزلك ويُحتسب سعر
-                التوصيل للمنزل.
-              </p>
-              {deliveryOffices.offices.length > 0 && (
-                <p>
-                  مكاتب التوصيل المتوفرة في ولاية {currentWilaya.nameAr}:{" "}
-                  <span className="font-semibold">{deliveryOffices.offices.map((o) => o.ar).join("، ")}</span>
-                </p>
-              )}
-            </div>
-          ) : (
-            !wilayaStopDeskAllowed && (
-              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                ⚠️ مكتب التوصيل غير متوفر حالياً في ولاية {currentWilaya.nameAr} — التوصيل للمنزل متاح عبر رجل التوصيل
-                {currentCoverage?.primaryCourier ? ` (${currentCoverage.primaryCourier.nameAr})` : ""}.
-              </p>
-            )
-          )}
         </div>
 
         {/* 5. Street Address (Only required for Domicile) */}

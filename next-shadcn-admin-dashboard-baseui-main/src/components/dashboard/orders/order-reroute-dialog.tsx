@@ -38,11 +38,11 @@ import communesRawData from "@/data/geoalgeria/communes.json";
 import {
   ALGERIA_69_WILAYAS,
   calculateDeliveryTariff,
-  isStopDeskAllowed,
   isValidAlgerianPhone,
   normalizeAlgerianPhone,
   setLiveTariffs,
 } from "@/lib/types/checkout";
+import { CommuneOfficeStatusBanner } from "@/components/storefront/checkout/delivery-illustrations";
 import { isTerminalStatus, type OrderReRoutingPayload, type OrderReRoutingResult } from "@/lib/types/re-routing";
 import { useDeliveryOffices } from "@/lib/use-delivery-offices";
 
@@ -154,15 +154,9 @@ function OrderRerouteDialogInner({
     }
   }, [availableCommunes, newCommuneName]);
 
-  // Delivery office (stop-desk) availability for the chosen commune
+  // Delivery office (stop-desk) availability for the chosen commune (both options always selectable)
   const deliveryOffices = useDeliveryOffices(selectedWilayaCode);
   const communeHasOffice = deliveryOffices.hasOffice(newCommuneName);
-  const wilayaStopDeskAllowed = isStopDeskAllowed(selectedWilayaCode);
-  const stopDeskAllowed = wilayaStopDeskAllowed && communeHasOffice !== false;
-
-  React.useEffect(() => {
-    if (!stopDeskAllowed && newDeliveryType === "STOP_DESK") setNewDeliveryType("DOMICILE");
-  }, [stopDeskAllowed, newDeliveryType]);
 
   // Same tariffs as a fresh order shipped from the hub: live EcoTrack fees, static matrix as fallback
   const [tariffSource, setTariffSource] = React.useState<"live" | "fallback">("fallback");
@@ -212,9 +206,6 @@ function OrderRerouteDialogInner({
     if (newCustomerName.trim().length < 2) return setFormError("يرجى إدخال اسم الزبون الجديد");
     if (!isValidAlgerianPhone(newCustomerPhone)) return setFormError("رقم هاتف الزبون الجديد غير صالح");
     if (!newCommuneName.trim()) return setFormError("يرجى اختيار البلدية");
-    if (newDeliveryType === "STOP_DESK" && !stopDeskAllowed) {
-      return setFormError(`لا يوجد مكتب توصيل في بلدية ${newCommuneName}`);
-    }
     if (newDeliveryType === "DOMICILE" && newDeliveryAddress.trim().length < 3) {
       return setFormError("يرجى كتابة عنوان التوصيل");
     }
@@ -467,11 +458,6 @@ function OrderRerouteDialogInner({
                         ))}
                       </SelectContent>
                     </Select>
-                    {communeHasOffice === true && (
-                      <p className="flex items-center gap-1 font-semibold text-[11px] text-emerald-700">
-                        <CheckCircle2 className="size-3" /> مكتب التوصيل متوفر في هذه البلدية
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -493,8 +479,8 @@ function OrderRerouteDialogInner({
                     </button>
                     <button
                       type="button"
-                      onClick={() => stopDeskAllowed && setNewDeliveryType("STOP_DESK")}
-                      disabled={locked || !stopDeskAllowed}
+                      onClick={() => setNewDeliveryType("STOP_DESK")}
+                      disabled={locked}
                       className={`flex items-center gap-2 rounded-lg border p-3 text-right transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         newDeliveryType === "STOP_DESK"
                           ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -506,27 +492,16 @@ function OrderRerouteDialogInner({
                     </button>
                   </div>
 
-                  {communeHasOffice === false && wilayaStopDeskAllowed ? (
-                    <div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-900 dark:text-amber-200">
-                      <p className="font-bold">
-                        لا يوجد مكتب توصيل في بلدية {newCommuneName}، سيكون التوصيل عبر رجل التوصيل إلى المنزل ويُحتسب
-                        سعر التوصيل للمنزل.
-                      </p>
-                      {deliveryOffices.offices.length > 0 && (
-                        <p>
-                          مكاتب التوصيل المتوفرة في ولاية {selectedWilaya.nameAr}:{" "}
-                          <span className="font-semibold">{deliveryOffices.offices.map((o) => o.ar).join("، ")}</span>
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    !wilayaStopDeskAllowed && (
-                      <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-900 dark:text-amber-200">
-                        الاستلام من المكتب غير متوفر في ولاية {selectedWilaya.nameAr}، سيكون التوصيل عبر رجل التوصيل إلى
-                        المنزل.
-                      </p>
-                    )
-                  )}
+                  <CommuneOfficeStatusBanner
+                    communeName={newCommuneName}
+                    wilayaName={selectedWilaya.nameAr}
+                    communeHasOffice={communeHasOffice}
+                    status={deliveryOffices.status}
+                    offices={deliveryOffices.offices}
+                    selectedDeliveryType={newDeliveryType}
+                    onSelectDeliveryType={locked ? undefined : setNewDeliveryType}
+                    compact
+                  />
                 </div>
 
                 {newDeliveryType === "DOMICILE" && (

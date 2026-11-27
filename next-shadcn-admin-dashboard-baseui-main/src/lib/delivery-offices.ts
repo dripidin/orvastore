@@ -77,16 +77,17 @@ export async function getDeliveryOffices(wilayaId: number): Promise<DeliveryOffi
   }
 
   // 2. For Law 26-06 new wilayas (59..69) without dedicated synced desks,
-  // inform UI cleanly that Stop-Desk is not yet available and route home delivery via mother wilaya.
+  // keep both home and Stop-Desk options selectable (routing Stop-Desk via the central hub).
   if (isNewWilaya69(wilayaId)) {
     const motherWilayaCode = getMotherWilayaCode(wilayaId);
     const result: DeliveryOfficesResult = {
       success: true,
       wilayaId,
       offices: [],
-      stopDeskAvailable: false,
+      stopDeskAvailable: true,
       routedViaMotherWilaya: motherWilayaCode,
-      stopDeskUnavailableReason: "مكتب التوصيل غير متوفر حالياً في هذه الولاية — التوصيل للمنزل متاح عبر رجل التوصيل",
+      stopDeskUnavailableReason:
+        "لا يتواجد مكتب استلام محلي في هذه البلدية — يمكنك اختيار التوصيل للمنزل أو الاستلام من المكتب الرئيسي للولاية",
     };
     cache.set(wilayaId, { at: Date.now(), result });
     return result;

@@ -15,6 +15,15 @@ export type DeliveryOfficesState =
 
 const clientCache = new Map<number, DeliveryOfficeCommune[] | null>();
 
+function normalizeArabicCommune(value: string): string {
+  return value
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Loads the communes of a wilaya that have a delivery office (EcoTrack stop-desk). */
 export function useDeliveryOffices(wilayaCode: number): DeliveryOfficesState & {
   hasOffice: (communeAr: string) => boolean | null;
@@ -46,12 +55,15 @@ export function useDeliveryOffices(wilayaCode: number): DeliveryOfficesState & {
     };
   }, [wilayaCode]);
 
-  const officeSet = React.useMemo(() => new Set(state.offices.map((o) => o.ar.trim())), [state.offices]);
+  const officeSet = React.useMemo(
+    () => new Set(state.offices.map((o) => normalizeArabicCommune(o.ar))),
+    [state.offices],
+  );
 
   const hasOffice = React.useCallback(
     (communeAr: string): boolean | null => {
       if (state.status !== "ready") return null;
-      return officeSet.has(communeAr.trim());
+      return officeSet.has(normalizeArabicCommune(communeAr));
     },
     [state.status, officeSet],
   );

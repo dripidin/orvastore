@@ -1,6 +1,6 @@
 import { ALGERIA_69_WILAYAS, getMotherWilayaCode, type Wilaya69Record } from "@/lib/geo/algeria-69";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/server";
-import { calculateDeliveryTariff, isStopDeskAllowed } from "@/lib/types/checkout";
+import { calculateDeliveryTariff, isStorefrontStopDeskAllowed } from "@/lib/types/checkout";
 
 export interface CourierWilayaEntry {
   courierId: string;
@@ -68,11 +68,11 @@ function staticDomicileFallback(w: Wilaya69Record): number {
 }
 
 function staticStopDeskFallback(w: Wilaya69Record): number {
-  if (!isStopDeskAllowed(w.code)) return 0;
+  if (!isStorefrontStopDeskAllowed(w.code)) return 0;
   try {
     return calculateDeliveryTariff(w.code, "STOP_DESK");
   } catch {
-    return 0;
+    return 500;
   }
 }
 
@@ -201,10 +201,10 @@ export async function getStorefrontDeliveryCoverage(options?: {
         continue;
       }
 
-      // Default active routing: 59..69 inherit home delivery via mother wilaya while marking stop-desk unavailable unless added
+      // Default active routing: all 69 wilayas support both home delivery and Stop-Desk pickup (via regional hub for 59..69)
       const routedViaMother = w.code >= 59;
       const dom = (motherRow ? Number(motherRow.tarif_domicile) : 0) || feeRow?.domicile || staticDomicileFallback(w);
-      const stopAllowed = !routedViaMother && c.supportsStopDesk && isStopDeskAllowed(w.code);
+      const stopAllowed = Boolean(c.supportsStopDesk && isStorefrontStopDeskAllowed(w.code));
       const desk = stopAllowed
         ? (motherRow ? Number(motherRow.tarif_stopdesk) : 0) || feeRow?.stopdesk || staticStopDeskFallback(w)
         : 0;

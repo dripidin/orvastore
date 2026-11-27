@@ -16,10 +16,11 @@ import type { Product } from "@/lib/repository/product-types";
 import {
   ALGERIA_69_WILAYAS,
   calculateDeliveryTariff,
-  isStopDeskAllowed,
   isValidAlgerianPhone,
   setLiveTariffs,
 } from "@/lib/types/checkout";
+import { useDeliveryOffices } from "@/lib/use-delivery-offices";
+import { CommuneOfficeStatusBanner } from "@/components/storefront/checkout/delivery-illustrations";
 
 interface RawCommune {
   id: number;
@@ -79,10 +80,12 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
     setCommune(wilayaCommunes[0]?.commune_name_ar ?? "");
   }, [wilayaCommunes]);
 
-  const stopDesk = isStopDeskAllowed(wilayaCode);
-  React.useEffect(() => {
-    if (!stopDesk) setDeliveryType("DOMICILE");
-  }, [stopDesk]);
+  const currentWilaya = React.useMemo(
+    () => ALGERIA_69_WILAYAS.find((w) => w.code === wilayaCode) ?? ALGERIA_69_WILAYAS[15],
+    [wilayaCode],
+  );
+  const deliveryOffices = useDeliveryOffices(wilayaCode);
+  const communeHasOffice = deliveryOffices.hasOffice(commune);
 
   const product = products.find((p) => p.id === productId);
   // biome-ignore lint/correctness/useExhaustiveDependencies: tariffVersion re-reads live tariffs
@@ -218,6 +221,7 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
                 {wilayaCommunes.map((c) => (
                   <option key={c.id} value={c.commune_name_ar}>
                     {c.commune_name_ar} ({c.commune_name_fr})
+                    {deliveryOffices.hasOffice(c.commune_name_ar) ? " — مكتب متوفر ✓" : ""}
                   </option>
                 ))}
               </select>
@@ -231,10 +235,20 @@ export function QuickOrderDialog({ open, onOpenChange }: { open: boolean; onOpen
                 onChange={(e) => setDeliveryType(e.target.value as "DOMICILE" | "STOP_DESK")}
               >
                 <option value="DOMICILE">توصيل للمنزل</option>
-                <option value="STOP_DESK" disabled={!stopDesk}>
-                  استلام من المكتب
-                </option>
+                <option value="STOP_DESK">استلام من المكتب</option>
               </select>
+            </div>
+            <div className="sm:col-span-2">
+              <CommuneOfficeStatusBanner
+                communeName={commune}
+                wilayaName={currentWilaya.nameAr}
+                communeHasOffice={communeHasOffice}
+                status={deliveryOffices.status}
+                offices={deliveryOffices.offices}
+                selectedDeliveryType={deliveryType}
+                onSelectDeliveryType={setDeliveryType}
+                compact
+              />
             </div>
             {deliveryType === "DOMICILE" && (
               <div className="space-y-1.5">

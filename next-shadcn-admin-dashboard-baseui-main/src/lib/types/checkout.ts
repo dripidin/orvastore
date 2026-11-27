@@ -100,6 +100,15 @@ export function isStopDeskAllowed(wilayaCode: number): boolean {
   return wilayaCode <= 48 && wilaya?.zone !== 5;
 }
 
+/**
+ * Storefront & Admin Checkout allow customers to freely choose EITHER Home Delivery
+ * or Stop-Desk Pickup across all 69 Algerian wilayas and all communes (when a commune lacks
+ * a local agency, parcels route smoothly via the wilaya's central pickup hub).
+ */
+export function isStorefrontStopDeskAllowed(wilayaCode: number): boolean {
+  return Number.isInteger(wilayaCode) && wilayaCode >= 1 && wilayaCode <= 69;
+}
+
 export interface LiveTariff {
   domicile: number;
   stopdesk: number;
@@ -115,10 +124,6 @@ export function setLiveTariffs(map: Record<number, LiveTariff>): void {
 export function calculateDeliveryTariff(wilayaCode: number, deliveryType: "DOMICILE" | "STOP_DESK"): number {
   if (wilayaCode < 1 || wilayaCode > 69) {
     throw new Error(`Invalid Wilaya code: ${wilayaCode}. Must be between 1 and 69.`);
-  }
-
-  if (deliveryType === "STOP_DESK" && !isStopDeskAllowed(wilayaCode)) {
-    throw new Error(`Stop-Desk delivery is not available for Wilaya ${wilayaCode}. Only Home Delivery is supported.`);
   }
 
   const motherCode = getMotherWilayaCode(wilayaCode);
@@ -141,7 +146,7 @@ export function calculateDeliveryTariff(wilayaCode: number, deliveryType: "DOMIC
       case 4:
         return 500; // Near Sahara
       case 5:
-        throw new Error(`Stop-Desk prohibited in Zone 5`);
+        return 600; // Far South (nearest central/wilaya agency pickup)
     }
   }
 
@@ -225,16 +230,7 @@ export const codOrderSubmissionSchema = z
       });
     }
 
-    // 2. Stop-Desk Barrier for Wilayas 49 to 58
-    if (data.deliveryType === "STOP_DESK" && !isStopDeskAllowed(data.wilayaCode)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `La livraison en point relais (Stop-Desk) n'est pas disponible pour la Wilaya ${data.wilayaCode}. Veuillez choisir la livraison à domicile.`,
-        path: ["deliveryType"],
-      });
-    }
-
-    // 3. Street Address for Domicile
+    // 2. Street Address for Domicile (Stop-Desk is enabled across all 69 wilayas & communes)
     if (data.deliveryType === "DOMICILE") {
       if (!data.deliveryAddress || data.deliveryAddress.trim().length < 3) {
         ctx.addIssue({
@@ -245,9 +241,9 @@ export const codOrderSubmissionSchema = z
       }
     }
 
-    // 4. Product price is verified against the live catalog in submitCodOrderAction (server).
+    // 3. Product price is verified against the live catalog in submitCodOrderAction (server).
 
-    // 5. Net total arithmetic consistency
+    // 4. Net total arithmetic consistency
     if (data.totalPayable !== data.productPrice + data.shippingFee) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -256,20 +252,18 @@ export const codOrderSubmissionSchema = z
       });
     }
 
-    // 6. Shipping tariff verification against Biskra matrix
-    if (data.deliveryType === "DOMICILE" || isStopDeskAllowed(data.wilayaCode)) {
-      try {
-        const expectedShipping = calculateDeliveryTariff(data.wilayaCode, data.deliveryType);
-        if (data.shippingFee !== expectedShipping) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Frais de livraison incorrects pour la wilaya ${data.wilayaCode}`,
-            path: ["shippingFee"],
-          });
-        }
-      } catch {
-        // calculateDeliveryTariff throws on invalid combo, caught by other validation rules
+    // 5. Shipping tariff verification across all 69 wilayas for both DOMICILE and STOP_DESK
+    try {
+      const expectedShipping = calculateDeliveryTariff(data.wilayaCode, data.deliveryType);
+      if (data.shippingFee !== expectedShipping) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Frais de livraison incorrects pour la wilaya ${data.wilayaCode}`,
+          path: ["shippingFee"],
+        });
       }
+    } catch {
+      // Invalid wilaya code already caught by field schema
     }
   });
 

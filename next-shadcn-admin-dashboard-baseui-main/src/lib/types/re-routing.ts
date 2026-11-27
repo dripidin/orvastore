@@ -8,7 +8,6 @@ import { z } from "zod";
 import {
   ALGERIA_69_WILAYAS,
   calculateDeliveryTariff,
-  isStopDeskAllowed,
   isValidAlgerianPhone,
   normalizeAlgerianPhone,
 } from "./checkout";
@@ -164,15 +163,6 @@ export const orderReRoutingSchema = z
     shippedOverrideConfirmed: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
-    // Stop-Desk Barrier for Zone 5
-    if (data.newDeliveryType === "STOP_DESK" && !isStopDeskAllowed(data.newWilayaCode)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Stop-Desk is restricted in Wilaya ${data.newWilayaCode} (${data.newWilayaName})`,
-        path: ["newDeliveryType"],
-      });
-    }
-
     // Street Address for Domicile
     if (data.newDeliveryType === "DOMICILE") {
       if (!data.newDeliveryAddress || data.newDeliveryAddress.trim().length < 3) {

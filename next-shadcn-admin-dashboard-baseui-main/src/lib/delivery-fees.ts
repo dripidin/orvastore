@@ -65,16 +65,16 @@ export async function getDeliveryFees(force = false): Promise<DeliveryFeesResult
       };
     });
 
-    // Populate new Law 26-06 wilayas (59..69) from mother wilayas so domicile pricing is complete
+    // Populate new Law 26-06 wilayas (59..69) from mother wilayas so domicile & stop-desk pricing are complete
     for (const w of ALGERIA_69_WILAYAS) {
       if (!fees[w.code] && w.motherWilayaCode && fees[w.motherWilayaCode]) {
         const mother = fees[w.motherWilayaCode];
-        fees[w.code] = { domicile: mother.domicile, stopdesk: 0, retour: mother.retour };
+        fees[w.code] = { domicile: mother.domicile, stopdesk: mother.stopdesk, retour: mother.retour };
         rows.push({
           wilaya_id: w.code,
           service_type: SERVICE,
           tarif_domicile: mother.domicile,
-          tarif_stopdesk: 0,
+          tarif_stopdesk: mother.stopdesk,
           tarif_retour: mother.retour ?? 0,
           tarif_pickup: 0,
           tarif_echange: 0,
