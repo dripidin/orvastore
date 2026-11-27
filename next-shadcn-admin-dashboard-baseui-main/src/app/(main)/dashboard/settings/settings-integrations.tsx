@@ -46,6 +46,7 @@ import { getAppRepositoryMode } from "@/lib/orva-api";
 import type { IntegrationStatus } from "@/lib/settings/integrations-registry";
 
 import { MultiCourierManagerCard } from "./_components/multi-courier-manager-card";
+import { TikTokAppOnboardingCard } from "./tiktok-app-onboarding-card";
 import { TikTokLeadsIntegrationCard } from "./tiktok-leads-integration-card";
 import {
   deriveTikTokConnectionUiState,
@@ -2343,6 +2344,7 @@ export function SettingsIntegrations() {
             TAB: TIKTOK ADS LEAD GENERATION INTEGRATION (PHASE C)
            ═══════════════════════════════════════════════════════════════════ */}
         <TabsContent value="tiktok" className="mt-4">
+          <TikTokAppOnboardingCard />
           <TikTokLeadsIntegrationCard callbackParams={searchParams} onStatusChange={setTiktokStatusSummary} />
         </TabsContent>
       </Tabs>

@@ -6,8 +6,23 @@ import {
   STOREFRONT_LINK_HEADER,
 } from "@/lib/seo/storefront-markdown";
 
+const TIKTOK_SIGNATURE_FILE_PATH_REGEX =
+  /^\/(?:(?:\.well-known|terms|privacy)\/)?tiktok[A-Za-z0-9_.-]{4,100}\.txt$/i;
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const trimmedPath = pathname === "/" ? "/" : pathname.replace(/\/+$/, "");
+
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    TIKTOK_SIGNATURE_FILE_PATH_REGEX.test(trimmedPath)
+  ) {
+    const verifyUrl = new URL(
+      `/api/integrations/tiktok/domain-verify/?file=${encodeURIComponent(trimmedPath.slice(1))}`,
+      request.url,
+    );
+    return NextResponse.rewrite(verifyUrl);
+  }
 
   if (
     (request.method === "GET" || request.method === "HEAD") &&
