@@ -37,6 +37,18 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/',
+        has: [{ type: 'host', value: 'www.orva-store.com' }],
+        destination: 'https://orva-store.com/',
+        permanent: true,
+      },
+      {
+        source: '/:path((?!api/).+)',
+        has: [{ type: 'host', value: 'www.orva-store.com' }],
+        destination: 'https://orva-store.com/:path*',
+        permanent: true,
+      },
+      {
         source: '/admin.html',
         destination: '/dashboard/ecommerce/',
         permanent: false,

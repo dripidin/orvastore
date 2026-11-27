@@ -17,6 +17,11 @@ import {
   disconnectTikTokAccount,
   getTikTokConfigurationReadiness,
 } from "@/lib/integrations/tiktok/oauth";
+import {
+  SESSION_COOKIE_NAME,
+  extractSessionToken,
+  setAdminSessionCookie,
+} from "@/lib/auth/admin-auth";
 import { TikTokTokenManager } from "@/lib/integrations/tiktok/token-manager";
 import { DEFAULT_ORVA_STORE_ID, TikTokApiError } from "@/lib/integrations/tiktok/types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -248,7 +253,16 @@ export async function POST(request: NextRequest) {
         expiresAt,
         redirectUri,
       });
-      setOAuthStateCookie(response, state);
+      setOAuthStateCookie(response, state, request);
+
+      // Ensure the browser also holds an up-to-date HttpOnly shared-domain admin session
+      // cookie before redirecting out to TikTok (so GET /callback succeeds cleanly).
+      const sessionToken = extractSessionToken(request);
+      if (sessionToken && !request.cookies.get(SESSION_COOKIE_NAME)?.value) {
+        const remainingSec = Math.max(60, Math.floor((auth.session.exp - Date.now()) / 1000));
+        setAdminSessionCookie(response, request, sessionToken, remainingSec);
+      }
+
       return response;
     }
 
@@ -285,7 +299,7 @@ export async function POST(request: NextRequest) {
       disconnected: result.disconnected,
       upstreamRevoked: result.upstreamRevoked,
     });
-    clearOAuthStateCookie(response);
+    clearOAuthStateCookie(response, request);
     return response;
   } catch (err) {
     return mapTikTokErrorToResponse(err, "API /api/integrations/tiktok/connect POST");

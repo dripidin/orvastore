@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  clearAdminSessionCookies,
   extractSessionToken,
   generateSessionToken,
   isValidPassword,
+  resolveAdminCookieDomain,
+  setAdminSessionCookie,
   verifyCsrfOrigin,
   verifySessionToken,
+  verifySessionTokenSync,
   invalidateSession,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth/admin-auth";
@@ -44,8 +48,18 @@ export async function POST(request: NextRequest) {
       const token = extractSessionToken(request);
       const isValid = await verifySessionToken(token);
 
-      if (isValid) {
-        return jsonNoStore({ success: true, authenticated: true });
+      if (isValid && token) {
+        const response = jsonNoStore({ success: true, authenticated: true });
+        const hasCookie = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+        const sharedDomain = resolveAdminCookieDomain(request);
+        if ((!hasCookie || sharedDomain) && verifyCsrfOrigin(request)) {
+          const payload = verifySessionTokenSync(token);
+          const remainingSec = payload
+            ? Math.max(60, Math.floor((payload.exp - Date.now()) / 1000))
+            : 24 * 60 * 60;
+          setAdminSessionCookie(response, request, token, remainingSec);
+        }
+        return response;
       }
 
       return jsonNoStore(
@@ -73,16 +87,8 @@ export async function POST(request: NextRequest) {
           token,
         });
 
-        // Set strictly hardened HTTP-Only 24-hour cookie
-        response.cookies.set({
-          name: SESSION_COOKIE_NAME,
-          value: token,
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: 24 * 60 * 60, // 24 hours (86,400 seconds)
-        });
+        // Set strictly hardened HTTP-Only 24-hour cookie (shared across .orva-store.com in prod)
+        setAdminSessionCookie(response, request, token);
 
         return response;
       }
@@ -119,15 +125,7 @@ export async function POST(request: NextRequest) {
         message: "Logged out successfully",
       });
 
-      response.cookies.set({
-        name: SESSION_COOKIE_NAME,
-        value: "",
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 0,
-      });
+      clearAdminSessionCookies(response, request);
 
       return response;
     }

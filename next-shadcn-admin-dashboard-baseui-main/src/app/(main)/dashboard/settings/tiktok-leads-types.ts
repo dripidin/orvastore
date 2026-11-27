@@ -342,6 +342,11 @@ const KNOWN_OAUTH_ERROR_MESSAGES: Record<string, { titleAr: string; messageAr: s
     titleAr: "تعذر إكمال تبادل رمز الوصول مع TikTok",
     messageAr: "فشل التحقق من رمز التفويض لدى خادم TikTok. تأكد من صلاحية إعدادات التطبيق وأعد المحاولة.",
   },
+  admin_session_required: {
+    titleAr: "مطلوب جلسة إدارة صالحة لإتمام الربط",
+    messageAr:
+      "لم يصل كوكي جلسة الإدارة عند العودة من TikTok (غالباً بسبب انتهاء الجلسة أو الدخول من نطاق www مختلف). سجّل الدخول مجدداً عبر https://orva-store.com ثم أعد الضغط على ربط حساب TikTok Business.",
+  },
 };
 
 /**

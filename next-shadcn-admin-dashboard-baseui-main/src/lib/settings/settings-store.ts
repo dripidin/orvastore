@@ -19,6 +19,13 @@ export const MEDIA_MIN_UPLOAD_MB = 4;
 export const MEDIA_MAX_UPLOAD_MB = 100;
 export const MEDIA_DEFAULT_UPLOAD_MB = 10;
 
+export const DEFAULT_TIKTOK_PIXEL_ID = 'DC4QJAJC77U6QF2N05JG';
+
+export function sanitizeTikTokPixelId(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return /^[A-Za-z0-9_-]{8,40}$/.test(trimmed) ? trimmed : '';
+}
+
 export function clampMaxUploadSizeMb(value: unknown): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return MEDIA_DEFAULT_UPLOAD_MB;
@@ -44,6 +51,12 @@ export interface AdminSettingsPayload {
     testEventCode?: string;
     enabled?: boolean;
     capiEnabled?: boolean;
+    scope?: 'all' | 'selected';
+    pages?: string[];
+  };
+  tiktokPixel?: {
+    pixelId?: string;
+    enabled?: boolean;
     scope?: 'all' | 'selected';
     pages?: string[];
   };
@@ -103,6 +116,12 @@ export interface AdminSettingsRecord {
     pages: string[];
     sha256DeduplicationActive: boolean;
   };
+  tiktokPixel: {
+    pixelId: string;
+    enabled: boolean;
+    scope: 'all' | 'selected';
+    pages: string[];
+  };
   telegram: {
     botToken: string;
     chatId: string;
@@ -154,6 +173,14 @@ export const fallbackSettingsStore: AdminSettingsRecord = {
     scope: 'all',
     pages: ['/checkout', '/pack1', '/pack2', '/pack3'],
     sha256DeduplicationActive: true,
+  },
+  tiktokPixel: {
+    pixelId:
+      sanitizeTikTokPixelId(process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID || process.env.TIKTOK_PIXEL_ID) ||
+      DEFAULT_TIKTOK_PIXEL_ID,
+    enabled: true,
+    scope: 'all',
+    pages: ['/checkout', '/pack1', '/pack2', '/pack3'],
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',

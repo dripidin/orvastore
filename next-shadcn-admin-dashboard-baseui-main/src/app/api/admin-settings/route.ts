@@ -14,7 +14,7 @@ import { runGeminiSettingsTestReport } from "@/lib/ai/store-ai-context";
 import { resolveVercelAnalyticsRuntimeConfig, testVercelAnalyticsConnection } from "@/lib/analytics/vercel-server";
 import { verifyAdminSession } from "@/lib/auth/admin-auth";
 import { uploadMediaBuffer, uploadMediaDataUrl } from "@/lib/media/hostinger-media";
-import { fallbackSettingsStore } from "@/lib/settings/settings-store";
+import { fallbackSettingsStore, sanitizeTikTokPixelId } from "@/lib/settings/settings-store";
 
 export async function GET(request: NextRequest) {
   if (!(await verifyAdminSession(request))) {
@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
   const isTgConfigured = Boolean(settings.telegram.botToken && settings.telegram.chatId);
   const isMetaConfigured = Boolean(settings.metaPixel.pixelId);
   const hasMetaCapi = Boolean(settings.metaPixel.capiToken);
+  const isTikTokPixelConfigured = Boolean(sanitizeTikTokPixelId(settings.tiktokPixel?.pixelId));
   const isGeminiConfigured = Boolean(settings.geminiAi?.apiKey);
   const isVercelTokenConfigured = Boolean(vercelRuntime.token);
 
@@ -41,6 +42,16 @@ export async function GET(request: NextRequest) {
         hasCapiToken: hasMetaCapi,
         tokenSource: hasMetaCapi ? "Server Config / Supabase" : "Not Configured",
         status: isMetaConfigured ? (settings.metaPixel.enabled ? "operational" : "not_connected") : "not_configured",
+        updatedAt: settings.updatedAt || null,
+      },
+      tiktokPixel: {
+        ...settings.tiktokPixel,
+        isConfigured: isTikTokPixelConfigured,
+        status: isTikTokPixelConfigured
+          ? settings.tiktokPixel.enabled
+            ? "operational"
+            : "not_connected"
+          : "not_configured",
         updatedAt: settings.updatedAt || null,
       },
       telegram: {
@@ -221,6 +232,24 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (integration === "tiktokPixel") {
+        const settings = await getAdminSettingsAction();
+        const rawId = typeof body.pixelId === "string" ? body.pixelId : settings.tiktokPixel.pixelId;
+        const cleanId = sanitizeTikTokPixelId(rawId);
+        const configured = Boolean(cleanId);
+
+        return NextResponse.json({
+          success: true,
+          testResult: {
+            configured,
+            pixelId: cleanId || undefined,
+            message: configured
+              ? `تكوين TikTok Pixel (${cleanId}) سليم وجاهز في <head> لصفحات المتجر.`
+              : "معرّف TikTok Pixel ID غير صالح (يجب أن يتكون من أحرف وأرقام إنجليزية بطول 8 إلى 40 محرفاً).",
+          },
+        });
+      }
+
       if (integration === "geminiAi") {
         const testResult = await runGeminiSettingsTestReport({
           name: body.name,
@@ -275,6 +304,10 @@ export async function POST(request: NextRequest) {
           await saveSettingsAction({ metaPixel: { pixelId: "" } });
         } else if (field === "capiToken") {
           await saveSettingsAction({ metaPixel: { capiToken: "" } });
+        }
+      } else if (integration === "tiktokPixel") {
+        if (field === "pixelId" || !field) {
+          await saveSettingsAction({ tiktokPixel: { pixelId: "" } });
         }
       } else if (integration === "geminiAi") {
         await deleteGeminiApiKeyAction();

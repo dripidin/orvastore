@@ -47,16 +47,21 @@ function buildSettingsRedirect(
   }
 
   const res = NextResponse.redirect(url, { status: 302, headers: NO_STORE_HEADERS });
-  clearOAuthStateCookie(res);
+  clearOAuthStateCookie(res, request);
   return res;
 }
 
 export async function GET(request: NextRequest) {
+  const browserRedirect = prefersBrowserRedirect(request);
+
   // 1. Admin session MUST be active before accepting any OAuth callback
   const auth = await requireAdminRouteSession(request);
-  if (!auth.ok) return auth.response;
-
-  const browserRedirect = prefersBrowserRedirect(request);
+  if (!auth.ok) {
+    if (browserRedirect) {
+      return buildSettingsRedirect(request, { status: "error", errorCode: "admin_session_required" });
+    }
+    return auth.response;
+  }
   const searchParams = request.nextUrl.searchParams;
   const upstreamError = (searchParams.get("error") || "").trim();
   const authCode = (searchParams.get("auth_code") || searchParams.get("code") || "").trim();
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
       },
       400,
     );
-    clearOAuthStateCookie(res);
+    clearOAuthStateCookie(res, request);
     return res;
   }
 
@@ -93,7 +98,7 @@ export async function GET(request: NextRequest) {
       },
       400,
     );
-    clearOAuthStateCookie(res);
+    clearOAuthStateCookie(res, request);
     return res;
   }
 
@@ -109,7 +114,7 @@ export async function GET(request: NextRequest) {
       },
       403,
     );
-    clearOAuthStateCookie(res);
+    clearOAuthStateCookie(res, request);
     return res;
   }
 
@@ -148,7 +153,7 @@ export async function GET(request: NextRequest) {
       advertiserSyncWarning,
       redirectTo: "/dashboard/settings/?tab=tiktok&tiktok_status=connected",
     });
-    clearOAuthStateCookie(response);
+    clearOAuthStateCookie(response, request);
     return response;
   } catch (err) {
     if (browserRedirect) {
@@ -160,7 +165,7 @@ export async function GET(request: NextRequest) {
     }
 
     const res = mapTikTokErrorToResponse(err, "API /api/integrations/tiktok/callback GET");
-    clearOAuthStateCookie(res);
+    clearOAuthStateCookie(res, request);
     return res;
   }
 }

@@ -42,6 +42,7 @@ interface RawCommune {
 }
 
 import { captureAttributionFromUrl, getStoredAttribution } from "@/lib/analytics/attribution-tracker";
+import { trackTikTokInitiateCheckout } from "@/lib/analytics/tiktok-pixel";
 import { CheckoutKeyLifecycle } from "@/lib/idempotency-lifecycle";
 
 const communesData = communesRawData as RawCommune[];
@@ -197,6 +198,17 @@ export function EmbeddedCodOrderForm({
   // Total Net Payable
   const totalPayable = effectivePrice + shippingFee;
 
+  const didFireInitiateCheckoutRef = useRef(false);
+  const fireInitiateCheckoutOnce = () => {
+    if (didFireInitiateCheckoutRef.current) return;
+    didFireInitiateCheckoutRef.current = true;
+    trackTikTokInitiateCheckout({
+      contentId: effectivePackId,
+      contentName: effectiveProductName,
+      valueDzd: totalPayable,
+    });
+  };
+
   // Handle Wilaya change
   const handleWilayaChange = (codeStr: string) => {
     const code = parseInt(codeStr, 10);
@@ -271,6 +283,7 @@ export function EmbeddedCodOrderForm({
     }
 
     const attribution = captureAttributionFromUrl() ?? getStoredAttribution();
+    fireInitiateCheckoutOnce();
 
     const submission: CodOrderSubmission = {
       customerName: customerName.trim(),
@@ -361,7 +374,7 @@ export function EmbeddedCodOrderForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} onFocusCapture={fireInitiateCheckoutOnce} className="space-y-4">
         {/* Anti-spam Honeypot */}
         <input
           type="text"

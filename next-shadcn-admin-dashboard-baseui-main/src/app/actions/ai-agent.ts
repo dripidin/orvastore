@@ -19,6 +19,7 @@ import {
   runGeminiSettingsTestReport,
   runOrvaGeminiAgentQuery,
 } from "@/lib/ai/store-ai-context";
+import { sanitizeTikTokPixelId } from "@/lib/settings/settings-store";
 
 function resolveStatus(isConfigured: boolean, enabled: boolean, fallbackWhenUnconfigured = "not_configured"): string {
   if (isConfigured) {
@@ -36,6 +37,7 @@ export async function getDashboardSettingsFallbackAction() {
   const isTgConfigured = Boolean(settings.telegram.botToken && settings.telegram.chatId);
   const isMetaConfigured = Boolean(settings.metaPixel.pixelId);
   const hasMetaCapi = Boolean(settings.metaPixel.capiToken);
+  const isTikTokPixelConfigured = Boolean(sanitizeTikTokPixelId(settings.tiktokPixel?.pixelId));
   const isGeminiConfigured = Boolean(settings.geminiAi.apiKey);
   const isVercelConfigured = Boolean(vercelRuntime.token);
 
@@ -48,6 +50,12 @@ export async function getDashboardSettingsFallbackAction() {
         hasCapiToken: hasMetaCapi,
         tokenSource: hasMetaCapi ? "Server Config / Supabase" : "Not Configured",
         status: resolveStatus(isMetaConfigured, settings.metaPixel.enabled),
+        updatedAt: settings.updatedAt || null,
+      },
+      tiktokPixel: {
+        ...settings.tiktokPixel,
+        isConfigured: isTikTokPixelConfigured,
+        status: resolveStatus(isTikTokPixelConfigured, settings.tiktokPixel.enabled),
         updatedAt: settings.updatedAt || null,
       },
       telegram: {
@@ -175,6 +183,23 @@ export async function mutateDashboardSettingsFallbackAction(body: Record<string,
       };
     }
 
+    if (integration === "tiktokPixel") {
+      const settings = await getAdminSettingsAction();
+      const rawId = typeof body.pixelId === "string" ? body.pixelId : settings.tiktokPixel.pixelId;
+      const cleanId = sanitizeTikTokPixelId(rawId);
+      const configured = Boolean(cleanId);
+      return {
+        success: true,
+        testResult: {
+          configured,
+          pixelId: cleanId || undefined,
+          message: configured
+            ? `تكوين TikTok Pixel (${cleanId}) سليم وجاهز في <head> لصفحات المتجر.`
+            : "معرّف TikTok Pixel ID غير صالح.",
+        },
+      };
+    }
+
     if (integration === "vercelAnalytics") {
       const testResult = await testVercelAnalyticsConnection({
         token: typeof body.token === "string" ? body.token : undefined,
@@ -202,6 +227,8 @@ export async function mutateDashboardSettingsFallbackAction(body: Record<string,
     } else if (integration === "metaPixel") {
       if (field === "pixelId") await saveSettingsAction({ metaPixel: { pixelId: "" } });
       if (field === "capiToken") await saveSettingsAction({ metaPixel: { capiToken: "" } });
+    } else if (integration === "tiktokPixel") {
+      if (field === "pixelId" || !field) await saveSettingsAction({ tiktokPixel: { pixelId: "" } });
     }
     return {
       success: true,

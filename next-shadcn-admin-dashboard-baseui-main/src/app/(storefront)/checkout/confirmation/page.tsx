@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { trackTikTokCompletePayment } from "@/lib/analytics/tiktok-pixel";
 import {
   CheckCircle2,
   Copy,
@@ -61,9 +62,11 @@ function ConfirmationContent() {
     }
   };
 
-  // Client-Side Meta Pixel Purchase Tracking
+  // Client-Side Meta Pixel Purchase & TikTok Pixel CompletePayment Tracking
   useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).fbq) {
+    if (typeof window === "undefined") return;
+
+    if ((window as any).fbq) {
       (window as any).fbq(
         "track",
         "Purchase",
@@ -78,6 +81,21 @@ function ConfirmationContent() {
         }
       );
     }
+
+    const dedupKey = `orva_tt_complete_${orderNumber}`;
+    try {
+      if (window.sessionStorage?.getItem(dedupKey) === "1") return;
+      window.sessionStorage?.setItem(dedupKey, "1");
+    } catch {
+      // Ignore storage restrictions and still attempt pixel event once per mount
+    }
+
+    trackTikTokCompletePayment({
+      orderNumber,
+      contentId: packId,
+      contentName: currentPack.ar,
+      valueDzd: total,
+    });
   }, [orderNumber, total, currentPack.ar, packId]);
 
   return (

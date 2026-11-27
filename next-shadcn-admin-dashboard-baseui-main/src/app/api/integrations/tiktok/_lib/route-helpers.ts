@@ -18,6 +18,7 @@ import {
   SESSION_COOKIE_NAME,
   extractSessionToken,
   getVerifiedAdminSession,
+  resolveAdminCookieDomain,
   verifyCsrfOrigin,
   verifySessionToken,
 } from "@/lib/auth/admin-auth";
@@ -255,7 +256,8 @@ export function mapTikTokErrorToResponse(err: unknown, routeContext: string): Ne
 /**
  * Sets the hardened HttpOnly OAuth CSRF state double-submit cookie (10-minute lifetime).
  */
-export function setOAuthStateCookie(response: NextResponse, state: string): void {
+export function setOAuthStateCookie(response: NextResponse, state: string, request?: NextRequest): void {
+  const domain = resolveAdminCookieDomain(request);
   response.cookies.set({
     name: TIKTOK_OAUTH_STATE_COOKIE_NAME,
     value: state,
@@ -264,22 +266,34 @@ export function setOAuthStateCookie(response: NextResponse, state: string): void
     sameSite: "lax",
     path: "/",
     maxAge: 600,
+    ...(domain ? { domain } : {}),
   });
 }
 
 /**
- * Immediately clears the one-time-use OAuth CSRF state cookie.
+ * Immediately clears the one-time-use OAuth CSRF state cookie across shared and host-only scopes.
  */
-export function clearOAuthStateCookie(response: NextResponse): void {
+export function clearOAuthStateCookie(response: NextResponse, request?: NextRequest): void {
+  const domain = resolveAdminCookieDomain(request);
+  const secure = process.env.NODE_ENV === "production";
   response.cookies.set({
     name: TIKTOK_OAUTH_STATE_COOKIE_NAME,
     value: "",
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: 0,
+    ...(domain ? { domain } : {}),
   });
+
+  if (domain) {
+    const secureFlag = secure ? "; Secure" : "";
+    response.headers.append(
+      "Set-Cookie",
+      `${TIKTOK_OAUTH_STATE_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secureFlag}`,
+    );
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -487,4 +487,82 @@ export async function getVerifiedAdminSession(request: NextRequest): Promise<Adm
  */
 export async function verifyAdminSession(request: NextRequest): Promise<boolean> {
   return (await getVerifiedAdminSession(request)) !== null;
+}
+
+const SHARED_PRODUCTION_ROOT_HOST = "orva-store.com";
+
+/**
+ * Resolves the shared cookie domain (`.orva-store.com`) when the request arrives on
+ * the apex domain or any subdomain (`www.orva-store.com`, etc.), so admin & OAuth
+ * cookies remain synchronized across apex and `www`. Returns undefined for localhost/preview.
+ */
+export function resolveAdminCookieDomain(request?: NextRequest | null): string | undefined {
+  if (!request) return undefined;
+  const rawHost = (
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    request.nextUrl?.hostname ||
+    ""
+  )
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+
+  if (!rawHost) return undefined;
+  const hostname = rawHost.replace(/:\d+$/, "");
+  if (hostname === SHARED_PRODUCTION_ROOT_HOST || hostname.endsWith(`.${SHARED_PRODUCTION_ROOT_HOST}`)) {
+    return `.${SHARED_PRODUCTION_ROOT_HOST}`;
+  }
+  return undefined;
+}
+
+/**
+ * Sets the hardened HTTP-Only `orva_admin_session` cookie using shared-domain scoping
+ * when running on `orva-store.com` / `www.orva-store.com`.
+ */
+export function setAdminSessionCookie(
+  response: NextResponse,
+  request: NextRequest,
+  token: string,
+  maxAgeSeconds = Math.floor(SESSION_DURATION_MS / 1000),
+): void {
+  const domain = resolveAdminCookieDomain(request);
+  response.cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: token,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: Math.max(60, Math.floor(maxAgeSeconds)),
+    ...(domain ? { domain } : {}),
+  });
+}
+
+/**
+ * Clears `orva_admin_session` across both shared domain (`.orva-store.com`)
+ * and legacy host-only scope so no stale session cookie persists after logout.
+ */
+export function clearAdminSessionCookies(response: NextResponse, request: NextRequest): void {
+  const domain = resolveAdminCookieDomain(request);
+  const secure = process.env.NODE_ENV === "production";
+
+  response.cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+    ...(domain ? { domain } : {}),
+  });
+
+  if (domain) {
+    const secureFlag = secure ? "; Secure" : "";
+    response.headers.append(
+      "Set-Cookie",
+      `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secureFlag}`,
+    );
+  }
 }

@@ -695,6 +695,32 @@ async function main() {
       assert.ok(setCookie.includes(`${TIKTOK_OAUTH_STATE_COOKIE_NAME}=`));
       assert.ok(setCookie.toLowerCase().includes("httponly"));
       assert.ok(setCookie.toLowerCase().includes("samesite=lax"));
+      assert.ok(setCookie.toLowerCase().includes("domain=.orva-store.com"));
+
+      // Bearer-authenticated connect start must also issue shared-domain admin session cookie
+      const bearerStartRes = await connectPOST(
+        makeAdminRequest("/api/integrations/tiktok/connect/", {
+          method: "POST",
+          bearerToken: validAdminToken,
+          body: { action: "start" },
+        }),
+      );
+      assert.equal(bearerStartRes.status, 200);
+      const bearerSetCookie = (bearerStartRes.headers.get("set-cookie") || "").toLowerCase();
+      assert.ok(bearerSetCookie.includes(`${SESSION_COOKIE_NAME}=`));
+      assert.ok(bearerSetCookie.includes("domain=.orva-store.com"));
+
+      // Unauthenticated browser HTML callback navigation redirects cleanly instead of raw 401 JSON
+      const browserUnauthCallbackRes = await callbackGET(
+        makeAdminRequest("/api/integrations/tiktok/callback/?auth_code=x&state=y", {
+          accept: "text/html,application/xhtml+xml",
+        }),
+      );
+      assert.equal(browserUnauthCallbackRes.status, 302);
+      const unauthLoc = browserUnauthCallbackRes.headers.get("location") || "";
+      assert.ok(
+        unauthLoc.includes("/dashboard/settings/?tab=tiktok&tiktok_status=error&tiktok_error=admin_session_required"),
+      );
 
       const urlObj = new URL(startJson.authorizationUrl);
       issuedStateCookie = urlObj.searchParams.get("state") || "";

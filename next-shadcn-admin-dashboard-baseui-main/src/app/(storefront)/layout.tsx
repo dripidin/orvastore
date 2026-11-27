@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getAdminSettingsAction } from "@/app/actions/settings";
 import { WebMcpProvider } from "@/components/storefront/agent/webmcp-provider";
 import { MetaPixel } from "@/components/storefront/analytics/meta-pixel";
+import { TikTokPixel } from "@/components/storefront/analytics/tiktok-pixel";
 import { StorefrontDirectionSync } from "@/components/storefront/layout/storefront-direction-sync";
 import { StorefrontFooter } from "@/components/storefront/layout/storefront-footer";
 import { StorefrontHeader } from "@/components/storefront/layout/storefront-header";
@@ -10,7 +11,11 @@ import { TopNoticeBar } from "@/components/storefront/layout/top-notice-bar";
 import { listBestSellers, listPublishedProducts } from "@/lib/catalog/server";
 import { toNavProduct } from "@/lib/catalog/types";
 import { ORVA_CANONICAL_ORIGIN } from "@/lib/seo/storefront-schema";
-import { normalizeStoreLogoUrl, OFFICIAL_STORE_LOGO_URL } from "@/lib/settings/settings-store";
+import {
+  fallbackSettingsStore,
+  normalizeStoreLogoUrl,
+  OFFICIAL_STORE_LOGO_URL,
+} from "@/lib/settings/settings-store";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +33,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
   const bestSellers = (await listBestSellers(2, published)).map(toNavProduct);
   let pixelId = "";
   let enabled = true;
+  let tiktokPixel = fallbackSettingsStore.tiktokPixel;
   let storeLogoUrl = OFFICIAL_STORE_LOGO_URL;
 
   try {
@@ -36,6 +42,9 @@ export default async function StorefrontLayout({ children }: { children: React.R
       pixelId = settings.metaPixel.pixelId;
     }
     enabled = settings.metaPixel.enabled;
+    if (settings.tiktokPixel) {
+      tiktokPixel = settings.tiktokPixel;
+    }
     storeLogoUrl = normalizeStoreLogoUrl(settings.store.logoUrl);
   } catch {
     pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID || process.env.META_PIXEL_ID || "";
@@ -52,6 +61,12 @@ export default async function StorefrontLayout({ children }: { children: React.R
       }}
     >
       <MetaPixel pixelId={pixelId} enabled={enabled} />
+      <TikTokPixel
+        pixelId={tiktokPixel.pixelId}
+        enabled={tiktokPixel.enabled}
+        scope={tiktokPixel.scope}
+        pages={tiktokPixel.pages}
+      />
       <WebMcpProvider products={navProducts} />
       <StorefrontDirectionSync />
       <TopNoticeBar />

@@ -91,6 +91,15 @@ interface PublicSettingsPayload {
     updatedAt: string | null;
     status: string;
   };
+  tiktokPixel?: {
+    enabled: boolean;
+    pixelId: string;
+    isConfigured: boolean;
+    scope: "all" | "selected" | string;
+    pages: string[];
+    updatedAt: string | null;
+    status: string;
+  };
   store?: {
     logoUrl?: string;
     name?: string;
@@ -240,6 +249,15 @@ export function SettingsIntegrations() {
   const [metaTesting, setMetaTesting] = React.useState<boolean>(false);
   const [metaFeedback, setMetaFeedback] = React.useState<ActionFeedback | null>(null);
 
+  // TikTok Pixel State
+  const [ttPixelEnabled, setTtPixelEnabled] = React.useState<boolean>(true);
+  const [ttPixelId, setTtPixelId] = React.useState<string>("DC4QJAJC77U6QF2N05JG");
+  const [ttPixelScope, setTtPixelScope] = React.useState<"all" | "selected">("all");
+  const [ttPixelPages, setTtPixelPages] = React.useState<string[]>(STOREFRONT_PAGE_OPTIONS.map((p) => p.path));
+  const [ttPixelSaving, setTtPixelSaving] = React.useState<boolean>(false);
+  const [ttPixelTesting, setTtPixelTesting] = React.useState<boolean>(false);
+  const [ttPixelFeedback, setTtPixelFeedback] = React.useState<ActionFeedback | null>(null);
+
   // Store Logo State
   const [storeLogoUrl, setStoreLogoUrl] = React.useState<string>("/images/orva-logo.png");
   const [storeLogoSaving, setStoreLogoSaving] = React.useState<boolean>(false);
@@ -294,6 +312,14 @@ export function SettingsIntegrations() {
       setMetaScope(settings.metaPixel.scope === "selected" ? "selected" : "all");
       if (Array.isArray(settings.metaPixel.pages) && settings.metaPixel.pages.length) {
         setMetaPages(settings.metaPixel.pages);
+      }
+    }
+    if (settings.tiktokPixel) {
+      setTtPixelEnabled(settings.tiktokPixel.enabled !== false);
+      setTtPixelId(settings.tiktokPixel.pixelId || "");
+      setTtPixelScope(settings.tiktokPixel.scope === "selected" ? "selected" : "all");
+      if (Array.isArray(settings.tiktokPixel.pages) && settings.tiktokPixel.pages.length) {
+        setTtPixelPages(settings.tiktokPixel.pages);
       }
     }
     if (settings.store?.logoUrl) {
@@ -727,6 +753,80 @@ export function SettingsIntegrations() {
     }
   };
 
+  // ── TikTok Pixel Handlers ───────────────────────────────────────────────────
+  const handleSaveTikTokPixel = async () => {
+    setTtPixelSaving(true);
+    setTtPixelFeedback(null);
+    try {
+      const cleanId = ttPixelId.trim();
+      if (cleanId && !/^[A-Za-z0-9_-]{8,40}$/.test(cleanId)) {
+        throw new Error("معرّف TikTok Pixel ID يجب أن يتكون من 8 إلى 40 حرفاً أو رقماً إنجليزياً فقط.");
+      }
+      if (ttPixelScope === "selected" && ttPixelPages.length === 0) {
+        throw new Error("اختر صفحة واحدة على الأقل عند تفعيل النطاق المحدّد.");
+      }
+
+      await callSettingsApi({
+        action: "save",
+        tiktokPixel: {
+          enabled: ttPixelEnabled,
+          pixelId: cleanId,
+          scope: ttPixelScope,
+          pages: ttPixelScope === "all" ? STOREFRONT_PAGE_OPTIONS.map((p) => p.path) : ttPixelPages,
+        },
+      });
+      setTtPixelFeedback({
+        type: "success",
+        message: "تم حفظ إعدادات TikTok Pixel وتحديث التتبع في <head> لصفحات المتجر بنجاح.",
+      });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر حفظ إعدادات TikTok Pixel.";
+      setTtPixelFeedback({ type: "error", message: msg });
+    } finally {
+      setTtPixelSaving(false);
+    }
+  };
+
+  const handleTestTikTokPixel = async () => {
+    setTtPixelTesting(true);
+    setTtPixelFeedback(null);
+    try {
+      const res = await callSettingsApi({
+        action: "test",
+        integration: "tiktokPixel",
+        pixelId: ttPixelId.trim(),
+      });
+      const test = res.testResult;
+      setTtPixelFeedback({
+        type: test.configured ? "success" : "error",
+        message: test.message || "تعذر التحقق من معرّف TikTok Pixel.",
+      });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "فشل فحص تكوين TikTok Pixel.";
+      setTtPixelFeedback({ type: "error", message: msg });
+    } finally {
+      setTtPixelTesting(false);
+    }
+  };
+
+  const handleClearTikTokPixelId = async () => {
+    if (!confirm("هل أنت متأكد من إزالة معرّف TikTok Pixel من المتجر؟ سيتوقف حقن البكسل.")) return;
+    setTtPixelSaving(true);
+    try {
+      await callSettingsApi({ action: "delete", integration: "tiktokPixel", field: "pixelId" });
+      setTtPixelId("");
+      setTtPixelFeedback({ type: "info", message: "تمت إزالة معرّف TikTok Pixel بنجاح." });
+      await fetchSettings();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر إزالة معرّف TikTok Pixel.";
+      setTtPixelFeedback({ type: "error", message: msg });
+    } finally {
+      setTtPixelSaving(false);
+    }
+  };
+
   // ── Orva Agent AI (Gemini) Handlers ─────────────────────────────────────────
   const handleSaveGeminiAi = async () => {
     setGeminiSaving(true);
@@ -851,6 +951,7 @@ export function SettingsIntegrations() {
   const isTgConfigured = Boolean(serverSettings?.telegram?.isConfigured);
   const isMetaConfigured = Boolean(serverSettings?.metaPixel?.isConfigured);
   const hasMetaCapi = Boolean(serverSettings?.metaPixel?.hasCapiToken);
+  const isTikTokPixelConfigured = Boolean(serverSettings?.tiktokPixel?.isConfigured);
   const isGeminiConfigured = Boolean(serverSettings?.geminiAi?.isConfigured || geminiApiKey.trim());
 
   return (
@@ -955,17 +1056,21 @@ export function SettingsIntegrations() {
               <div className="flex size-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
                 <BarChart3 className="size-4" />
               </div>
-              <span>Meta Pixel & CAPI</span>
+              <span>Meta &amp; TikTok Pixel</span>
             </div>
             <StatusBadge
-              status={isMetaConfigured ? "operational" : serverSettings?.metaPixel?.status || "not_configured"}
-              label={isMetaConfigured ? "متصل ونشط" : "غير مهيأ"}
+              status={
+                isMetaConfigured || isTikTokPixelConfigured
+                  ? "operational"
+                  : serverSettings?.metaPixel?.status || "not_configured"
+              }
+              label={isMetaConfigured || isTikTokPixelConfigured ? "متصل ونشط" : "غير مهيأ"}
             />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>تتبع الحملات والأحداث عبر السيرفر</span>
+            <span>تتبع الحملات والأحداث</span>
             <Badge variant="outline" className="text-[10px]">
-              {hasMetaCapi ? "CAPI v19 ✓" : "Browser Pixel"}
+              {hasMetaCapi ? "CAPI + TikTok ✓" : isTikTokPixelConfigured ? "Meta + TikTok ✓" : "Browser Pixel"}
             </Badge>
           </div>
         </div>
@@ -1762,6 +1867,164 @@ export function SettingsIntegrations() {
                     </Button>
                   )}
                 </div>
+              </CardFooter>
+            </Card>
+
+            {/* TikTok Pixel Head & Funnel Events Card */}
+            <Card className="md:col-span-3">
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <Tag className="size-4 text-slate-900 dark:text-slate-100" />
+                      إعدادات TikTok Pixel — التتبع في &lt;head&gt; وأحداث المتجر
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      حقن كود TikTok Pixel داخل وسم &lt;head&gt; لجميع صفحات المتجر العامة مع استثناء لوحة التحكم
+                      (/dashboard و /auth) وتفعيل أحداث PageView و ViewContent و InitiateCheckout و CompletePayment.
+                    </CardDescription>
+                  </div>
+                  <StatusBadge
+                    status={isTikTokPixelConfigured ? (ttPixelEnabled ? "operational" : "not_connected") : "not_configured"}
+                    label={
+                      isTikTokPixelConfigured
+                        ? ttPixelEnabled
+                          ? "مفعّل في <head>"
+                          : "متوقف مؤقتاً"
+                        : "غير مضبوط"
+                    }
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs">
+                {ttPixelFeedback && (
+                  <Alert variant={ttPixelFeedback.type === "error" ? "destructive" : "default"} className="py-2.5">
+                    {ttPixelFeedback.type === "error" ? (
+                      <AlertCircle className="size-4" />
+                    ) : (
+                      <CheckCircle2 className="size-4" />
+                    )}
+                    <AlertTitle className="text-xs font-bold">
+                      {ttPixelFeedback.type === "error" ? "تنبيه" : "نجاح العملية"}
+                    </AlertTitle>
+                    <AlertDescription className="text-xs mt-0.5">{ttPixelFeedback.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="tiktok-pixel-toggle" className="text-xs font-bold cursor-pointer">
+                        تفعيل TikTok Pixel في صفحات المتجر
+                      </Label>
+                      <div className="text-[11px] text-muted-foreground">
+                        تشغيل ttq.load و ttq.page في &lt;head&gt; وأحداث الشراء دون التفعيل داخل لوحة الإدارة.
+                      </div>
+                    </div>
+                    <Switch id="tiktok-pixel-toggle" checked={ttPixelEnabled} onCheckedChange={setTtPixelEnabled} />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tiktok-pixel-id" className="text-xs font-semibold">
+                      معرّف بيكسل تيك توك (TikTok Pixel ID):
+                    </Label>
+                    <Input
+                      id="tiktok-pixel-id"
+                      type="text"
+                      placeholder="مثال: DC4QJAJC77U6QF2N05JG"
+                      value={ttPixelId}
+                      onChange={(e) => setTtPixelId(e.target.value)}
+                      className="font-mono text-xs"
+                      dir="ltr"
+                    />
+                    <div className="text-[11px] text-muted-foreground">
+                      الافتراضي المفعّل: DC4QJAJC77U6QF2N05JG
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border bg-muted/30 space-y-3 text-[11px]">
+                  <div className="font-semibold text-foreground">نطاق تشغيل TikTok Pixel</div>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="tiktok-pixel-scope"
+                        checked={ttPixelScope === "all"}
+                        onChange={() => setTtPixelScope("all")}
+                      />
+                      <span>جميع صفحات المتجر العامة (باستثناء /dashboard و /auth)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="tiktok-pixel-scope"
+                        checked={ttPixelScope === "selected"}
+                        onChange={() => setTtPixelScope("selected")}
+                      />
+                      <span>صفحات محددة فقط من المتجر</span>
+                    </label>
+                  </div>
+                  {ttPixelScope === "selected" && (
+                    <div className="grid gap-1.5 sm:grid-cols-2 pt-1">
+                      {STOREFRONT_PAGE_OPTIONS.map((opt) => {
+                        const checked = ttPixelPages.includes(opt.path);
+                        return (
+                          <label
+                            key={`tt-${opt.path}`}
+                            className="flex items-center gap-2 cursor-pointer rounded-lg border bg-background/60 px-2 py-1.5"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setTtPixelPages((prev) =>
+                                  checked ? prev.filter((p) => p !== opt.path) : [...prev, opt.path],
+                                );
+                              }}
+                            />
+                            <span className="leading-tight">{opt.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+              <CardFooter className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveTikTokPixel}
+                    disabled={ttPixelSaving}
+                    className="text-xs gap-1.5 h-8"
+                  >
+                    {ttPixelSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    <span>حفظ TikTok Pixel</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestTikTokPixel}
+                    disabled={ttPixelTesting || !ttPixelId.trim()}
+                    className="text-xs gap-1.5 h-8"
+                  >
+                    {ttPixelTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
+                    <span>فحص المعرّف</span>
+                  </Button>
+                </div>
+                {isTikTokPixelConfigured && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearTikTokPixelId}
+                    disabled={ttPixelSaving}
+                    className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-8"
+                  >
+                    <Trash2 className="size-3.5" />
+                    <span>إزالة Pixel ID</span>
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           </div>

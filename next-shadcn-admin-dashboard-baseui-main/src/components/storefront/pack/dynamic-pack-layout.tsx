@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import Link from "next/link";
 
 import { CheckCircle2, Home, ShieldCheck, Star, Truck } from "lucide-react";
 
+import { trackTikTokViewContent } from "@/lib/analytics/tiktok-pixel";
 import { EmbeddedCodOrderForm } from "@/components/storefront/checkout/embedded-cod-order-form";
 import { PackCrossSell } from "@/components/storefront/pack/pack-cross-sell";
 import { PackFaq } from "@/components/storefront/pack/pack-faq";
@@ -42,6 +43,14 @@ export function DynamicPackLayout({
 }: DynamicPackLayoutProps) {
   const [layoutConfig] = useState<ProductPageLayoutConfig>(() => layout ?? createDefaultLayoutConfig(pack.slug));
   const hasDiscount = pack.originalPriceDzd > pack.priceDzd;
+
+  useEffect(() => {
+    trackTikTokViewContent({
+      contentId: packId,
+      contentName: pack.nameAr,
+      priceDzd: pack.priceDzd,
+    });
+  }, [packId, pack.nameAr, pack.priceDzd]);
 
   // Section visibility predicate
   const isSectionVisible = (sectionId: ProductPageSectionId): boolean => {

@@ -8,6 +8,7 @@ import {
   clampWebpQuality,
   fallbackSettingsStore,
   normalizeStoreLogoUrl,
+  sanitizeTikTokPixelId,
 } from '@/lib/settings/settings-store';
 import { getCourierProviderManager } from '@/lib/couriers';
 
@@ -25,6 +26,12 @@ export interface AdminSettingsPayload {
     testEventCode?: string;
     enabled?: boolean;
     capiEnabled?: boolean;
+    scope?: 'all' | 'selected';
+    pages?: string[];
+  };
+  tiktokPixel?: {
+    pixelId?: string;
+    enabled?: boolean;
     scope?: 'all' | 'selected';
     pages?: string[];
   };
@@ -124,6 +131,22 @@ export async function saveSettingsAction(
     }
     if (payload.metaPixel.pages !== undefined) {
       fallbackSettingsStore.metaPixel.pages = payload.metaPixel.pages;
+    }
+  }
+
+  if (payload.tiktokPixel) {
+    if (payload.tiktokPixel.pixelId !== undefined) {
+      const trimmedId = payload.tiktokPixel.pixelId.trim();
+      fallbackSettingsStore.tiktokPixel.pixelId = trimmedId ? sanitizeTikTokPixelId(trimmedId) : '';
+    }
+    if (payload.tiktokPixel.enabled !== undefined) {
+      fallbackSettingsStore.tiktokPixel.enabled = Boolean(payload.tiktokPixel.enabled);
+    }
+    if (payload.tiktokPixel.scope !== undefined) {
+      fallbackSettingsStore.tiktokPixel.scope = payload.tiktokPixel.scope === 'selected' ? 'selected' : 'all';
+    }
+    if (Array.isArray(payload.tiktokPixel.pages)) {
+      fallbackSettingsStore.tiktokPixel.pages = payload.tiktokPixel.pages;
     }
   }
 
@@ -297,9 +320,21 @@ export async function saveSettingsAction(
         mergedIntegrations.meta = {
           ...(existingIntegrations.meta || {}),
           pixel_id: fallbackSettingsStore.metaPixel.pixelId,
+          enabled: fallbackSettingsStore.metaPixel.enabled,
+          scope: fallbackSettingsStore.metaPixel.scope,
+          pages: fallbackSettingsStore.metaPixel.pages,
           capi_enabled: fallbackSettingsStore.metaPixel.capiEnabled,
           capi_token: fallbackSettingsStore.metaPixel.capiToken,
           test_event_code: fallbackSettingsStore.metaPixel.testEventCode,
+        };
+      }
+      if (payload.tiktokPixel) {
+        mergedIntegrations.tiktok_pixel = {
+          ...(existingIntegrations.tiktok_pixel || {}),
+          pixel_id: fallbackSettingsStore.tiktokPixel.pixelId,
+          enabled: fallbackSettingsStore.tiktokPixel.enabled,
+          scope: fallbackSettingsStore.tiktokPixel.scope,
+          pages: fallbackSettingsStore.tiktokPixel.pages,
         };
       }
       if (payload.telegram) {
@@ -647,6 +682,22 @@ export async function getAdminSettingsAction(): Promise<AdminSettingsRecord> {
         if (data.meta_pixel_id !== undefined) fallbackSettingsStore.metaPixel.pixelId = data.meta_pixel_id || '';
         if (data.meta_capi_token !== undefined) fallbackSettingsStore.metaPixel.capiToken = data.meta_capi_token || '';
         if (data.meta_test_event_code !== undefined) fallbackSettingsStore.metaPixel.testEventCode = data.meta_test_event_code || '';
+        if (data.integrations?.meta) {
+          const mp = data.integrations.meta;
+          if (mp.enabled !== undefined) fallbackSettingsStore.metaPixel.enabled = Boolean(mp.enabled);
+          if (mp.scope === 'all' || mp.scope === 'selected') fallbackSettingsStore.metaPixel.scope = mp.scope;
+          if (Array.isArray(mp.pages)) fallbackSettingsStore.metaPixel.pages = mp.pages;
+        }
+        if (data.integrations?.tiktok_pixel) {
+          const tp = data.integrations.tiktok_pixel;
+          if (tp.pixel_id !== undefined) {
+            const rawTp = String(tp.pixel_id || '').trim();
+            fallbackSettingsStore.tiktokPixel.pixelId = rawTp ? sanitizeTikTokPixelId(rawTp) : '';
+          }
+          if (tp.enabled !== undefined) fallbackSettingsStore.tiktokPixel.enabled = Boolean(tp.enabled);
+          if (tp.scope === 'all' || tp.scope === 'selected') fallbackSettingsStore.tiktokPixel.scope = tp.scope;
+          if (Array.isArray(tp.pages)) fallbackSettingsStore.tiktokPixel.pages = tp.pages;
+        }
         if (data.telegram_bot_token !== undefined) fallbackSettingsStore.telegram.botToken = data.telegram_bot_token || '';
         if (data.telegram_chat_id !== undefined) fallbackSettingsStore.telegram.chatId = data.telegram_chat_id || '';
         if (data.telegram_alerts_enabled !== undefined) fallbackSettingsStore.telegram.enabled = Boolean(data.telegram_alerts_enabled);
